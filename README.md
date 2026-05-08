@@ -64,3 +64,4 @@ If the repo is already linked to a Vercel project, a production deploy can be tr
 ```bash
 vercel --prod
 ```
+deploy trigger
