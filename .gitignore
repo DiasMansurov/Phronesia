@@ -1,0 +1,27 @@
+node_modules
+.next
+out
+npm-debug.log*
+.playwright-cli
+.DS_Store
+
+# Ignore unrelated local assets and archives in this mixed workspace
+*.pdf
+*.docx
+2005*
+reference/
+output/
+tmp/
+yerasyl_docx_extract/
+*_margin_notes_*.json
+*_margin_trial.py
+scummvm-2005.log
+.vercel
+.supabase_db_password
+supabase/.temp/
+.env
+.env.*
+!.env.example
+
+# clerk configuration (can include secrets)
+/.clerk/

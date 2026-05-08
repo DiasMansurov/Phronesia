@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Phronesia logo</title>
+  <desc id="desc">A modern Phronesia mark combining a policy crown, market bars, and a rising economic line.</desc>
+  <defs>
+    <linearGradient id="navy" x1="20" x2="140" y1="20" y2="140" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f2a44"/>
+      <stop offset="1" stop-color="#132f4c"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="34" x2="126" y1="128" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#29d3b1"/>
+      <stop offset="1" stop-color="#7be3d1"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="46" x2="116" y1="52" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd66b"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="34" fill="url(#navy)"/>
+  <path d="M33 109 45 62l22 23 13-35 16 35 22-23 9 47H33Z" fill="url(#gold)" opacity=".98"/>
+  <path d="M44 112h72" stroke="#effaf7" stroke-width="8" stroke-linecap="round"/>
+  <path d="M43 99c13-4 22-11 31-21 8-9 15-14 27-13 9 1 17-2 25-11" fill="none" stroke="url(#teal)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M57 116V76M78 116V58M99 116V83" stroke="#effaf7" stroke-width="8" stroke-linecap="round" opacity=".78"/>
+  <text x="80" y="139" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="0" fill="#effaf7">P</text>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "name": "phronesia",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "test:mandates": "node --no-warnings --experimental-strip-types --loader ./scripts/ts-alias-loader.mjs scripts/mandate-tests.ts",
+    "test:classroom": "node --test scripts/classroom-prediction-tests.mjs",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^7.0.11",
+    "next": "16.2.2",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}
