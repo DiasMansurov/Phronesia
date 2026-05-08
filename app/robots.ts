@@ -5,9 +5,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/api/", "/teachers/classes/", "/join/"]
+      disallow: ["/api/", "/teachers/classes/", "/join/"],
     },
-    sitemap: "https://phronesia.online/sitemap.xml",
-    host: "https://phronesia.online"
+    sitemap: "https://phronesia.org/sitemap.xml",
+    host: "https://phronesia.org",
   };
 }
