@@ -61,7 +61,7 @@ export default function HomePage() {
     name: "Phronesia",
     applicationCategory: "EducationalApplication",
     operatingSystem: "Web",
-    url: "https://phronesia.online",
+    url: "https://phronesia.org",
     description:
       "A free educational economics and finance simulation platform with theory cards, finance dashboards, classroom-ready runs, and policy trade-off gameplay.",
     audience: [
@@ -82,7 +82,7 @@ export default function HomePage() {
     publisher: {
       "@type": "Organization",
       name: "Phronesia",
-      url: "https://phronesia.online"
+      url: "https://phronesia.org"
     }
   };
 

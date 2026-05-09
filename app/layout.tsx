@@ -8,7 +8,7 @@ import { SiteNav } from "@/components/site/nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://phronesia.online"),
+  metadataBase: new URL("https://phronesia.org"),
   title: {
     default: "Phronesia | Economics Simulation Game for Students and Teachers",
     template: "%s | Phronesia"
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    url: "https://phronesia.online",
+    url: "https://phronesia.org",
     title: "Phronesia | Economics Simulation Game for Students and Teachers",
     description: "Run the economy, survive the backlash, and use teacher-managed classroom flows for economics lessons and revision.",
     siteName: "Phronesia"
