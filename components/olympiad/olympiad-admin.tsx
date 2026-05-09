@@ -68,7 +68,7 @@ export function OlympiadAdmin() {
       const response = await fetch("/api/olympiads/admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminCode: adminCode.trim() })
+        body: JSON.stringify({ adminCode })
       });
       const data = (await response.json()) as AdminResponse;
       if (!response.ok) throw new Error(data.error ?? "Unable to open admin dashboard.");

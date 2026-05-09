@@ -3,18 +3,23 @@ import { NextResponse } from "next/server";
 import { listActiveOlympiads } from "@/lib/olympiads";
 import { listOlympiadAttemptsWithDecisions, olympiadBackendConfigured } from "@/lib/server-olympiads";
 
-function validAdminCode(code: string | undefined) {
-  const configured = process.env.OLYMPIAD_ADMIN_CODE;
-  if (!configured) {
-    return process.env.NODE_ENV !== "production" && code === "local-admin";
-  }
-  return code === configured;
+function readAdminCode() {
+  return process.env.OLYMPIAD_ADMIN_CODE?.trim();
+}
+
+function validAdminCode(code: string | undefined, configured: string) {
+  return (code ?? "").trim() === configured;
 }
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { adminCode?: string };
+  const configuredAdminCode = readAdminCode();
 
-  if (!validAdminCode(body.adminCode)) {
+  if (!configuredAdminCode) {
+    return NextResponse.json({ error: "Admin code is not configured." }, { status: 500 });
+  }
+
+  if (!validAdminCode(body.adminCode, configuredAdminCode)) {
     return NextResponse.json({ error: "Invalid admin access code." }, { status: 403 });
   }
 
