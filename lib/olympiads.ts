@@ -20,9 +20,9 @@ export const OLYMPIADS: OlympiadConfig[] = [
   {
     slug: "american-financial-crisis-2008",
     title: "American Financial Crisis 2008",
-    partner: "Cask Finance Olympiad",
-    accessCode: "CASK-FINANCE",
-    accessAliases: ["Cask Finance", "PHRONESIA-2008"],
+    partner: "Qazfinance Olympiad",
+    accessCode: "QAZFINANCE",
+    accessAliases: ["Qazfinance", "QAZ-FINANCE", "PHRONESIA-2008"],
     scenarioId: "finance-2008-banking-crisis",
     difficultyId: "summit",
     policyComplexity: "advanced",

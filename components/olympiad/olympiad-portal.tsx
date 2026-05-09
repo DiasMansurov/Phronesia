@@ -82,7 +82,7 @@ export function OlympiadPortal() {
             <input
               value={login}
               onChange={(event) => setLogin(event.target.value)}
-              placeholder="Cask Finance"
+              placeholder="Qazfinance"
             />
           </label>
           <label className="stack-xs">
