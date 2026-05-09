@@ -4,6 +4,9 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { ResultsDashboard } from "@/components/olympiad/results-dashboard";
+import { listActiveOlympiads } from "@/lib/olympiads";
+import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { listOlympiadAttemptsWithDecisions, olympiadBackendConfigured } from "@/lib/server-olympiads";
 
 export const metadata: Metadata = {
   title: "Results",
@@ -36,5 +39,43 @@ export default async function ResultsPage() {
     redirect("/sign-in?redirect_url=/results");
   }
 
-  return <ResultsDashboard />;
+  const organizer = await requireResultsOrganizer();
+  if (organizer.errorResponse) {
+    return (
+      <section className="shell section auth-page">
+        <div className="panel stack-md">
+          <p className="eyebrow">Results</p>
+          <h1>Organizer access only</h1>
+          <p className="muted">This results dashboard is available only for the organizer account.</p>
+          <Link className="button primary" href="/account">
+            Open Account
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
+  const olympiads = listActiveOlympiads().map((olympiad) => ({
+    slug: olympiad.slug,
+    title: olympiad.title,
+    partner: olympiad.partner,
+    status: olympiad.status,
+    scenarioId: olympiad.scenarioId
+  }));
+
+  const data = olympiadBackendConfigured()
+    ? await listOlympiadAttemptsWithDecisions()
+    : { attempts: [], decisions: [] };
+
+  return (
+    <ResultsDashboard
+      initialData={{
+        persisted: olympiadBackendConfigured(),
+        reason: olympiadBackendConfigured() ? undefined : "missing_supabase_env",
+        olympiads,
+        attempts: data.attempts,
+        decisions: data.decisions
+      }}
+    />
+  );
 }

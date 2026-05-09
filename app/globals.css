@@ -4622,12 +4622,218 @@ main,
   font-size: 0.8rem;
 }
 
+.results-hero {
+  align-items: end;
+}
+
+.results-workspace {
+  overflow: hidden;
+}
+
+.results-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.result-folder-card,
+.result-team-row,
+.results-breadcrumb button {
+  font: inherit;
+}
+
+.result-folder-card {
+  display: grid;
+  gap: 0.8rem;
+  width: 100%;
+  min-height: 210px;
+  padding: 1rem;
+  border: 1px solid rgba(28, 56, 52, 0.14);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(239, 250, 246, 0.8)),
+    radial-gradient(circle at top right, rgba(24, 185, 155, 0.16), transparent 34%);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 18px 38px rgba(11, 34, 31, 0.08);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.result-folder-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(24, 185, 155, 0.42);
+  box-shadow: 0 24px 52px rgba(11, 34, 31, 0.12);
+}
+
+.result-folder-card strong {
+  font-size: 1.15rem;
+}
+
+.result-folder-card > span:not(.result-folder-mark) {
+  color: var(--muted);
+}
+
+.result-folder-mark {
+  width: fit-content;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(24, 185, 155, 0.12);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-self: end;
+}
+
+.result-card-metrics span {
+  padding: 0.4rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(16, 34, 54, 0.06);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.results-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.results-breadcrumb button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0;
+}
+
+.results-breadcrumb strong {
+  color: var(--ink);
+}
+
+.result-team-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.result-team-row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) minmax(120px, auto);
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.9rem;
+  border: 1px solid rgba(28, 56, 52, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.result-team-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(24, 185, 155, 0.38);
+  background: rgba(245, 253, 250, 0.94);
+}
+
+.result-rank {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  border-radius: 8px;
+  background: #102421;
+  color: #f8fbf7;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.result-team-copy,
+.result-team-meta {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.result-team-copy strong,
+.result-team-meta strong {
+  font-size: 1rem;
+}
+
+.result-team-copy small,
+.result-team-meta small {
+  color: var(--muted);
+}
+
+.result-team-meta {
+  text-align: right;
+}
+
+.result-attempt-card {
+  padding: 1rem;
+  border: 1px solid rgba(28, 56, 52, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.result-attempt-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.result-attempt-score {
+  display: grid;
+  justify-items: end;
+  gap: 0.2rem;
+}
+
+.result-attempt-score strong {
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  line-height: 1;
+}
+
+.result-attempt-score span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 @media (max-width: 760px) {
   .olympiad-admin-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .olympiad-attempt-detail > summary {
+    display: grid;
+  }
+
+  .results-folder-grid,
+  .result-team-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .result-team-meta,
+  .result-attempt-score {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .result-attempt-head {
     display: grid;
   }
 }
