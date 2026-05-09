@@ -16,9 +16,9 @@ import {
 import { loadRuns } from "@/lib/game/storage";
 
 const highlights = [
-  ["Finance-first", "Savings, debt, markets, credit, risk, and confidence are the center of the product."],
-  ["Simulation-based", "Students learn by making decisions and seeing market and household consequences."],
-  ["Progressive", "Beginner cases lead into crisis management and competitive expert simulations."]
+  ["1", "Choose your level"],
+  ["2", "Run a scenario"],
+  ["3", "Get your score"]
 ];
 
 const featureBlocks = [
@@ -69,18 +69,17 @@ export function FinanceHome() {
   }
 
   return (
-    <section className="shell section phronesia-home stack-2xl">
-      <section className="market-hero">
+    <section className="shell section phronesia-home compact-home-flow stack-lg">
+      <section className="market-hero compact-start-hero">
         <div className="market-hero-copy stack-lg">
           <div className="stack-sm">
-            <p className="eyebrow">Phronesia — Finance & Economics Education Through Simulation</p>
-            <h1 className="display market-display">Master Finance by Running the Economy</h1>
+            <p className="eyebrow">Phronesia</p>
+            <h1 className="display market-display">Learn finance by simulation.</h1>
             <p className="lede market-lede">
-              Phronesia is an interactive finance and economics simulation platform where students learn markets, money,
-              policy, and crisis management through real-world decisions.
+              Make decisions, see what happens to markets and households, then learn why.
             </p>
           </div>
-          <div className="cta-row">
+          <div className="cta-row compact-hero-actions">
             <Link className="button primary" href="/play/setup" prefetch={false}>
               Start Learning
             </Link>
@@ -91,144 +90,133 @@ export function FinanceHome() {
               Explore Finance Lab
             </Link>
           </div>
-          <div className="market-signal-row" aria-label="Platform highlights">
-            {highlights.map(([title, body]) => (
-              <article key={title} className="market-signal">
-                <strong>{title}</strong>
+          <div className="quick-step-row" aria-label="Quick start steps">
+            {highlights.map(([step, body]) => (
+              <article key={step} className="quick-step">
+                <strong>{step}</strong>
                 <span>{body}</span>
               </article>
             ))}
           </div>
         </div>
-        <aside className="market-terminal" aria-label="Finance learning dashboard preview">
+        <aside className="market-terminal compact-terminal" aria-label="Finance learning dashboard preview">
           <div className="terminal-topline">
-            <span>Learning Dashboard</span>
+            <span>Next</span>
             <strong>{selectedLevel.label}</strong>
           </div>
           <div className="terminal-score">
-            <span>Next Challenge</span>
             <strong>{nextScenario.title}</strong>
-            <small>{nextProfile.recommendation}</small>
+            <small>{nextProfile.difficulty} · {nextProfile.estimatedMinutes} min · {nextProfile.concepts.slice(0, 2).join(", ")}</small>
           </div>
-          <div className="mini-chart finance-chart" aria-hidden="true">
-            {[42, 58, 51, 64, 72, 68, 81, 88].map((height, index) => (
-              <span key={index} style={{ height: `${height}%` }} />
-            ))}
-          </div>
-          <div className="terminal-grid">
-            <div><span>Stock index</span><strong>104</strong></div>
-            <div><span>Bond yield</span><strong>4.8%</strong></div>
-            <div><span>Currency</span><strong>96</strong></div>
-            <div><span>Bank stability</span><strong>78</strong></div>
-          </div>
+          <Link className="button secondary" href={`/play/setup?scenario=${nextScenario.id}`} prefetch={false}>
+            Start Next
+          </Link>
         </aside>
       </section>
 
-      <section className="onboarding-panel panel stack-md">
+      <section className="onboarding-panel panel compact-choice-panel stack-md">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Personalized start</p>
-            <h2>What is your current level?</h2>
-            <p className="muted">Choose once, and Phronesia recommends scenarios that match your finance knowledge.</p>
+            <p className="eyebrow">Quick start</p>
+            <h2>Pick your level. We recommend the next scenario.</h2>
           </div>
-          <span className="pill">{selectedLevel.recommendation}</span>
+          <Link className="button primary" href="/play/setup" prefetch={false}>
+            Continue
+          </Link>
         </div>
-        <div className="level-choice-grid">
+        <div className="level-pill-grid">
           {USER_LEVELS.map((level) => (
             <button
               key={level.id}
-              className={`level-choice-card ${userLevel === level.id ? "selected" : ""}`}
+              className={`level-pill ${userLevel === level.id ? "selected" : ""}`}
               onClick={() => chooseLevel(level.id)}
               type="button"
             >
               <span>{level.label}</span>
-              <strong>{level.title}</strong>
-              <small>{level.summary}</small>
             </button>
           ))}
         </div>
+        <details className="compact-details">
+          <summary>What this level means</summary>
+          <p>{selectedLevel.summary}</p>
+          <p>{selectedLevel.recommendation}</p>
+        </details>
       </section>
 
-      <section className="recommendation-zone stack-md">
+      <section className="recommendation-zone stack-md" id="recommended">
         <div className="section-header">
           <div>
             <p className="eyebrow">Recommended for your level</p>
-            <h2>{selectedLevel.label} finance path</h2>
-            <p className="muted">{selectedLevel.summary}</p>
+            <h2>{selectedLevel.label} path</h2>
           </div>
           <Link className="button secondary" href="/scenarios">
             Browse All Scenarios
           </Link>
         </div>
-        <div className="recommendation-grid">
-          {recommended.map((scenario) => {
+        <div className="compact-scenario-list">
+          {recommended.slice(0, 3).map((scenario) => {
             const profile = getScenarioLearningProfile(scenario);
             return (
-              <article key={scenario.id} className="scenario-card finance-scenario-card">
-                <div className="card-topline">
-                  <span className="pill">{profile.difficulty}</span>
-                  <span className="mini-status open">{profile.estimatedMinutes} min</span>
+              <article key={scenario.id} className="compact-scenario-row">
+                <div>
+                  <strong>{scenario.title}</strong>
+                  <span>{profile.difficulty} · {profile.estimatedMinutes} min · {profile.concepts.slice(0, 2).join(", ")}</span>
                 </div>
-                <h3>{scenario.title}</h3>
-                <p className="muted">{scenario.subtitle}</p>
-                <p>{scenario.summary}</p>
-                <div className="concept-row">
-                  {profile.concepts.slice(0, 3).map((concept) => (
-                    <span key={concept}>{concept}</span>
-                  ))}
-                </div>
+                <Link className="button secondary" href={`/play/setup?scenario=${scenario.id}`} prefetch={false}>
+                  Start
+                </Link>
+                <details className="compact-details row-details">
+                  <summary>Details</summary>
+                  <p>{scenario.summary}</p>
+                </details>
               </article>
             );
           })}
         </div>
       </section>
 
-      <section className="next-challenge-panel">
+      <section className="next-challenge-panel compact-next-panel">
         <div className="stack-sm">
           <p className="eyebrow">Next Challenge</p>
           <h2>{nextScenario.title}</h2>
-          <p>{nextScenario.summary}</p>
           <div className="pill-row">
             <span className="pill">{nextProfile.track}</span>
             <span className="pill">{nextProfile.difficulty}</span>
             <span className="pill">{nextProfile.estimatedMinutes} min</span>
           </div>
+          <details className="compact-details">
+            <summary>Why this challenge?</summary>
+            <p>{nextScenario.summary}</p>
+            <p>{nextProfile.recommendation}</p>
+          </details>
         </div>
         <Link className="button primary" href={`/play/setup?scenario=${nextScenario.id}`} prefetch={false}>
           Start This Scenario
         </Link>
       </section>
 
-      <section className="progression-panel panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Difficulty progression</p>
-            <h2>From financial basics to expert simulations.</h2>
-          </div>
-        </div>
-        <div className="finance-progression-grid">
+      <details className="panel compact-details-panel">
+        <summary>
+          <span>Difficulty progression</span>
+          <strong>From basics to expert simulations</strong>
+        </summary>
+        <div className="finance-progression-grid compact-progression-grid">
           {FINANCE_PROGRESSION_LEVELS.map((level) => (
             <article key={level.id} className="progression-card">
               <span>{level.label}</span>
               <strong>{level.title}</strong>
               <p>{level.summary}</p>
-              <div className="concept-row">
-                {level.concepts.slice(0, 3).map((concept) => (
-                  <small key={concept}>{concept}</small>
-                ))}
-              </div>
             </article>
           ))}
         </div>
-      </section>
+      </details>
 
-      <section className="feature-grid">
+      <section className="feature-grid compact-feature-grid">
         {featureBlocks.map((feature) => (
-          <article key={feature.title} className="feature-card stack-sm">
-            <p className="eyebrow">Platform</p>
-            <h2>{feature.title}</h2>
+          <details key={feature.title} className="feature-card compact-feature-card">
+            <summary>{feature.title}</summary>
             <p>{feature.body}</p>
-          </article>
+          </details>
         ))}
       </section>
     </section>

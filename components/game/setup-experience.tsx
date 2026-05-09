@@ -83,6 +83,7 @@ export function SetupExperience() {
   const [selectedMode, setSelectedMode] = useState<LearningMode>("learning");
   const [scenarioQuery, setScenarioQuery] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
+  const [showAllScenarios, setShowAllScenarios] = useState(false);
 
   useEffect(() => {
     const nextProfile = getProfile();
@@ -134,6 +135,10 @@ export function SetupExperience() {
     }
   }, [filteredScenarios, selectedScenarioId]);
 
+  useEffect(() => {
+    setShowAllScenarios(false);
+  }, [difficultyFilter, scenarioQuery, selectedLevelId]);
+
   function persistDisplayName() {
     if (!profile) return;
     const nextProfile = { ...profile, displayName: displayName.trim() || profile.displayName };
@@ -171,6 +176,7 @@ export function SetupExperience() {
   const selectedUserLevel = getUserLevel(userLevel);
   const selectedScenarioProfile = getScenarioLearningProfile(selectedScenario);
   const recommendedScenarios = getRecommendedScenarios(userLevel, SCENARIOS, 4);
+  const scenarioList = showAllScenarios || scenarioQuery || difficultyFilter !== "All" ? filteredScenarios : filteredScenarios.slice(0, 6);
 
   function chooseUserLevel(id: UserLevelId) {
     setUserLevel(id);
@@ -184,17 +190,16 @@ export function SetupExperience() {
   }
 
   return (
-    <section className="shell section stack-lg">
-      <div className="hero-band compact">
+    <section className="shell section stack-lg setup-flow">
+      <div className="hero-band compact setup-hero-compact">
         <div className="stack-sm">
           <p className="eyebrow">Simulation Setup</p>
-          <h1 className="display compact">Choose your finance level, then enter the market.</h1>
+          <h1 className="display compact">Start in 4 quick steps.</h1>
           <p className="lede">
-            Phronesia starts with your current knowledge, recommends suitable scenarios, then teaches through decisions,
-            financial indicators, rankings, and short explanations after every major move.
+            Pick level, choose mode, select a scenario, start.
           </p>
         </div>
-        <div className="panel stack-sm">
+        <div className="panel stack-sm setup-mini-profile">
           <p className="eyebrow">Profile</p>
           <label className="stack-xs">
             <span>Display name</span>
@@ -205,17 +210,10 @@ export function SetupExperience() {
               placeholder="Policy Strategist"
             />
           </label>
-          <div className="stat-row">
-            <span>Completed runs</span>
-            <strong>{profile.completedRuns}</strong>
-          </div>
-          <div className="stat-row">
-            <span>Streak</span>
-            <strong>{profile.streakCount}</strong>
-          </div>
-          <div className="stat-row">
-            <span>XP level</span>
-            <strong>{profile.level}</strong>
+          <div className="setup-profile-stats">
+            <span>{profile.completedRuns} runs</span>
+            <span>{profile.streakCount} streak</span>
+            <span>Level {profile.level}</span>
           </div>
           {activeRun ? (
             <Link className="button secondary" href={`/play?run=${activeRun.runId}`}>
@@ -231,23 +229,23 @@ export function SetupExperience() {
             <p className="eyebrow">
               Step {step === "level" ? "1" : step === "toolkit" ? "2" : step === "scenario" ? "3" : "4"} of 4
             </p>
-            <h2>
+              <h2>
               {step === "level"
                 ? "What is your current level?"
                 : step === "toolkit"
-                  ? "Pick your learning mode and decision board"
+                  ? "Pick mode and tools"
                 : step === "scenario"
-                  ? "Choose a recommended finance scenario"
-                  : "Pick the pressure level"}
+                  ? "Choose a scenario"
+                  : "Pick pressure"}
             </h2>
             <p className="muted">
               {step === "level"
-                ? "This lets Phronesia recommend cases that are useful without being overwhelming."
+                ? "One tap is enough. You can change it later."
                 : step === "toolkit"
-                  ? "Learning Mode teaches after each move. Challenge Mode is stricter and ranking-focused."
+                  ? "Learning gives hints. Challenge is for rankings."
                 : step === "scenario"
-                  ? "Use search and filters to find the right market, debt, bank, or crisis case."
-                  : "Choose how unforgiving the economy and politics should feel."}
+                  ? "Only a few cards show first. Search if you need more."
+                  : "Choose how hard the simulation should feel."}
             </p>
           </div>
           {step !== "level" ? (
@@ -409,7 +407,7 @@ export function SetupExperience() {
             </section>
 
             <div className="scenario-grid">
-              {filteredScenarios.map((scenario) => {
+              {scenarioList.map((scenario) => {
                 const selected = selectedScenarioId === scenario.id;
                 const profile = getScenarioLearningProfile(scenario);
                 return (
@@ -427,8 +425,7 @@ export function SetupExperience() {
                       <span className="mini-status open">{profile.estimatedMinutes} min</span>
                     </div>
                     <h3>{scenario.title}</h3>
-                    <p className="muted">{scenario.subtitle}</p>
-                    <p>{scenario.summary}</p>
+                    <p className="muted">{profile.concepts.slice(0, 3).join(" · ")}</p>
                     <div className="concept-row">
                       {profile.concepts.slice(0, 3).map((concept) => <span key={concept}>{concept}</span>)}
                     </div>
@@ -437,13 +434,22 @@ export function SetupExperience() {
               })}
             </div>
 
+            {!showAllScenarios && !scenarioQuery && difficultyFilter === "All" && filteredScenarios.length > scenarioList.length ? (
+              <button className="button secondary compact-show-more" onClick={() => setShowAllScenarios(true)} type="button">
+                Show {filteredScenarios.length - scenarioList.length} more scenarios
+              </button>
+            ) : null}
+
             <section className="panel compact-panel stack-md">
               <div className="section-header">
                 <div>
                   <p className="eyebrow">Selected Scenario</p>
                   <h2>{selectedScenario.title}</h2>
-                  <p className="muted">{selectedScenario.summary}</p>
-                  <p className="muted">{selectedScenario.mechanics.summary}</p>
+                  <details className="compact-details" open>
+                    <summary>Scenario details</summary>
+                    <p>{selectedScenario.summary}</p>
+                    <p>{selectedScenario.mechanics.summary}</p>
+                  </details>
                 </div>
                 <div className="pill-row">
                   <span className="pill">{selectedScenario.country}</span>
@@ -462,8 +468,7 @@ export function SetupExperience() {
                 <div>
                   <p className="eyebrow">Selected Scenario</p>
                   <h2>{selectedScenario.title}</h2>
-                  <p className="muted">{selectedScenario.summary}</p>
-                  <p className="muted">{selectedScenario.mechanics.summary}</p>
+                  <p className="muted">{selectedScenarioProfile.concepts.slice(0, 4).join(" · ")}</p>
                 </div>
                 <div className="pill-row">
                   <span className="pill">{selectedScenario.country}</span>

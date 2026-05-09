@@ -14,6 +14,7 @@ export function ScenarioLibrary() {
   const [level, setLevel] = useState("All");
   const [difficulty, setDifficulty] = useState("All");
   const [time, setTime] = useState("All");
+  const [showAll, setShowAll] = useState(false);
 
   const scenarios = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -34,14 +35,18 @@ export function ScenarioLibrary() {
       });
   }, [difficulty, level, query, time]);
 
+  const visibleScenarios = showAll || query || level !== "All" || difficulty !== "All" || time !== "All"
+    ? scenarios
+    : scenarios.slice(0, 9);
+
   return (
     <section className="scenario-library stack-lg">
       <div className="hero-band compact market-page-hero">
         <div className="stack-sm">
           <p className="eyebrow">Scenario library</p>
-          <h1 className="display compact">Finance challenges from first loan to market panic.</h1>
+          <h1 className="display compact">Pick a finance challenge.</h1>
           <p className="lede compact-lede">
-            Search by topic, filter by difficulty, and pick scenarios that match your current finance level.
+            Start with recommended cards or search by topic.
           </p>
           <Link className="button primary" href="/play/setup" prefetch={false}>
             Get Recommendations
@@ -85,21 +90,22 @@ export function ScenarioLibrary() {
             </select>
           </label>
         </div>
-        <p className="muted small">{scenarios.length} scenarios match your filters.</p>
+        <p className="muted small">
+          Showing {visibleScenarios.length} of {scenarios.length} scenarios.
+        </p>
       </section>
 
       <section className="scenario-grid">
-        {scenarios.map(({ scenario, profile }) => (
+        {visibleScenarios.map(({ scenario, profile }) => (
           <article key={scenario.id} className="scenario-card scenario-card-rich finance-scenario-card">
             <div className="card-topline">
               <span className="pill">{profile.difficulty}</span>
               <span className="mini-status open">{profile.estimatedMinutes} min</span>
             </div>
             <h3>{scenario.title}</h3>
-            <p className="muted">{scenario.subtitle}</p>
-            <p>{scenario.summary}</p>
+            <p className="muted">{profile.concepts.slice(0, 3).join(" · ")}</p>
             <div className="concept-row">
-              {profile.concepts.slice(0, 4).map((concept) => (
+              {profile.concepts.slice(0, 3).map((concept) => (
                 <span key={concept}>{concept}</span>
               ))}
             </div>
@@ -109,9 +115,19 @@ export function ScenarioLibrary() {
                 Start
               </Link>
             </div>
+            <details className="compact-details">
+              <summary>Details</summary>
+              <p>{scenario.summary}</p>
+            </details>
           </article>
         ))}
       </section>
+
+      {!showAll && !query && level === "All" && difficulty === "All" && time === "All" && scenarios.length > visibleScenarios.length ? (
+        <button className="button secondary compact-show-more" onClick={() => setShowAll(true)} type="button">
+          Show all scenarios
+        </button>
+      ) : null}
     </section>
   );
 }
