@@ -9,6 +9,7 @@ const links = [
   { href: "/finance-lab", label: "Finance Lab" },
   { href: "/scenarios", label: "Scenarios" },
   { href: "/play/setup", label: "Play" },
+  { href: "/olympiad", label: "Olympiad" },
   { href: "/rankings", label: "Rankings" },
   { href: "/progress", label: "Progress" },
   { href: "/teachers", label: "Teachers" },

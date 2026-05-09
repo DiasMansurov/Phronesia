@@ -38,6 +38,8 @@ export function SiteFooter() {
             <Link href="/learn">Learn</Link>
             <Link href="/finance-lab">Finance Lab</Link>
             <Link href="/scenarios">Scenarios</Link>
+            <Link href="/olympiad">Olympiad Portal</Link>
+            <Link href="/olympiad/admin">Olympiad Admin</Link>
             <Link href="/rankings">View Rankings</Link>
             <Link href="/progress">Progress</Link>
             <Link href="/championship">Championship</Link>

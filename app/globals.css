@@ -4557,3 +4557,77 @@ main,
     display: none;
   }
 }
+
+/* Olympiad portal */
+.olympiad-hero {
+  align-items: center;
+}
+
+.olympiad-login-card,
+.olympiad-team-card {
+  min-width: 0;
+}
+
+.olympiad-admin-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.olympiad-attempt-detail {
+  padding: 1rem;
+}
+
+.olympiad-attempt-detail > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.olympiad-attempt-detail > summary::-webkit-details-marker,
+.olympiad-decision-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.olympiad-attempt-detail > summary span {
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.olympiad-attempt-detail > summary strong {
+  color: var(--ink);
+}
+
+.olympiad-detail-body {
+  margin-top: 1rem;
+}
+
+.olympiad-decision-detail {
+  display: block;
+}
+
+.olympiad-decision-detail summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.olympiad-decision-detail pre {
+  max-height: 260px;
+  overflow: auto;
+  padding: 0.85rem;
+  border-radius: 8px;
+  background: #102421;
+  color: #f8fbf7;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .olympiad-admin-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .olympiad-attempt-detail > summary {
+    display: grid;
+  }
+}

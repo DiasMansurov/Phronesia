@@ -7,10 +7,12 @@ import { useEffect, useState } from "react";
 
 import { track } from "@/lib/analytics";
 import { getScenario } from "@/lib/game/content";
+import { buildPolicyScoreBreakdown } from "@/lib/game/curriculum";
 import { advanceRun, compareToBenchmarks, defaultPolicies, updatePolicies } from "@/lib/game/engine";
 import { pct, signedPct, whole } from "@/lib/game/format";
 import { getProfile, registerCompletedRun } from "@/lib/game/profile";
 import { getActiveRunId, getRun, saveRun, setActiveRunId } from "@/lib/game/storage";
+import { loadOlympiadRunContext, type OlympiadRunContext } from "@/lib/olympiad-storage";
 import type {
   ClassroomPolicyDecision,
   ElectionNight,
@@ -455,6 +457,7 @@ export function PlayExperience() {
   const [predictionStatus, setPredictionStatus] = useState("");
   const [predictionSaving, setPredictionSaving] = useState(false);
   const [glossaryStatus, setGlossaryStatus] = useState("");
+  const [olympiadContext, setOlympiadContext] = useState<OlympiadRunContext | null>(null);
 
   useEffect(() => {
     const runId = params.get("run") ?? getActiveRunId();
@@ -470,6 +473,7 @@ export function PlayExperience() {
     }
 
     setRun(nextRun);
+    setOlympiadContext(loadOlympiadRunContext(nextRun.runId));
     setInaugurationOpen(!nextRun.inaugurationAcknowledged && nextRun.current.round === 0 && !nextRun.complete);
     setActiveRunId(nextRun.runId);
     setProfileName(getProfile().displayName);
@@ -598,6 +602,49 @@ export function PlayExperience() {
     return data;
   }
 
+  async function postOlympiadDecision(phase: "begin" | "complete", baseRun: RunState, submittedPrediction: PolicyPrediction, nextRun?: RunState) {
+    if (!olympiadContext) return null;
+    const latestEntry = nextRun?.history[nextRun.history.length - 1];
+    const response = await fetch("/api/olympiads/decisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phase,
+        olympiadSlug: olympiadContext.slug,
+        olympiadTitle: olympiadContext.title,
+        accessCode: olympiadContext.accessCode,
+        participantLogin: olympiadContext.participantLogin,
+        teamName: olympiadContext.teamName,
+        runId: baseRun.runId,
+        scenarioId: baseRun.scenarioId,
+        scenarioTitle: baseRun.scenarioTitle,
+        difficultyId: baseRun.difficultyId,
+        round: baseRun.current.round + 1,
+        year: baseRun.current.calendarYear + 1,
+        policies: baseRun.policies,
+        beforeState: baseRun.current,
+        afterState: nextRun?.current,
+        prediction: submittedPrediction,
+        policySummary: latestEntry?.briefing?.policySummary ?? latestEntry?.note,
+        citizenSummary: latestEntry?.briefing?.citizenSummary ?? latestEntry?.citizenImpact,
+        scoreAfter: latestEntry?.score ?? nextRun?.score,
+        runComplete: nextRun?.complete ?? false,
+        finalScore: nextRun?.complete ? buildPolicyScoreBreakdown(nextRun).overall : null,
+        rankTitle: nextRun?.rankTitle,
+        victory: nextRun?.victory,
+        summary: nextRun?.summary,
+        roundsCompleted: nextRun?.current.round,
+        scoreBreakdown: nextRun?.complete ? buildPolicyScoreBreakdown(nextRun) : null,
+        finalState: nextRun?.complete ? nextRun.current : null
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error ?? "Unable to save olympiad decision.");
+    }
+    return data;
+  }
+
   function finalizeAdvancedRun(nextRun: RunState) {
     save(nextRun);
     openRoundEvents(nextRun);
@@ -658,11 +705,20 @@ export function PlayExperience() {
     }
 
     setPredictionSaving(true);
-    setPredictionStatus(classroomContext ? "Saving your prediction for your teacher..." : "Simulating the year...");
+    setPredictionStatus(
+      classroomContext
+        ? "Saving your prediction for your teacher..."
+        : olympiadContext
+          ? "Saving your olympiad decision..."
+          : "Simulating the year..."
+    );
 
     try {
       if (classroomContext) {
         await postClassroomDecision("begin", run, submittedPrediction);
+      }
+      if (olympiadContext) {
+        await postOlympiadDecision("begin", run, submittedPrediction);
       }
 
       const nextRun = advanceRun(run);
@@ -670,6 +726,10 @@ export function PlayExperience() {
       if (classroomContext) {
         setPredictionStatus("Saving the outcome for your teacher...");
         await postClassroomDecision("complete", run, submittedPrediction, nextRun);
+      }
+      if (olympiadContext) {
+        setPredictionStatus("Saving the olympiad outcome...");
+        await postOlympiadDecision("complete", run, submittedPrediction, nextRun);
       }
 
       setPredictionOpen(false);
@@ -680,7 +740,7 @@ export function PlayExperience() {
         void loadStudentFeedback(nextRun.runId);
       }
     } catch (error) {
-      setPredictionStatus(error instanceof Error ? error.message : "Unable to save the classroom decision.");
+      setPredictionStatus(error instanceof Error ? error.message : "Unable to save the decision.");
     } finally {
       setPredictionSaving(false);
     }
@@ -858,9 +918,17 @@ export function PlayExperience() {
         <section className="panel presidency-panel stack-md">
           <div className="presidency-header">
             <div className="stack-sm presidency-copy">
-              <p className="eyebrow">{profileName}&apos;s finance simulation</p>
+              <p className="eyebrow">
+                {olympiadContext ? `${olympiadContext.teamName} · olympiad attempt` : `${profileName}'s finance simulation`}
+              </p>
               <h1 className="display compact">{scenario.title}</h1>
               <p className="lede compact-lede">{scenario.summary}</p>
+              {olympiadContext ? (
+                <div className="pill-row">
+                  <span className="pill">{olympiadContext.title}</span>
+                  <span className="pill">Official competition run</span>
+                </div>
+              ) : null}
             </div>
             <div className="presidency-summary-grid">
               <article className="summary-kpi">
