@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { ResultsDashboard } from "@/components/olympiad/results-dashboard";
@@ -34,19 +33,22 @@ export default async function ResultsPage() {
     );
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const organizer = await requireResultsOrganizer();
+  if (!organizer.ok && organizer.reason === "signed_out") {
     redirect("/sign-in?redirect_url=/results");
   }
 
-  const organizer = await requireResultsOrganizer();
   if (organizer.errorResponse) {
     return (
       <section className="shell section auth-page">
         <div className="panel stack-md">
           <p className="eyebrow">Results</p>
           <h1>Organizer access only</h1>
-          <p className="muted">This results dashboard is available only for the organizer account.</p>
+          <p className="muted">
+            {organizer.reason === "missing_email"
+              ? "Your signed-in session does not include an email address. Please sign out and sign in again with dias280608@mail.ru."
+              : "This results dashboard is available only for the organizer account."}
+          </p>
           <Link className="button primary" href="/account">
             Open Account
           </Link>
