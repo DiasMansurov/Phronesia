@@ -7,19 +7,20 @@ function readAdminCode() {
   return process.env.OLYMPIAD_ADMIN_CODE?.trim();
 }
 
-function validAdminCode(code: string | undefined, configured: string) {
-  return (code ?? "").trim() === configured;
+function validAdminCode(submittedCode: string | undefined, configuredCode: string) {
+  return (submittedCode ?? "").trim() === configuredCode;
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { adminCode?: string };
+  const body = (await request.json().catch(() => ({}))) as { code?: string; adminCode?: string };
   const configuredAdminCode = readAdminCode();
+  const submittedCode = body.code ?? body.adminCode;
 
   if (!configuredAdminCode) {
     return NextResponse.json({ error: "Admin code is not configured." }, { status: 500 });
   }
 
-  if (!validAdminCode(body.adminCode, configuredAdminCode)) {
+  if (!validAdminCode(submittedCode, configuredAdminCode)) {
     return NextResponse.json({ error: "Invalid admin access code." }, { status: 403 });
   }
 

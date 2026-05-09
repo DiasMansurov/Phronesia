@@ -42,7 +42,6 @@ type AdminResponse = {
 };
 
 export function OlympiadAdmin() {
-  const [adminCode, setAdminCode] = useState("");
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [status, setStatus] = useState("");
@@ -62,13 +61,15 @@ export function OlympiadAdmin() {
 
   async function loadDashboard(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const code = String(formData.get("code") ?? "");
     setLoading(true);
     setStatus("Loading olympiad dashboard...");
     try {
       const response = await fetch("/api/olympiads/admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminCode })
+        body: JSON.stringify({ code })
       });
       const data = (await response.json()) as AdminResponse;
       if (!response.ok) throw new Error(data.error ?? "Unable to open admin dashboard.");
@@ -96,15 +97,15 @@ export function OlympiadAdmin() {
             Enter the admin access code to see team attempts, final scores, rank titles, summaries, and every saved policy decision.
           </p>
         </div>
-        <form className="panel stack-md olympiad-login-card" onSubmit={loadDashboard}>
+        <form className="panel stack-md olympiad-login-card" onSubmit={loadDashboard} noValidate>
           <p className="eyebrow">Admin access</p>
           <label className="stack-xs">
             <span>Admin code</span>
             <input
-              value={adminCode}
-              onChange={(event) => setAdminCode(event.target.value)}
-              placeholder="Set OLYMPIAD_ADMIN_CODE in Vercel"
+              name="code"
               type="password"
+              autoComplete="off"
+              required
             />
           </label>
           <button className="button primary" type="submit" disabled={loading}>
