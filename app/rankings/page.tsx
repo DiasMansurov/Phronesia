@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { RankingsBoard } from "@/components/game/rankings-board";
 
 export const metadata: Metadata = {
-  title: "Economics Game Rankings",
-  description: "See ranking ladders, benchmark runs, and classroom-friendly leaderboard results from Phronesia economics simulation.",
+  title: "Finance Simulation Rankings",
+  description: "See Phronesia finance simulation rankings, scenario ladders, school leaderboards, and policy score comparisons.",
   alternates: {
     canonical: "/rankings"
   }

@@ -10,19 +10,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://phronesia.org"),
   title: {
-    default: "Phronesia | Economics Simulation Game for Students and Teachers",
+    default: "Phronesia | Finance & Economics Education Through Simulation",
     template: "%s | Phronesia"
   },
-  description: "Phronesia is a macroeconomics simulation game for students and teachers with classroom-ready runs, teacher-managed classes, and policy trade-off gameplay.",
+  description: "Phronesia is a finance and economics education platform where students learn markets, money, debt, risk, and policy through simulation-based decisions.",
   applicationName: "Phronesia",
   keywords: [
-    "economics game",
-    "macroeconomics simulation",
-    "economics classroom game",
-    "economics revision game",
-    "IB economics",
-    "AP economics",
-    "teacher classroom simulation"
+    "finance education platform",
+    "financial literacy simulator",
+    "economics simulation",
+    "finance classroom game",
+    "market simulation",
+    "student finance learning",
+    "teacher classroom simulation",
+    "investment education"
   ],
   alternates: {
     canonical: "/"
@@ -30,14 +31,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "https://phronesia.org",
-    title: "Phronesia | Economics Simulation Game for Students and Teachers",
-    description: "Run the economy, survive the backlash, and use teacher-managed classroom flows for economics lessons and revision.",
+    title: "Phronesia | Finance & Economics Education Through Simulation",
+    description: "Learn savings, loans, markets, bonds, currency, banking stability, debt, and policy through interactive simulation.",
     siteName: "Phronesia"
   },
   twitter: {
     card: "summary_large_image",
-    title: "Phronesia | Economics Simulation Game",
-    description: "A macroeconomics simulation game with classroom-ready teacher flows and student policy trade-off gameplay."
+    title: "Phronesia | Finance Simulation Platform",
+    description: "A finance and economics simulation platform for students, teachers, competitions, and self-study."
   },
   robots: {
     index: true,

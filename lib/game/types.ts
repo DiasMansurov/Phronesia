@@ -394,7 +394,16 @@ export type Badge =
   | "Legendary Approval"
   | "Market Confidence"
   | "Crisis Manager"
-  | "Theory Learner";
+  | "Theory Learner"
+  | "Inflation Defender"
+  | "Market Stabilizer"
+  | "Debt Manager"
+  | "Banking Crisis Survivor"
+  | "Investor Confidence Builder"
+  | "Financial Literacy Beginner"
+  | "Portfolio Strategist"
+  | "Crisis President"
+  | "Top 10% President";
 
 export type BestRun = {
   runId: string;

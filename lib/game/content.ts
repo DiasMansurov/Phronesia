@@ -2790,6 +2790,654 @@ const MODERN_COUNTRY_SCENARIOS: Scenario[] = [
   }
 ];
 
+const FINANCE_CURRICULUM_SCENARIOS: Scenario[] = [
+  {
+    id: "finance-basics-inflation-savings",
+    title: "Inflation and Your Savings",
+    subtitle: "Beginner finance case",
+    summary: "Prices are rising faster than savings accounts can keep up. Help households protect purchasing power.",
+    country: "Kazakhstan",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Financial Basics",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A gentle first scenario about inflation, savings, real returns, and household confidence.",
+      notes: [
+        "High inflation reduces the real value of savings.",
+        "Higher interest rates can support savings but make loans more expensive.",
+        "Financial education helps households understand real returns."
+      ],
+      mandate: COUNTRY_MANDATES.Kazakhstan,
+      politicalPressure: { reelectionThreshold: 40, approvalVolatility: 0.9, incumbencyDrag: 0.22 },
+      externalBalance: { importPassThrough: 1.25, tradeSensitivity: 1.1 },
+      policyTradeoffs: { monetaryTransmission: 1.08, transferEffectiveness: 1.05, inflationSensitivity: 1.25 }
+    }),
+    goals: [
+      { label: "Bring inflation below 6.5%", metric: "inflation", comparator: "lte", value: 6.5 },
+      { label: "Keep approval above 45", metric: "approval", comparator: "gte", value: 45 }
+    ],
+    startingStats: { growth: 2.0, unemployment: 5.1, inflation: 10.8, budget: -2.8, netExports: -1.4, debt: 31 }
+  },
+  {
+    id: "finance-basics-first-loan",
+    title: "First Loan Decision",
+    subtitle: "Beginner finance case",
+    summary: "Families want cheaper loans, but the central bank is worried that easy credit could raise inflation.",
+    country: "Canada",
+    politicalSystem: "Federal Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Financial Basics",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A simple borrowing-cost scenario focused on loans, rates, and affordability.",
+      notes: [
+        "Lower rates make borrowing cheaper but can increase demand.",
+        "Strict credit rules reduce default risk but slow consumption.",
+        "Households feel rate changes through loans and mortgages."
+      ],
+      mandate: COUNTRY_MANDATES.Canada,
+      politicalPressure: { reelectionThreshold: 41, approvalVolatility: 0.95 },
+      policyTradeoffs: { monetaryTransmission: 1.16, reserveTransmission: 1.05, fiscalTransmission: 0.92 }
+    }),
+    goals: [
+      { label: "Keep unemployment below 6.8%", metric: "unemployment", comparator: "lte", value: 6.8 },
+      { label: "Keep inflation below 4.8%", metric: "inflation", comparator: "lte", value: 4.8 }
+    ],
+    startingStats: { growth: 1.1, unemployment: 6.4, inflation: 4.6, budget: -2.4, netExports: -1.0, debt: 108 }
+  },
+  {
+    id: "finance-basics-budget-balance",
+    title: "Budget Balance",
+    subtitle: "Beginner finance case",
+    summary: "A mild slowdown forces a choice between spending, saving fiscal space, and avoiding too much debt.",
+    country: "United Kingdom",
+    politicalSystem: "Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Financial Basics",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A basic trade-off case about spending, savings, budget deficits, and debt.",
+      notes: [
+        "More spending can support demand but increases borrowing.",
+        "Cutting too quickly can weaken jobs and confidence.",
+        "Balanced policy protects future flexibility."
+      ],
+      mandate: UK_MANDATE,
+      politicalPressure: { reelectionThreshold: 41, incumbencyDrag: 0.28 },
+      policyTradeoffs: { fiscalTransmission: 1.05, taxSensitivity: 1.02, inflationSensitivity: 1.0 }
+    }),
+    goals: [
+      { label: "Keep debt below 105%", metric: "debtRatio", comparator: "lte", value: 105 },
+      { label: "Restore growth above 1.4%", metric: "growth", comparator: "gte", value: 1.4 }
+    ],
+    startingStats: { growth: 0.5, unemployment: 5.3, inflation: 3.4, budget: -5.8, netExports: -2.4, debt: 101 }
+  },
+  {
+    id: "finance-basics-emergency-fund",
+    title: "Emergency Fund",
+    subtitle: "Beginner finance case",
+    summary: "A temporary shock hits household income. Build resilience without overheating prices.",
+    country: "Australia",
+    politicalSystem: "Federal Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Financial Basics",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A household-resilience scenario about saving before uncertainty turns into crisis.",
+      notes: [
+        "Transfers can protect vulnerable households in the short run.",
+        "Financial education improves long-term savings behavior.",
+        "Too much demand support can keep inflation elevated."
+      ],
+      mandate: COUNTRY_MANDATES.Australia,
+      politicalPressure: { reelectionThreshold: 42, approvalVolatility: 0.95 },
+      policyTradeoffs: { transferEffectiveness: 1.18, fiscalTransmission: 0.96, inflationSensitivity: 1.08 }
+    }),
+    goals: [
+      { label: "Keep unemployment below 6.2%", metric: "unemployment", comparator: "lte", value: 6.2 },
+      { label: "Keep inflation below 4.2%", metric: "inflation", comparator: "lte", value: 4.2 }
+    ],
+    startingStats: { growth: 0.8, unemployment: 5.9, inflation: 4.0, budget: -3.6, netExports: 0.2, debt: 52 }
+  },
+  {
+    id: "finance-basics-simple-investment",
+    title: "Simple Investment Choice",
+    subtitle: "Beginner market case",
+    summary: "Students compare cash, bonds, and stocks while inflation and interest rates change the real outcome.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Financial Basics",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A first market scenario about risk, return, inflation, and diversification.",
+      notes: [
+        "Stocks respond to growth and confidence.",
+        "Bonds react to yields and debt credibility.",
+        "Cash feels safe but loses purchasing power during inflation."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 41, approvalVolatility: 0.96 },
+      policyTradeoffs: { monetaryTransmission: 1.08, reserveTransmission: 1.0, inflationSensitivity: 1.04 }
+    }),
+    goals: [
+      { label: "Keep inflation below 4.5%", metric: "inflation", comparator: "lte", value: 4.5 },
+      { label: "Restore growth above 1.8%", metric: "growth", comparator: "gte", value: 1.8 }
+    ],
+    startingStats: { growth: 1.0, unemployment: 5.0, inflation: 4.4, budget: -4.2, netExports: -2.0, debt: 96 }
+  },
+  {
+    id: "finance-market-stock-reaction",
+    title: "Stock Market Reaction",
+    subtitle: "Markets and money",
+    summary: "Investors are nervous about profits and rates. Every policy signal moves the market.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Markets and Money",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A market-confidence scenario where rates, expected profits, and credibility shape equity prices.",
+      notes: [
+        "Higher rates can lower stocks by raising the cost of capital.",
+        "Confidence policy supports markets only if inflation and debt look credible.",
+        "Short-term stimulus can lift stocks but raise future risk."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 43, approvalVolatility: 1.08 },
+      policyTradeoffs: { monetaryTransmission: 1.1, fiscalTransmission: 0.96, supplyResponse: 0.96 }
+    }),
+    goals: [
+      { label: "Restore growth above 1.8%", metric: "growth", comparator: "gte", value: 1.8 },
+      { label: "Keep approval above 45", metric: "approval", comparator: "gte", value: 45 }
+    ],
+    startingStats: { growth: 0.2, unemployment: 5.8, inflation: 3.7, budget: -5.4, netExports: -2.5, debt: 101 }
+  },
+  {
+    id: "finance-market-bond-yield-pressure",
+    title: "Bond Yield Pressure",
+    subtitle: "Markets and money",
+    summary: "Investors are demanding higher returns to buy government bonds. Borrowing is getting expensive.",
+    country: "Italy",
+    politicalSystem: "Parliamentary Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Markets and Money",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A bond-market case about debt sustainability, yields, and investor trust.",
+      notes: [
+        "Bond issuance funds spending but raises debt.",
+        "Credibility and transparency can lower risk premiums.",
+        "Austerity lowers deficits but can slow growth if too abrupt."
+      ],
+      mandate: COUNTRY_MANDATES.Italy,
+      politicalPressure: { reelectionThreshold: 43, incumbencyDrag: 0.48, approvalVolatility: 1.08 },
+      policyTradeoffs: { fiscalTransmission: 0.9, taxSensitivity: 1.12, inflationSensitivity: 1.02 }
+    }),
+    goals: [
+      { label: "Keep debt below 150%", metric: "debtRatio", comparator: "lte", value: 150 },
+      { label: "Restore growth above 0.8%", metric: "growth", comparator: "gte", value: 0.8 }
+    ],
+    startingStats: { growth: -0.3, unemployment: 8.1, inflation: 3.9, budget: -6.8, netExports: 0.7, debt: 144 }
+  },
+  {
+    id: "finance-market-currency-depreciation",
+    title: "Currency Depreciation",
+    subtitle: "Markets and money",
+    summary: "A weaker currency is raising import prices. Households feel it through food, fuel, and savings.",
+    country: "Turkey",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Markets and Money",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "An exchange-rate case connecting currency weakness, inflation, rates, and confidence.",
+      notes: [
+        "A weaker currency raises import prices.",
+        "Higher rates can support the currency but slow lending.",
+        "Predictable policy matters when investors can leave."
+      ],
+      mandate: COUNTRY_MANDATES.Turkey,
+      politicalPressure: { reelectionThreshold: 42, approvalVolatility: 1.16 },
+      externalBalance: { tradeSensitivity: 1.35, importPassThrough: 1.55, approvalWeight: 1.15 },
+      policyTradeoffs: { monetaryTransmission: 1.16, inflationSensitivity: 1.42 }
+    }),
+    goals: [
+      { label: "Bring inflation below 18.0%", metric: "inflation", comparator: "lte", value: 18.0 },
+      { label: "Keep approval above 40", metric: "approval", comparator: "gte", value: 40 }
+    ],
+    startingStats: { growth: 1.0, unemployment: 9.7, inflation: 21.5, budget: -4.4, netExports: -4.1, debt: 58 }
+  },
+  {
+    id: "finance-market-consumer-credit-boom",
+    title: "Consumer Credit Boom",
+    subtitle: "Markets and money",
+    summary: "Easy credit lifted spending, but household debt and default risk are now rising.",
+    country: "Canada",
+    politicalSystem: "Federal Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Markets and Money",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A credit-cycle scenario about consumption today versus defaults tomorrow.",
+      notes: [
+        "Easy credit raises demand in the short run.",
+        "High household debt makes the financial system fragile.",
+        "Credit rules and financial education reduce default risk."
+      ],
+      mandate: COUNTRY_MANDATES.Canada,
+      politicalPressure: { reelectionThreshold: 44, approvalVolatility: 1.08 },
+      policyTradeoffs: { monetaryTransmission: 1.18, reserveTransmission: 1.1, transferEffectiveness: 1.02 }
+    }),
+    goals: [
+      { label: "Keep unemployment below 7.5%", metric: "unemployment", comparator: "lte", value: 7.5 },
+      { label: "Keep debt below 122%", metric: "debtRatio", comparator: "lte", value: 122 }
+    ],
+    startingStats: { growth: 2.8, unemployment: 5.8, inflation: 4.8, budget: -4.0, netExports: -1.4, debt: 114 }
+  },
+  {
+    id: "finance-market-banking-regulation",
+    title: "Banking Regulation",
+    subtitle: "Markets and money",
+    summary: "Banks want to lend more aggressively, but supervisors warn that risky loans are building up.",
+    country: "United Kingdom",
+    politicalSystem: "Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Markets and Money",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A bank-regulation scenario where safety and credit growth push against each other.",
+      notes: [
+        "Stronger regulation reduces risky lending.",
+        "Too much restriction can slow business investment.",
+        "Deposit insurance works best with credible supervision."
+      ],
+      mandate: UK_MANDATE,
+      politicalPressure: { reelectionThreshold: 43, approvalVolatility: 1.02 },
+      policyTradeoffs: { reserveTransmission: 1.16, fiscalTransmission: 0.95, inflationSensitivity: 1.02 }
+    }),
+    goals: [
+      { label: "Keep inflation below 4.0%", metric: "inflation", comparator: "lte", value: 4.0 },
+      { label: "Restore growth above 1.4%", metric: "growth", comparator: "gte", value: 1.4 }
+    ],
+    startingStats: { growth: 1.2, unemployment: 5.2, inflation: 3.6, budget: -4.3, netExports: -2.2, debt: 98 }
+  },
+  {
+    id: "finance-policy-rate-markets",
+    title: "Interest Rates and Markets",
+    subtitle: "Policy and finance",
+    summary: "Inflation is sticky, loans are expensive, and investors are watching the rate decision.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Policy and Finance",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A policy bridge showing how rates affect inflation, loans, stocks, currency, and jobs.",
+      notes: [
+        "Higher rates can lower inflation but hurt loans and stocks.",
+        "Lower rates support demand but can weaken credibility.",
+        "The strongest answer depends on which pressure is most urgent."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 44, approvalVolatility: 1.06 },
+      policyTradeoffs: { monetaryTransmission: 1.22, reserveTransmission: 1.08, inflationSensitivity: 1.16 }
+    }),
+    goals: [
+      { label: "Bring inflation below 4.2%", metric: "inflation", comparator: "lte", value: 4.2 },
+      { label: "Keep unemployment below 6.5%", metric: "unemployment", comparator: "lte", value: 6.5 }
+    ],
+    startingStats: { growth: 1.1, unemployment: 5.9, inflation: 5.8, budget: -5.0, netExports: -2.1, debt: 98 }
+  },
+  {
+    id: "finance-policy-public-debt",
+    title: "Government Debt and Confidence",
+    subtitle: "Policy and finance",
+    summary: "The government can borrow to support growth, but investors are starting to doubt the fiscal path.",
+    country: "France",
+    politicalSystem: "Semi-Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Policy and Finance",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A public-finance case about debt, credit ratings, yields, and sustainable investment.",
+      notes: [
+        "Borrowing can fund investment or crisis support.",
+        "High debt raises yields if investors lose confidence.",
+        "Growth investment works best with a credible budget plan."
+      ],
+      mandate: COUNTRY_MANDATES.France,
+      politicalPressure: { reelectionThreshold: 44, incumbencyDrag: 0.46, approvalVolatility: 1.12 },
+      policyTradeoffs: { fiscalTransmission: 0.94, taxSensitivity: 1.08, supplyResponse: 1.08 }
+    }),
+    goals: [
+      { label: "Keep debt below 118%", metric: "debtRatio", comparator: "lte", value: 118 },
+      { label: "Restore growth above 1.2%", metric: "growth", comparator: "gte", value: 1.2 }
+    ],
+    startingStats: { growth: 0.4, unemployment: 7.6, inflation: 3.2, budget: -6.1, netExports: -1.1, debt: 113 }
+  },
+  {
+    id: "finance-crisis-banking-panic",
+    title: "Banking Panic",
+    subtitle: "Advanced crisis case",
+    summary: "Depositors are pulling money from banks. You need to stop panic without rewarding reckless behavior.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Crisis Management",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A bank-run case about deposit insurance, liquidity, regulation, and moral hazard.",
+      notes: [
+        "Deposit insurance can reduce bank-run risk.",
+        "Liquidity support can stop panic but raises public responsibility.",
+        "Weak regulation makes future crises more likely."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 42, approvalVolatility: 1.25, incumbencyDrag: 0.55 },
+      policyTradeoffs: { monetaryTransmission: 1.16, reserveTransmission: 1.24, fiscalTransmission: 1.05, inflationSensitivity: 0.92 }
+    }),
+    goals: [
+      { label: "Keep unemployment below 8.0%", metric: "unemployment", comparator: "lte", value: 8.0 },
+      { label: "Keep debt below 105%", metric: "debtRatio", comparator: "lte", value: 105 }
+    ],
+    startingStats: { growth: -2.2, unemployment: 7.2, inflation: 2.4, budget: -8.0, netExports: -2.0, debt: 92 }
+  },
+  {
+    id: "finance-crisis-debt-confidence",
+    title: "Debt Crisis",
+    subtitle: "Advanced crisis case",
+    summary: "Credit-rating pressure is rising. Investors demand higher yields and public services are under strain.",
+    country: "Italy",
+    politicalSystem: "Parliamentary Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Crisis Management",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A sovereign-debt crisis where credibility, growth, and household pain must be balanced.",
+      notes: [
+        "Spending cuts reduce deficits but can deepen recession.",
+        "Investor transparency can lower risk premiums.",
+        "Issuing bonds without credibility worsens yield pressure."
+      ],
+      mandate: COUNTRY_MANDATES.Italy,
+      politicalPressure: { reelectionThreshold: 42, approvalVolatility: 1.24, incumbencyDrag: 0.58 },
+      policyTradeoffs: { fiscalTransmission: 0.84, taxSensitivity: 1.18, supplyResponse: 1.0, inflationSensitivity: 1.06 }
+    }),
+    goals: [
+      { label: "Keep debt below 158%", metric: "debtRatio", comparator: "lte", value: 158 },
+      { label: "Keep approval above 38", metric: "approval", comparator: "gte", value: 38 }
+    ],
+    startingStats: { growth: -1.0, unemployment: 9.1, inflation: 5.0, budget: -8.5, netExports: 0.4, debt: 151 }
+  },
+  {
+    id: "finance-crisis-stock-market-crash",
+    title: "Stock Market Crash",
+    subtitle: "Advanced crisis case",
+    summary: "Equity prices are collapsing, banks are cautious, and firms are delaying investment.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Crisis Management",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A confidence crisis where markets, banks, rates, and jobs react together.",
+      notes: [
+        "Markets react to expected profits and uncertainty.",
+        "Rate cuts help liquidity but can weaken inflation credibility.",
+        "Bank support matters if falling asset prices damage credit."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 43, approvalVolatility: 1.18, incumbencyDrag: 0.5 },
+      policyTradeoffs: { monetaryTransmission: 1.14, reserveTransmission: 1.08, fiscalTransmission: 1.0, supplyResponse: 0.92 }
+    }),
+    goals: [
+      { label: "Restore growth above 1.0%", metric: "growth", comparator: "gte", value: 1.0 },
+      { label: "Keep unemployment below 7.8%", metric: "unemployment", comparator: "lte", value: 7.8 }
+    ],
+    startingStats: { growth: -1.7, unemployment: 6.9, inflation: 2.8, budget: -6.2, netExports: -2.3, debt: 101 }
+  },
+  {
+    id: "finance-crisis-currency-defense",
+    title: "Currency Crisis",
+    subtitle: "Advanced crisis case",
+    summary: "The currency is falling fast. Imports are expensive, inflation is rising, and investors are leaving.",
+    country: "Turkey",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Crisis Management",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A currency-defense case about rates, capital flight, inflation, and public pain.",
+      notes: [
+        "Higher rates can support the currency but slow the economy.",
+        "Excessive money creation can deepen currency pressure.",
+        "Confidence returns only if policy looks consistent."
+      ],
+      mandate: COUNTRY_MANDATES.Turkey,
+      politicalPressure: { reelectionThreshold: 40, approvalVolatility: 1.3, incumbencyDrag: 0.52 },
+      externalBalance: { tradeSensitivity: 1.5, importPassThrough: 1.85, approvalWeight: 1.3 },
+      policyTradeoffs: { monetaryTransmission: 1.26, fiscalTransmission: 0.88, inflationSensitivity: 1.62 }
+    }),
+    goals: [
+      { label: "Bring inflation below 25.0%", metric: "inflation", comparator: "lte", value: 25.0 },
+      { label: "Keep approval above 36", metric: "approval", comparator: "gte", value: 36 }
+    ],
+    startingStats: { growth: -0.2, unemployment: 10.6, inflation: 31.0, budget: -5.8, netExports: -5.2, debt: 66 }
+  },
+  {
+    id: "finance-crisis-inflation-control",
+    title: "Inflation Crisis",
+    subtitle: "Advanced crisis case",
+    summary: "Inflation expectations are rising. Households are angry, but a hard slowdown could raise unemployment.",
+    country: "Kazakhstan",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Crisis Management",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "An inflation-fighting case where savings protection, currency stability, and jobs collide.",
+      notes: [
+        "Higher rates reduce demand pressure but hurt loans.",
+        "Financial education helps households understand real returns.",
+        "Currency stability limits imported inflation."
+      ],
+      mandate: COUNTRY_MANDATES.Kazakhstan,
+      politicalPressure: { reelectionThreshold: 41, approvalVolatility: 1.16 },
+      externalBalance: { importPassThrough: 1.45, tradeSensitivity: 1.2 },
+      policyTradeoffs: { monetaryTransmission: 1.18, transferEffectiveness: 1.08, inflationSensitivity: 1.45 }
+    }),
+    goals: [
+      { label: "Bring inflation below 9.0%", metric: "inflation", comparator: "lte", value: 9.0 },
+      { label: "Keep unemployment below 7.0%", metric: "unemployment", comparator: "lte", value: 7.0 }
+    ],
+    startingStats: { growth: 1.4, unemployment: 5.6, inflation: 16.5, budget: -4.2, netExports: -2.6, debt: 38 }
+  },
+  {
+    id: "finance-expert-global-financial-crisis",
+    title: "Global Financial Crisis",
+    subtitle: "Expert simulation",
+    summary: "Bank failures, market panic, unemployment, and public debt are all rising at the same time.",
+    country: "United States",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2008,
+    mode: "open",
+    heroTag: "Expert Simulation",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A full-system crisis with bank rescues, credit freezes, debt pressure, and household distress.",
+      notes: [
+        "Liquidity support can prevent collapse but raises public debt.",
+        "Deposit insurance and regulation calm panic when trust is low.",
+        "Stimulus supports jobs but must not destroy fiscal credibility."
+      ],
+      mandate: US_MANDATE,
+      politicalPressure: { reelectionThreshold: 42, approvalVolatility: 1.32, incumbencyDrag: 0.62 },
+      policyTradeoffs: { monetaryTransmission: 1.18, reserveTransmission: 1.26, fiscalTransmission: 1.08, inflationSensitivity: 0.88 }
+    }),
+    goals: [
+      { label: "Keep unemployment below 9.0%", metric: "unemployment", comparator: "lte", value: 9.0 },
+      { label: "Keep debt below 105%", metric: "debtRatio", comparator: "lte", value: 105 }
+    ],
+    startingStats: { growth: -3.1, unemployment: 8.1, inflation: 0.8, budget: -10.5, netExports: -3.0, debt: 76 }
+  },
+  {
+    id: "finance-expert-stagflation",
+    title: "Stagflation",
+    subtitle: "Expert simulation",
+    summary: "Inflation and unemployment are high together. Stimulus risks prices; austerity risks jobs.",
+    country: "United Kingdom",
+    politicalSystem: "Parliamentary Democracy",
+    startingYear: 1975,
+    mode: "open",
+    heroTag: "Expert Simulation",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A supply-shock case where demand tools alone cannot solve both inflation and unemployment.",
+      notes: [
+        "Rate hikes fight inflation but hurt growth.",
+        "Supply-side investment improves capacity slowly.",
+        "Transfers protect households but can add demand pressure."
+      ],
+      mandate: UK_MANDATE,
+      politicalPressure: { reelectionThreshold: 39, approvalVolatility: 1.28, incumbencyDrag: 0.55 },
+      externalBalance: { importPassThrough: 1.5, tradeSensitivity: 1.24 },
+      policyTradeoffs: { monetaryTransmission: 1.08, fiscalTransmission: 0.9, supplyResponse: 0.82, inflationSensitivity: 1.62 }
+    }),
+    goals: [
+      { label: "Bring inflation below 12.0%", metric: "inflation", comparator: "lte", value: 12.0 },
+      { label: "Keep unemployment below 9.5%", metric: "unemployment", comparator: "lte", value: 9.5 }
+    ],
+    startingStats: { growth: -1.2, unemployment: 8.4, inflation: 18.4, budget: -6.7, netExports: -2.9, debt: 66 }
+  },
+  {
+    id: "finance-expert-emerging-market-crisis",
+    title: "Emerging Market Crisis",
+    subtitle: "Expert simulation",
+    summary: "Currency collapse, capital flight, foreign debt, and inflation are hitting at once.",
+    country: "Argentina",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Expert Simulation",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "An external-confidence crisis where currency, debt, inflation, and public approval collide.",
+      notes: [
+        "Capital flight weakens the currency and raises inflation.",
+        "Credible fiscal repair can lower yields but creates pain.",
+        "Money creation is especially dangerous when trust is weak."
+      ],
+      mandate: COUNTRY_MANDATES.Argentina,
+      politicalPressure: { reelectionThreshold: 37, approvalVolatility: 1.38, incumbencyDrag: 0.62 },
+      externalBalance: { tradeSensitivity: 1.55, importPassThrough: 1.9, approvalWeight: 1.35 },
+      policyTradeoffs: { monetaryTransmission: 1.24, fiscalTransmission: 0.84, taxSensitivity: 1.2, inflationSensitivity: 1.85 }
+    }),
+    goals: [
+      { label: "Bring inflation below 35.0%", metric: "inflation", comparator: "lte", value: 35.0 },
+      { label: "Keep approval above 34", metric: "approval", comparator: "gte", value: 34 }
+    ],
+    startingStats: { growth: -2.6, unemployment: 10.8, inflation: 52, budget: -7.5, netExports: -4.7, debt: 91 }
+  },
+  {
+    id: "finance-expert-housing-bubble",
+    title: "Housing Bubble",
+    subtitle: "Expert simulation",
+    summary: "Housing prices look unstoppable, but leverage is rising and banks are exposed.",
+    country: "Canada",
+    politicalSystem: "Federal Parliamentary Democracy",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Expert Simulation",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A bubble-management case about leverage, credit rules, rates, and banking stability.",
+      notes: [
+        "Tighter credit can cool a bubble before it bursts.",
+        "Ignoring leverage keeps approval high until defaults rise.",
+        "Higher rates cool speculation but hit mortgages."
+      ],
+      mandate: COUNTRY_MANDATES.Canada,
+      politicalPressure: { reelectionThreshold: 44, approvalVolatility: 1.18, incumbencyDrag: 0.48 },
+      policyTradeoffs: { monetaryTransmission: 1.24, reserveTransmission: 1.2, fiscalTransmission: 0.92, inflationSensitivity: 1.18 }
+    }),
+    goals: [
+      { label: "Keep inflation below 4.8%", metric: "inflation", comparator: "lte", value: 4.8 },
+      { label: "Keep unemployment below 7.0%", metric: "unemployment", comparator: "lte", value: 7.0 }
+    ],
+    startingStats: { growth: 3.7, unemployment: 5.1, inflation: 5.2, budget: -4.5, netExports: -1.8, debt: 121 }
+  },
+  {
+    id: "finance-expert-investor-confidence-collapse",
+    title: "Investor Confidence Collapse",
+    subtitle: "Expert simulation",
+    summary: "Investors are selling assets, bond yields are rising, and the currency is weakening.",
+    country: "Brazil",
+    politicalSystem: "Presidential Republic",
+    startingYear: 2026,
+    mode: "open",
+    heroTag: "Expert Simulation",
+    offerTier: "free",
+    starterUnlocked: true,
+    mechanics: createModernMechanics({
+      summary: "A confidence-collapse case where fiscal credibility, currency, stocks, and approval all matter.",
+      notes: [
+        "Investor transparency helps only when policy choices support it.",
+        "Weak confidence raises yields and weakens currency.",
+        "Public anger rises if stabilization ignores households."
+      ],
+      mandate: COUNTRY_MANDATES.Brazil,
+      politicalPressure: { reelectionThreshold: 39, approvalVolatility: 1.34, incumbencyDrag: 0.58 },
+      externalBalance: { tradeSensitivity: 1.32, importPassThrough: 1.45 },
+      policyTradeoffs: { monetaryTransmission: 1.18, fiscalTransmission: 0.9, taxSensitivity: 1.12, inflationSensitivity: 1.35 }
+    }),
+    goals: [
+      { label: "Keep inflation below 9.0%", metric: "inflation", comparator: "lte", value: 9.0 },
+      { label: "Keep debt below 96%", metric: "debtRatio", comparator: "lte", value: 96 }
+    ],
+    startingStats: { growth: -0.9, unemployment: 9.4, inflation: 11.2, budget: -7.3, netExports: -2.2, debt: 88 }
+  }
+];
+
 const FINANCE_LAB_SCENARIOS: Scenario[] = [
   {
     id: "finance-2008-banking-crisis",
@@ -3001,6 +3649,7 @@ const FINANCE_LAB_SCENARIOS: Scenario[] = [
 ];
 
 export const SCENARIOS: Scenario[] = [
+  ...FINANCE_CURRICULUM_SCENARIOS,
   {
     id: "us-1958-rebuild",
     title: "Postwar Rebuild",

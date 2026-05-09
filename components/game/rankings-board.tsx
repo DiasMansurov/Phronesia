@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 
 import { getDailyChallenge, getWeeklyFeatured } from "@/lib/game/challenges";
 import { getAllBenchmarks } from "@/lib/game/content";
+import { buildPolicyScoreBreakdown, estimatePercentile, estimateScenarioRank } from "@/lib/game/curriculum";
 import { whole } from "@/lib/game/format";
 import { getProfile } from "@/lib/game/profile";
-import type { PlayerProfile } from "@/lib/game/types";
+import { loadRuns } from "@/lib/game/storage";
+import type { PlayerProfile, RunState } from "@/lib/game/types";
 
 type GlobalRun = {
   run_id: string;
@@ -28,9 +30,11 @@ type GlobalRun = {
 export function RankingsBoard() {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [globalRuns, setGlobalRuns] = useState<GlobalRun[]>([]);
+  const [localRuns, setLocalRuns] = useState<RunState[]>([]);
 
   useEffect(() => {
     setProfile(getProfile());
+    setLocalRuns(loadRuns().filter((run) => run.complete));
     fetch("/api/runs", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => setGlobalRuns(data.runs ?? []))
@@ -42,12 +46,12 @@ export function RankingsBoard() {
   const daily = getDailyChallenge();
   const weekly = getWeeklyFeatured();
   const leaderboardTypes = [
-    ["Global leaderboard", "Best Challenge Mode scores across all players."],
-    ["Scenario leaderboard", "Best standardized score for each scenario."],
-    ["School leaderboard", "Class and school competitions for teacher mode."],
-    ["Country leaderboard", "Compare results by player country or school country."],
-    ["Weekly challenge", "One rotating scenario under identical conditions."],
-    ["Beginner / Expert", "Separate ladders so new players are not crushed by advanced runs."]
+    ["Global ranking", "Best Challenge Mode scores across all finance simulations."],
+    ["Scenario ranking", "Best standardized score inside each market, debt, bank, or crisis case."],
+    ["Weekly challenge ranking", "One rotating scenario under identical conditions."],
+    ["Beginner ranking", "A fair ladder for students starting from financial basics."],
+    ["Advanced ranking", "Crisis and expert simulations for experienced players."],
+    ["School and country ranking", "Class, school, and country competitions for teacher mode."]
   ];
 
   return (
@@ -55,10 +59,10 @@ export function RankingsBoard() {
       <div className="hero-band compact">
         <div className="stack-sm">
           <p className="eyebrow">Rankings</p>
-          <h1 className="display compact">Challenge Mode rankings, scenario ladders, and classroom competition.</h1>
+          <h1 className="display compact">Compare your finance decisions with other presidents.</h1>
           <p className="lede">
-            Rankings should reward balanced economic stability, financial stability, approval, debt sustainability,
-            and crisis control. Learning Mode is for practice; Challenge Mode is for fair comparison.
+            Rankings reward balanced financial stability, market confidence, inflation control, debt sustainability,
+            household welfare, risk management, and long-term thinking. Learning Mode is for practice; Challenge Mode is for fair comparison.
           </p>
         </div>
         <div className="panel stack-sm">
@@ -78,10 +82,9 @@ export function RankingsBoard() {
         <div className="section-header">
           <div>
             <p className="eyebrow">Leaderboard System</p>
-            <h2>Multiple rankings, not just one score table.</h2>
+            <h2>Multiple rankings, not one generic score table.</h2>
             <p className="muted">
-              MVP scoring rewards balanced stability: inflation control, unemployment, GDP growth, debt sustainability,
-              financial stability, investor confidence, crisis control, and approval.
+              Phronesia compares presidents by scenario, skill level, weekly challenge, school, and country so beginners and experts both have meaningful competition.
             </p>
           </div>
         </div>
@@ -99,7 +102,7 @@ export function RankingsBoard() {
         <div className="section-header">
           <div>
             <p className="eyebrow">Global Challenge Ranking</p>
-            <h2>Submitted runs from standardized play.</h2>
+            <h2>Submitted runs from standardized finance play.</h2>
           </div>
           <span className="pill">Challenge Mode ready</span>
         </div>
@@ -137,6 +140,42 @@ export function RankingsBoard() {
             <p>Global submissions will appear here after Supabase is configured. Local best runs still save in this browser.</p>
             <Link className="button primary" href="/play/setup" prefetch={false}>
               Play Challenge Mode
+            </Link>
+          </div>
+        )}
+      </section>
+
+      <section className="panel stack-md">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Your president ranking</p>
+            <h2>Local scenario results saved in this browser</h2>
+          </div>
+        </div>
+        {localRuns.length ? (
+          <div className="scenario-grid">
+            {localRuns.slice(0, 6).map((run) => {
+              const breakdown = buildPolicyScoreBreakdown(run);
+              const rank = estimateScenarioRank(breakdown.overall);
+              const percentile = estimatePercentile(breakdown.overall);
+              return (
+                <article key={run.runId} className="scenario-card finance-scenario-card">
+                  <div className="card-topline">
+                    <span className="pill">{breakdown.overall}/100</span>
+                    <span className="mini-status open">Top {100 - percentile}%</span>
+                  </div>
+                  <h3>{run.scenarioTitle}</h3>
+                  <p className="muted">You ranked #{rank} out of 3,420 presidents.</p>
+                  <Link className="text-link" href={`/play/results/${run.runId}`}>Open result</Link>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>Complete a scenario to see your president ranking and improvement history.</p>
+            <Link className="button primary" href="/play/setup" prefetch={false}>
+              Start First Simulation
             </Link>
           </div>
         )}
@@ -211,7 +250,7 @@ export function RankingsBoard() {
           <div className="empty-state">
             <p>No completed runs saved yet.</p>
             <Link className="button primary" href="/play/setup" prefetch={false}>
-              Start Your First Run
+              Start Your First Simulation
             </Link>
           </div>
         )}

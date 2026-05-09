@@ -5,14 +5,14 @@ import { AuthControls } from "@/components/site/auth-controls";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/play/setup", label: "Play" },
   { href: "/learn", label: "Learn" },
-  { href: "/scenarios", label: "Scenarios" },
   { href: "/finance-lab", label: "Finance Lab" },
+  { href: "/scenarios", label: "Scenarios" },
+  { href: "/play/setup", label: "Play" },
   { href: "/rankings", label: "Rankings" },
-  { href: "/teachers/classes", label: "My Classes" },
+  { href: "/progress", label: "Progress" },
   { href: "/teachers", label: "Teachers" },
-  { href: "/championship", label: "Championships" }
+  { href: "/about", label: "About" }
 ];
 
 export function SiteNav() {
@@ -28,19 +28,19 @@ export function SiteNav() {
             className="brand-logo"
           />
           <span className="brand-copy">
-            <span className="brand-kicker">Free School Macro Game</span>
+            <span className="brand-kicker">Finance simulation school</span>
             <span className="brand-title">Phronesia</span>
           </span>
         </Link>
         <div className="nav-center">
-          <p className="nav-caption">Educational economics and finance simulator for schools, competitions, and self-study.</p>
+          <p className="nav-caption">Finance and economics education through simulation, markets, and decision feedback.</p>
           <nav className="nav-links" aria-label="Primary">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 prefetch={link.href === "/play/setup" ? false : undefined}
-                className={link.href === "/play/setup" || link.href === "/teachers/classes" ? "nav-cta" : undefined}
+                className={link.href === "/finance-lab" || link.href === "/play/setup" ? "nav-cta" : undefined}
               >
                 {link.label}
               </Link>

@@ -6,13 +6,21 @@ import { useEffect, useMemo, useState } from "react";
 
 import { track } from "@/lib/analytics";
 import { DIFFICULTIES, getScenario, SCENARIOS } from "@/lib/game/content";
+import {
+  getRecommendedScenarios,
+  getScenarioLearningProfile,
+  getUserLevel,
+  USER_LEVELS,
+  userLevelToLearningLevel,
+  type UserLevelId
+} from "@/lib/game/curriculum";
 import { createRun } from "@/lib/game/engine";
 import { getLearningLevel, LEARNING_LEVELS, scenarioLearningLevel } from "@/lib/game/learning";
 import { getProfile } from "@/lib/game/profile";
 import { getActiveRunId, loadRuns, saveProfile, saveRun, setActiveRunId } from "@/lib/game/storage";
 import type { DifficultyId, LearningLevelId, LearningMode, PlayerProfile, PolicyComplexity, RunState } from "@/lib/game/types";
 
-type SetupStep = "toolkit" | "scenario" | "difficulty";
+type SetupStep = "level" | "toolkit" | "scenario" | "difficulty";
 
 const POLICY_TOOLSETS: Array<{
   id: PolicyComplexity;
@@ -66,12 +74,15 @@ export function SetupExperience() {
   const [displayName, setDisplayName] = useState("");
   const [recentRuns, setRecentRuns] = useState<RunState[]>([]);
   const [activeRun, setActiveRun] = useState<RunState | null>(null);
-  const [step, setStep] = useState<SetupStep>("toolkit");
+  const [step, setStep] = useState<SetupStep>("level");
+  const [userLevel, setUserLevel] = useState<UserLevelId>("beginner");
   const [selectedScenarioId, setSelectedScenarioId] = useState(SCENARIOS[0].id);
   const [selectedLevelId, setSelectedLevelId] = useState<LearningLevelId>("tutorial");
   const [selectedDifficultyId, setSelectedDifficultyId] = useState<DifficultyId>("summit");
   const [selectedComplexity, setSelectedComplexity] = useState<PolicyComplexity>("tutorial");
   const [selectedMode, setSelectedMode] = useState<LearningMode>("learning");
+  const [scenarioQuery, setScenarioQuery] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState("All");
 
   useEffect(() => {
     const nextProfile = getProfile();
@@ -81,16 +92,40 @@ export function SetupExperience() {
     setDisplayName(nextProfile.displayName);
     setRecentRuns(runs.slice(0, 4));
     setActiveRun(activeRunId ? runs.find((run) => run.runId === activeRunId) ?? null : null);
+    const storedLevel = window.localStorage.getItem("phronesia.userLevel");
+    const nextUserLevel = USER_LEVELS.some((level) => level.id === storedLevel) ? (storedLevel as UserLevelId) : "beginner";
+    const scenarioFromUrl = new URLSearchParams(window.location.search).get("scenario");
+    setUserLevel(nextUserLevel);
+    setSelectedLevelId(userLevelToLearningLevel(nextUserLevel));
+    if (scenarioFromUrl && SCENARIOS.some((scenario) => scenario.id === scenarioFromUrl)) {
+      setSelectedScenarioId(scenarioFromUrl);
+      setSelectedLevelId(scenarioLearningLevel(getScenario(scenarioFromUrl)));
+      setStep("toolkit");
+    }
     track("page_view", { page: "/play/setup" });
   }, []);
 
   const filteredScenarios = useMemo(
-    () =>
-      SCENARIOS.filter((scenario) => scenarioLearningLevel(scenario) === selectedLevelId).sort((left, right) => {
-        if (left.country !== right.country) return left.country.localeCompare(right.country);
-        return left.startingYear - right.startingYear;
-      }),
-    [selectedLevelId]
+    () => {
+      const query = scenarioQuery.trim().toLowerCase();
+      return SCENARIOS.filter((scenario) => scenarioLearningLevel(scenario) === selectedLevelId)
+        .filter((scenario) => {
+          const profile = getScenarioLearningProfile(scenario);
+          if (difficultyFilter !== "All" && profile.difficulty !== difficultyFilter) return false;
+          if (!query) return true;
+          return [scenario.title, scenario.subtitle, scenario.summary, scenario.country, ...profile.concepts]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+        })
+        .sort((left, right) => {
+          const leftProfile = getScenarioLearningProfile(left);
+          const rightProfile = getScenarioLearningProfile(right);
+          if (leftProfile.level !== rightProfile.level) return leftProfile.level - rightProfile.level;
+          return left.title.localeCompare(right.title);
+        });
+    },
+    [difficultyFilter, scenarioQuery, selectedLevelId]
   );
 
   useEffect(() => {
@@ -133,16 +168,30 @@ export function SetupExperience() {
   const selectedScenario = getScenario(selectedScenarioId);
   const selectedToolkit = POLICY_TOOLSETS.find((toolkit) => toolkit.id === selectedComplexity) ?? POLICY_TOOLSETS[2];
   const selectedLevel = getLearningLevel(selectedLevelId);
+  const selectedUserLevel = getUserLevel(userLevel);
+  const selectedScenarioProfile = getScenarioLearningProfile(selectedScenario);
+  const recommendedScenarios = getRecommendedScenarios(userLevel, SCENARIOS, 4);
+
+  function chooseUserLevel(id: UserLevelId) {
+    setUserLevel(id);
+    setSelectedLevelId(userLevelToLearningLevel(id));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("phronesia.userLevel", id);
+    }
+    const recommended = getRecommendedScenarios(id, SCENARIOS, 1)[0];
+    if (recommended) setSelectedScenarioId(recommended.id);
+    setStep("toolkit");
+  }
 
   return (
     <section className="shell section stack-lg">
       <div className="hero-band compact">
         <div className="stack-sm">
-          <p className="eyebrow">Campaign Setup</p>
-          <h1 className="display compact">Start simple, learn economics, then compete.</h1>
+          <p className="eyebrow">Simulation Setup</p>
+          <h1 className="display compact">Choose your finance level, then enter the market.</h1>
           <p className="lede">
-            Choose Learning Mode for explanations after each decision, or Challenge Mode when you are ready for ranking-style pressure.
-            Scenarios now follow a clear education path from basic inflation to finance and crisis management.
+            Phronesia starts with your current knowledge, recommends suitable scenarios, then teaches through decisions,
+            financial indicators, rankings, and short explanations after every major move.
           </p>
         </div>
         <div className="panel stack-sm">
@@ -180,36 +229,65 @@ export function SetupExperience() {
         <div className="section-header">
           <div>
             <p className="eyebrow">
-              Step {step === "toolkit" ? "1" : step === "scenario" ? "2" : "3"} of 3
+              Step {step === "level" ? "1" : step === "toolkit" ? "2" : step === "scenario" ? "3" : "4"} of 4
             </p>
             <h2>
-              {step === "toolkit"
-                ? "Pick your learning mode and first policy board"
+              {step === "level"
+                ? "What is your current level?"
+                : step === "toolkit"
+                  ? "Pick your learning mode and decision board"
                 : step === "scenario"
-                  ? "Choose the next level in the learning path"
+                  ? "Choose a recommended finance scenario"
                   : "Pick the pressure level"}
             </h2>
             <p className="muted">
-              {step === "toolkit"
-                ? "Learning Mode teaches after each move. Challenge Mode is stricter and is the future leaderboard mode."
+              {step === "level"
+                ? "This lets Phronesia recommend cases that are useful without being overwhelming."
+                : step === "toolkit"
+                  ? "Learning Mode teaches after each move. Challenge Mode is stricter and ranking-focused."
                 : step === "scenario"
-                  ? "Scenarios are grouped by what they teach, so beginners do not start inside a crisis."
+                  ? "Use search and filters to find the right market, debt, bank, or crisis case."
                   : "Choose how unforgiving the economy and politics should feel."}
             </p>
           </div>
-          {step !== "toolkit" ? (
+          {step !== "level" ? (
             <button
               className="button secondary"
-              onClick={() => setStep(step === "difficulty" ? "scenario" : "toolkit")}
+              onClick={() => setStep(step === "difficulty" ? "scenario" : step === "scenario" ? "toolkit" : "level")}
               type="button"
             >
-              {step === "difficulty" ? "Back To Scenarios" : "Back To Toolkits"}
+              {step === "difficulty" ? "Back To Scenarios" : step === "scenario" ? "Back To Mode" : "Back To Level"}
             </button>
           ) : null}
         </div>
 
-        {step === "toolkit" ? (
+        {step === "level" ? (
+          <div className="level-choice-grid setup-level-grid">
+            {USER_LEVELS.map((level) => (
+              <button
+                key={level.id}
+                className={`level-choice-card ${userLevel === level.id ? "selected" : ""}`}
+                onClick={() => chooseUserLevel(level.id)}
+                type="button"
+              >
+                <span>{level.label}</span>
+                <strong>{level.title}</strong>
+                <small>{level.summary}</small>
+              </button>
+            ))}
+          </div>
+        ) : step === "toolkit" ? (
           <>
+            <section className="next-challenge-panel setup-recommendation">
+              <div className="stack-sm">
+                <p className="eyebrow">Recommended for {selectedUserLevel.label}</p>
+                <h2>{recommendedScenarios[0]?.title ?? selectedScenario.title}</h2>
+                <p>{recommendedScenarios[0]?.summary ?? selectedScenario.summary}</p>
+              </div>
+              <button className="button secondary" onClick={() => setStep("scenario")} type="button">
+                See All Recommendations
+              </button>
+            </section>
             <div className="grid two learning-mode-grid">
               {[
                 {
@@ -279,7 +357,7 @@ export function SetupExperience() {
         ) : step === "scenario" ? (
           <div className="stack-md">
             <div className="stack-sm">
-              <p className="eyebrow">Learning Path</p>
+              <p className="eyebrow">Finance learning path</p>
               <div className="level-path-grid" role="tablist" aria-label="Learning path">
                 {LEARNING_LEVELS.map((level) => (
                   <button
@@ -294,6 +372,25 @@ export function SetupExperience() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="scenario-filter-bar">
+              <label>
+                <span>Search</span>
+                <input
+                  value={scenarioQuery}
+                  onChange={(event) => setScenarioQuery(event.target.value)}
+                  placeholder="Search inflation, bonds, banks, currency..."
+                />
+              </label>
+              <label>
+                <span>Difficulty</span>
+                <select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)}>
+                  {["All", "Beginner", "Basic", "Intermediate", "Advanced", "Expert"].map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <section className="panel compact-panel stack-sm">
@@ -314,6 +411,7 @@ export function SetupExperience() {
             <div className="scenario-grid">
               {filteredScenarios.map((scenario) => {
                 const selected = selectedScenarioId === scenario.id;
+                const profile = getScenarioLearningProfile(scenario);
                 return (
                   <button
                     key={scenario.id}
@@ -325,12 +423,15 @@ export function SetupExperience() {
                     type="button"
                   >
                     <div className="card-topline">
-                      <span className="pill">{scenario.startingYear}</span>
-                      <span className="mini-status open">{scenario.mode === "open" ? "Open economy" : "Closed economy"}</span>
+                      <span className="pill">{profile.difficulty}</span>
+                      <span className="mini-status open">{profile.estimatedMinutes} min</span>
                     </div>
                     <h3>{scenario.title}</h3>
                     <p className="muted">{scenario.subtitle}</p>
                     <p>{scenario.summary}</p>
+                    <div className="concept-row">
+                      {profile.concepts.slice(0, 3).map((concept) => <span key={concept}>{concept}</span>)}
+                    </div>
                   </button>
                 );
               })}
@@ -349,6 +450,7 @@ export function SetupExperience() {
                   <span className="pill">{selectedScenario.startingYear}</span>
                   <span className="pill">{selectedToolkit.label}</span>
                   <span className="pill">{selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
+                  <span className="pill">{selectedScenarioProfile.difficulty}</span>
                 </div>
               </div>
             </section>
@@ -368,6 +470,7 @@ export function SetupExperience() {
                   <span className="pill">{selectedScenario.startingYear}</span>
                   <span className="pill">{selectedToolkit.label}</span>
                   <span className="pill">{selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
+                  <span className="pill">{selectedScenarioProfile.estimatedMinutes} min</span>
                 </div>
               </div>
 
@@ -413,7 +516,7 @@ export function SetupExperience() {
                   onClick={() => startRun({ scenarioId: selectedScenarioId, difficultyId: selectedDifficultyId })}
                   type="button"
                 >
-                  Start New Reign
+                  Start Simulation
                 </button>
               </div>
             </section>

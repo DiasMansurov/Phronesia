@@ -560,11 +560,11 @@ function buildElectionNight(reelected: boolean, approval: number, scenario: Scen
 }
 
 export function rankTitle(score: number) {
-  if (score >= 130) return "Economic Legend";
-  if (score >= 112) return "National Architect";
-  if (score >= 96) return "Majority Builder";
-  if (score >= 78) return "Cabinet Closer";
-  return "Policy Staffer";
+  if (score >= 130) return "Finance Simulation Master";
+  if (score >= 112) return "Market Stabilizer";
+  if (score >= 96) return "Balanced Finance Leader";
+  if (score >= 78) return "Risk-Aware Decision Maker";
+  return "Finance Analyst in Training";
 }
 
 export function createRun(

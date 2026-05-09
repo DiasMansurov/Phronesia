@@ -71,6 +71,19 @@ function evaluateRunBadges(run: RunState): Badge[] {
   if (run.current.equityMarket >= 95 && run.current.bankingStress <= 35) badges.push("Market Confidence");
   if (run.victory && (run.learningLevelId === "crisis" || run.current.bankingStress <= 45)) badges.push("Crisis Manager");
   if (run.learningMode === "learning") badges.push("Theory Learner");
+  if (avgInflation <= 3.8 && run.current.inflation <= 4.5) badges.push("Inflation Defender");
+  if (run.current.equityMarket >= 92 && run.current.currencyIndex >= 92 && run.current.bankingStress <= 42) badges.push("Market Stabilizer");
+  if (avgBudget >= -3.8 && run.current.debtRatio <= 92) badges.push("Debt Manager");
+  if (run.victory && run.current.bankingStress <= 48 && (run.learningLevelId === "crisis" || run.learningLevelId === "competitive")) {
+    badges.push("Banking Crisis Survivor");
+  }
+  if (run.current.policyCredibility >= 58 && run.current.sovereignYield <= 5.5 && run.current.currencyIndex >= 90) {
+    badges.push("Investor Confidence Builder");
+  }
+  if (run.learningMode === "learning") badges.push("Financial Literacy Beginner");
+  if (run.current.equityMarket >= 90 && run.current.defaultRisk <= 18 && run.current.householdDebt <= 95) badges.push("Portfolio Strategist");
+  if (run.victory && (run.learningLevelId === "crisis" || run.learningLevelId === "competitive")) badges.push("Crisis President");
+  if (run.score >= 112) badges.push("Top 10% President");
 
   return unique(badges);
 }

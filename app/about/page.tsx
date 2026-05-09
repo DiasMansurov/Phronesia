@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "About and Learning Impact",
-  description: "Phronesia is an educational economics and finance simulation platform for schools, competitions, and self-study.",
+  description: "Phronesia is a finance and economics simulation platform for students, schools, competitions, and self-study.",
   alternates: {
     canonical: "/about"
   }
@@ -12,9 +12,10 @@ export const metadata: Metadata = {
 const impactPoints = [
   "Learning through consequences instead of passive reading.",
   "Short theory cards after decisions, not long textbook chapters before play.",
-  "Macroeconomics and financial literacy in one connected simulation.",
+  "Financial literacy as the core layer: savings, loans, markets, debt, banks, and risk.",
+  "Economics as context for understanding how policy choices affect ordinary people and markets.",
   "Teacher mode, classroom joins, rankings, and reflection tasks for schools.",
-  "Policy Brief reports that show what happened and what to improve next."
+  "Policy Score reports that show what happened and what to improve next."
 ];
 
 export default function AboutPage() {
@@ -23,17 +24,17 @@ export default function AboutPage() {
       <div className="hero-band compact">
         <div className="stack-sm">
           <p className="eyebrow">About / Impact</p>
-          <h1 className="display compact">A free educational simulation platform for economics and finance.</h1>
+          <h1 className="display compact">Finance & economics education through simulation.</h1>
           <p className="lede compact-lede">
-            Phronesia is designed for schools, competitions, independent learners, and university applications:
-            play decisions, see consequences, learn the theory, and explain the result.
+            Phronesia is designed for students, schools, competitions, independent learners, and innovation contests:
+            make financial decisions, see market consequences, learn the theory, and explain the result.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/play/setup" prefetch={false}>
               Start The Platform
             </Link>
-            <Link className="button secondary" href="/teachers">
-              Teacher Mode
+            <Link className="button secondary" href="/finance-lab">
+              Finance Lab
             </Link>
           </div>
         </div>

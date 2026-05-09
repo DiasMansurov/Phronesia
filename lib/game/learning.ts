@@ -1,4 +1,5 @@
 import type { LearningLevelId, MacroState, Policies, Scenario, TheoryCard } from "@/lib/game/types";
+import { getScenarioLearningProfile, profileToLearningLevel } from "@/lib/game/curriculum";
 import { BEGINNER_LESSONS, getPolicyTheoryCard, GLOSSARY_TERMS, TEXTBOOK_CASE_STUDIES } from "@/lib/game/theory-content";
 
 export { BEGINNER_LESSONS, GLOSSARY_TERMS, TEXTBOOK_CASE_STUDIES };
@@ -12,61 +13,62 @@ export const LEARNING_LEVELS: Array<{
 }> = [
   {
     id: "tutorial",
-    label: "Level 0",
-    title: "First Day as President",
-    summary: "Learn the four basic indicators: inflation, unemployment, GDP growth, and approval.",
-    concepts: ["inflation", "unemployment", "GDP growth", "approval"]
+    label: "Level 1",
+    title: "Financial Basics",
+    summary: "Start with savings, inflation, spending, loans, simple budgets, and interest rates.",
+    concepts: ["savings", "inflation", "loans", "budgeting"]
   },
   {
     id: "basic",
-    label: "Level 1",
-    title: "Basic Economy",
-    summary: "See why every policy choice creates trade-offs between jobs, prices, growth, and debt.",
-    concepts: ["government spending", "taxes", "budget deficit", "trade-offs"]
+    label: "Level 1+",
+    title: "Personal Finance Trade-offs",
+    summary: "Practice spending, saving, borrowing, and basic investment choices before moving into markets.",
+    concepts: ["emergency funds", "debt", "risk", "real returns"]
   },
   {
     id: "policy",
-    label: "Level 2",
-    title: "Policy Tools",
-    summary: "Use fiscal, monetary, and supply-side tools with clearer strategic intent.",
-    concepts: ["fiscal policy", "monetary policy", "supply-side reform", "public investment"]
+    label: "Level 3",
+    title: "Policy and Finance",
+    summary: "Use rates, debt, taxes, and public spending while watching market and household reactions.",
+    concepts: ["interest rates", "government debt", "taxes", "monetary policy"]
   },
   {
     id: "finance",
-    label: "Level 3",
-    title: "Finance and Markets",
-    summary: "Watch bond yields, currency, stock markets, and banking stress react to policy.",
-    concepts: ["stocks", "bonds", "exchange rates", "investor confidence"]
+    label: "Level 2",
+    title: "Markets and Money",
+    summary: "Learn how stocks, bonds, exchange rates, risk, diversification, and investor confidence move.",
+    concepts: ["stocks", "bonds", "exchange rates", "diversification"]
   },
   {
     id: "crisis",
     label: "Level 4",
     title: "Crisis Management",
-    summary: "Handle inflation shocks, recessions, debt stress, currency pressure, and banking risk together.",
-    concepts: ["recession", "debt crisis", "currency crisis", "banking stability"]
+    summary: "Handle banking stress, stock crashes, currency pressure, inflation, and household debt under pressure.",
+    concepts: ["banking crisis", "currency crisis", "stock crash", "debt crisis"]
   },
   {
     id: "historical",
-    label: "Level 5",
-    title: "Historical Scenarios",
-    summary: "Apply what you learned to real and historically inspired cases across countries.",
-    concepts: ["historical context", "institutions", "external shocks", "policy credibility"]
+    label: "Case Library",
+    title: "Historical and Country Cases",
+    summary: "Apply the finance curriculum to real and historically inspired economic situations.",
+    concepts: ["institutions", "external shocks", "credibility", "country risk"]
   },
   {
     id: "competitive",
-    label: "Level 6",
-    title: "Competitive Mode",
-    summary: "Play under standardized conditions with fewer hints and leaderboard-ready scoring.",
-    concepts: ["score optimization", "risk control", "long-term sustainability", "rankings"]
+    label: "Level 5",
+    title: "Expert Simulation",
+    summary: "Play complex multi-variable cases with fewer hints and leaderboard-ready scoring.",
+    concepts: ["capital flight", "bank panic", "bond yields", "rankings"]
   }
 ];
 
 export function scenarioLearningLevel(scenario: Scenario): LearningLevelId {
   const stats = scenario.startingStats;
   const id = scenario.id;
+  const profile = getScenarioLearningProfile(scenario);
 
+  if (id.startsWith("finance-")) return profileToLearningLevel(profile);
   if (id === "us-1958-rebuild") return "tutorial";
-  if (id.startsWith("finance-")) return "finance";
   if (id === "us-1983-recovery" || id === "us-1999-golden-run") return "basic";
   if (scenario.country !== "United States" && scenario.startingYear < 2020) return "historical";
   if (id.includes("2009") || id.includes("financial") || stats.debt > 120) return "finance";

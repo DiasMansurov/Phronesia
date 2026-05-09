@@ -18,12 +18,12 @@ export function SiteFooter() {
             />
             <div>
               <p className="eyebrow">Phronesia</p>
-              <p className="footer-title">Macroeconomics with consequences</p>
+              <p className="footer-title">Finance education through simulation</p>
             </div>
           </div>
           <p className="footer-copy">
-            An educational economics and finance simulation platform where players learn through policy consequences,
-            theory cards, finance dashboards, and classroom-ready Policy Briefs.
+            A finance and economics simulation platform where students learn markets, money, risk, debt, and policy
+            through decisions, theory cards, finance dashboards, and classroom-ready results.
           </p>
           <p className="footer-copy small">
             Copyright &copy; {year} Phronesia. All rights reserved.
@@ -33,12 +33,13 @@ export function SiteFooter() {
           <div className="footer-link-column">
             <p className="footer-heading">Explore</p>
             <Link href="/play/setup" prefetch={false}>
-              Start A Run
+              Start Learning
             </Link>
             <Link href="/learn">Learn</Link>
-            <Link href="/scenarios">Scenarios</Link>
             <Link href="/finance-lab">Finance Lab</Link>
+            <Link href="/scenarios">Scenarios</Link>
             <Link href="/rankings">View Rankings</Link>
+            <Link href="/progress">Progress</Link>
             <Link href="/championship">Championship</Link>
             <Link href="/join">Student Join</Link>
           </div>

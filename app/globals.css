@@ -1954,6 +1954,568 @@ h3 {
   }
 }
 
+/* Phronesia finance-first redesign */
+:root {
+  --bg: #f4f7f3;
+  --bg-deep: #e7eee8;
+  --ink: #0b1413;
+  --ink-soft: #5a6762;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-strong: #ffffff;
+  --surface-muted: rgba(12, 32, 28, 0.06);
+  --line: rgba(12, 32, 28, 0.12);
+  --line-strong: rgba(12, 32, 28, 0.22);
+  --accent: #0d7c66;
+  --accent-strong: #084f43;
+  --accent-soft: #d9f2e9;
+  --teal: #0d9488;
+  --gold: #b98716;
+  --danger: #bd3d43;
+  --success: #15803d;
+  --shadow: 0 18px 70px rgba(11, 20, 19, 0.12);
+  --radius-xl: 10px;
+  --radius-lg: 8px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --font-heading: "Avenir Next", "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgba(13, 124, 102, 0.08), transparent 30%),
+    linear-gradient(180deg, #fbfcf8 0%, #f2f6f0 48%, #e9f0eb 100%);
+}
+
+body::before {
+  opacity: 0.75;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.2)),
+    repeating-linear-gradient(0deg, transparent 0, transparent 79px, rgba(12, 32, 28, 0.035) 80px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 79px, rgba(12, 32, 28, 0.03) 80px);
+}
+
+.site-header {
+  background: rgba(250, 252, 248, 0.9);
+  border-bottom: 1px solid rgba(12, 32, 28, 0.1);
+  color: var(--ink);
+  box-shadow: 0 10px 34px rgba(12, 32, 28, 0.07);
+}
+
+.site-header .nav-shell {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.brand-logo {
+  width: 48px;
+  height: 48px;
+}
+
+.brand-kicker,
+.eyebrow {
+  color: var(--accent-strong);
+  letter-spacing: 0.12em;
+}
+
+.brand-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.nav-caption {
+  color: var(--ink-soft);
+}
+
+.nav-links a,
+.nav-cta {
+  border-radius: 999px;
+}
+
+.nav-links a {
+  border: 1px solid transparent;
+}
+
+.nav-links a:hover {
+  border-color: rgba(13, 124, 102, 0.18);
+  background: rgba(13, 124, 102, 0.08);
+}
+
+.nav-links .nav-cta,
+.nav-cta {
+  background: #102421;
+  color: #f7fbf6;
+  border-color: #102421;
+}
+
+.panel,
+.scenario-card,
+.case-study-card,
+.lesson-card,
+.glossary-card,
+.goal-item,
+.stat-card,
+.atlas-card,
+.level-path-card,
+.focus-item,
+.overview-panel,
+.mini-lab-card,
+.feature-card,
+.progression-card,
+.score-category-card,
+.market-signal {
+  border-radius: 8px;
+  border: 1px solid rgba(12, 32, 28, 0.12);
+  box-shadow: 0 14px 46px rgba(12, 32, 28, 0.08);
+}
+
+.button,
+.toggle-chip,
+.pill,
+.mini-status {
+  border-radius: 999px;
+}
+
+.button.primary {
+  background: #102421;
+  color: #f8fbf7;
+  border-color: #102421;
+}
+
+.button.primary:hover,
+.button.secondary:hover,
+.text-link:hover {
+  transform: translateY(-1px);
+}
+
+.button.secondary {
+  background: #ffffff;
+  color: #102421;
+  border-color: rgba(12, 32, 28, 0.16);
+}
+
+.text-link {
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.hero-band,
+.market-page-hero {
+  border-radius: 8px;
+}
+
+.market-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 1.25rem;
+  align-items: stretch;
+  min-height: 520px;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border-radius: 8px;
+  border: 1px solid rgba(12, 32, 28, 0.12);
+  background:
+    linear-gradient(135deg, rgba(16, 36, 33, 0.98), rgba(16, 36, 33, 0.92)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 72px);
+  color: #f8fbf7;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.market-hero-copy {
+  align-content: center;
+}
+
+.market-display {
+  max-width: 13ch;
+  color: #ffffff;
+  font-size: clamp(3rem, 9vw, 7rem);
+  line-height: 0.92;
+  font-weight: 900;
+}
+
+.market-lede {
+  max-width: 64rem;
+  color: rgba(248, 251, 247, 0.82);
+}
+
+.market-hero .eyebrow,
+.market-hero .text-link {
+  color: #8ee6c8;
+}
+
+.market-hero .button.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.market-signal-row,
+.terminal-grid,
+.level-choice-grid,
+.recommendation-grid,
+.finance-progression-grid,
+.feature-grid,
+.finance-mini-lab-grid,
+.score-category-grid,
+.progress-overview-grid,
+.scenario-filter-bar {
+  display: grid;
+  gap: 1rem;
+}
+
+.market-signal-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.market-signal {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(248, 251, 247, 0.82);
+}
+
+.market-signal strong {
+  color: #ffffff;
+}
+
+.market-terminal {
+  display: grid;
+  align-content: space-between;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border-radius: 8px;
+  background: #f8fbf7;
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.16);
+}
+
+.terminal-topline,
+.terminal-grid,
+.card-topline,
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.terminal-score {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.terminal-score strong {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+.terminal-score small {
+  color: var(--ink-soft);
+}
+
+.mini-chart {
+  display: flex;
+  align-items: end;
+  gap: 0.45rem;
+  min-height: 150px;
+  padding: 1rem;
+  background:
+    linear-gradient(180deg, rgba(13, 124, 102, 0.08), rgba(13, 124, 102, 0.02)),
+    repeating-linear-gradient(0deg, transparent 0 32px, rgba(12, 32, 28, 0.08) 33px);
+  border: 1px solid rgba(12, 32, 28, 0.08);
+  border-radius: 8px;
+}
+
+.mini-chart span {
+  flex: 1;
+  min-width: 12px;
+  border-radius: 999px 999px 4px 4px;
+  background: linear-gradient(180deg, #11a37f, #bfe7d7);
+}
+
+.terminal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.terminal-grid div,
+.mini-lab-value {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem;
+  background: rgba(12, 32, 28, 0.05);
+  border-radius: 8px;
+}
+
+.terminal-grid span,
+.mini-lab-value span {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.terminal-grid strong,
+.mini-lab-value strong {
+  font-size: 1.45rem;
+}
+
+.level-choice-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.level-choice-card,
+.progression-card,
+.mini-lab-card,
+.feature-card,
+.score-category-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.15rem;
+  text-align: left;
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.level-choice-card {
+  border: 1px solid rgba(12, 32, 28, 0.12);
+  cursor: pointer;
+}
+
+.level-choice-card span,
+.progression-card span {
+  color: var(--accent-strong);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.level-choice-card strong,
+.progression-card strong,
+.feature-card h2,
+.mini-lab-card h2 {
+  font-size: 1.2rem;
+}
+
+.level-choice-card small,
+.progression-card p {
+  color: var(--ink-soft);
+}
+
+.level-choice-card.selected,
+.scenario-card.selected {
+  border-color: rgba(13, 124, 102, 0.55);
+  box-shadow: 0 0 0 3px rgba(13, 124, 102, 0.12);
+}
+
+.recommendation-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.finance-scenario-card {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+  background:
+    linear-gradient(180deg, #ffffff, #f9fbf7);
+}
+
+.concept-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.concept-row span,
+.concept-row small {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(13, 124, 102, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.next-challenge-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border-radius: 8px;
+  border: 1px solid rgba(12, 32, 28, 0.12);
+  background: #dff3e8;
+  box-shadow: var(--shadow);
+}
+
+.finance-progression-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.feature-grid,
+.progress-overview-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.feature-card {
+  background: #ffffff;
+}
+
+.scenario-filter-bar {
+  grid-template-columns: 2fr repeat(3, minmax(150px, 1fr));
+  align-items: end;
+}
+
+.scenario-filter-bar label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.scenario-filter-bar label span {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.finance-mini-lab-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mini-lab-card {
+  background: #ffffff;
+}
+
+.mini-slider-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.mini-slider {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mini-slider span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.mini-slider i,
+.progress-meter,
+.progress-meter i {
+  display: block;
+  border-radius: 999px;
+}
+
+.mini-slider i {
+  height: 8px;
+  background: linear-gradient(90deg, #102421, #11a37f);
+}
+
+.progress-meter {
+  height: 9px;
+  background: rgba(12, 32, 28, 0.08);
+  overflow: hidden;
+}
+
+.progress-meter i {
+  height: 100%;
+  background: linear-gradient(90deg, #0d7c66, #d2a429);
+}
+
+.score-category-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.score-category-card {
+  background: #ffffff;
+}
+
+.badge-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.achievement-badge {
+  padding: 0.7rem 0.9rem;
+  border-radius: 999px;
+  background: #102421;
+  color: #f8fbf7;
+  font-weight: 800;
+}
+
+.hero-band {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 246, 0.88)),
+    repeating-linear-gradient(90deg, rgba(12, 32, 28, 0.04) 0 1px, transparent 1px 78px);
+}
+
+.site-footer {
+  background: #102421;
+  color: #f7fbf6;
+}
+
+.site-footer .footer-copy,
+.site-footer a {
+  color: rgba(247, 251, 246, 0.76);
+}
+
+.site-footer a:hover {
+  color: #ffffff;
+}
+
+@media (max-width: 1120px) {
+  .market-hero,
+  .recommendation-grid,
+  .finance-progression-grid,
+  .finance-mini-lab-grid,
+  .score-category-grid,
+  .level-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-hero {
+    min-height: auto;
+  }
+
+  .site-header .nav-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .market-hero,
+  .market-signal-row,
+  .recommendation-grid,
+  .finance-progression-grid,
+  .feature-grid,
+  .progress-overview-grid,
+  .finance-mini-lab-grid,
+  .score-category-grid,
+  .level-choice-grid,
+  .scenario-filter-bar,
+  .terminal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-display {
+    font-size: clamp(2.6rem, 17vw, 4.4rem);
+  }
+
+  .next-challenge-panel {
+    display: grid;
+  }
+
+  .site-header .nav-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -22,7 +22,7 @@ import type {
   RunState
 } from "@/lib/game/types";
 
-type InsightDetailKey = "household" | "mandate" | "briefing";
+type InsightDetailKey = "household" | "status" | "briefing";
 type MacroStat = {
   label: string;
   value: string;
@@ -459,7 +459,7 @@ export function PlayExperience() {
   useEffect(() => {
     const runId = params.get("run") ?? getActiveRunId();
     if (!runId) {
-      setStatus("No active run found. Start a new reign from setup.");
+      setStatus("No active run found. Start a new simulation from setup.");
       return;
     }
 
@@ -794,7 +794,7 @@ export function PlayExperience() {
     ? run.summary ?? "This term has concluded."
     : run.current.round >= reelectionRound
       ? mandate.postCheckpointSummary
-      : `You are still in the first mandate. Reach year ${reelectionRound} above ${reelectionThreshold}% approval to ${mandate.checkpointVerb}.`;
+      : `You are still in the first simulation cycle. Reach year ${reelectionRound} above ${reelectionThreshold}% approval to ${mandate.checkpointVerb}.`;
   const officeTitle = `${mandate.officeTitle} of ${scenario.country}`;
   const macroStats: MacroStat[] = [
     { label: "Growth", value: pct(run.current.growth), help: MACRO_STAT_HELP.Growth },
@@ -858,7 +858,7 @@ export function PlayExperience() {
         <section className="panel presidency-panel stack-md">
           <div className="presidency-header">
             <div className="stack-sm presidency-copy">
-              <p className="eyebrow">{profileName}&apos;s active reign</p>
+              <p className="eyebrow">{profileName}&apos;s finance simulation</p>
               <h1 className="display compact">{scenario.title}</h1>
               <p className="lede compact-lede">{scenario.summary}</p>
             </div>
@@ -881,7 +881,7 @@ export function PlayExperience() {
           <div className="presidency-progress-box">
             <div className="presidency-progress-head">
               <div>
-                <p className="eyebrow">Mandate Progress</p>
+                <p className="eyebrow">Simulation Progress</p>
                 <h2>Year {run.current.round} / {run.maxRounds}</h2>
               </div>
               <div className="pill-row">
@@ -900,9 +900,9 @@ export function PlayExperience() {
             </div>
 
             <div className="progress-caption">
-              <span>Start of mandate</span>
+              <span>Start</span>
               <span>Year {reelectionRound} checkpoint</span>
-              <span>End of mandate</span>
+              <span>Final year</span>
             </div>
             {run.complete ? <p className="muted small">Opening your ranked result automatically...</p> : null}
           </div>
@@ -911,8 +911,8 @@ export function PlayExperience() {
         <section className="panel command-summary-panel stack-md">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Command Summary</p>
-              <h2>Macro state, country structure, and mandate goals in one view</h2>
+              <p className="eyebrow">Finance dashboard</p>
+              <h2>Markets, households, macro state, and scenario goals in one view</h2>
             </div>
             <div className="pill-row">
               <span className="pill">{scenario.country}</span>
@@ -1024,7 +1024,7 @@ export function PlayExperience() {
 
             <section className="summary-section stack-sm">
               <div className="stack-xs">
-                <p className="eyebrow">Mandate Goals</p>
+                <p className="eyebrow">Scenario Goals</p>
                 <h3>Scenario targets</h3>
               </div>
               <div className="goal-list compact-list">
@@ -1041,15 +1041,15 @@ export function PlayExperience() {
         <section className="panel policy-command-panel stack-md">
           <div className="section-header policy-command-header">
             <div>
-              <p className="eyebrow">Policy Board</p>
+              <p className="eyebrow">Decision Board</p>
               <h2>
                 {run.policyComplexity === "fiscal"
-                  ? "Fiscal policy board"
+                  ? "Fiscal decision board"
                   : run.policyComplexity === "monetary"
-                    ? "Monetary policy board"
+                    ? "Monetary and rates board"
                     : run.policyComplexity === "combined"
-                      ? "Combined fiscal and monetary board"
-                      : "Full macro policy board"}
+                      ? "Combined money, budget, and markets board"
+                      : "Full finance and policy board"}
               </h2>
             </div>
             <div className="policy-command-actions">
@@ -1101,7 +1101,7 @@ export function PlayExperience() {
             <p className="muted insight-preview">
               {previewText(
                 latestYear.citizenImpact ??
-                  "Families are still living with the inherited conditions from the starting year of your reign."
+                  "Families are still living with the inherited conditions from the starting year of your simulation."
               )}
             </p>
             <button className="button secondary" onClick={() => setActiveInsightDetail("household")} type="button">
@@ -1133,11 +1133,11 @@ export function PlayExperience() {
 
           <article className="panel insight-panel stack-sm">
             <div className="stack-xs">
-              <p className="eyebrow">Mandate Status</p>
+              <p className="eyebrow">Simulation Status</p>
               <h2>{run.rankTitle}</h2>
             </div>
             <p className="muted insight-preview">{previewText(mandateSummary)}</p>
-            <button className="button secondary" onClick={() => setActiveInsightDetail("mandate")} type="button">
+            <button className="button secondary" onClick={() => setActiveInsightDetail("status")} type="button">
               Open Details
             </button>
           </article>
@@ -1185,7 +1185,7 @@ export function PlayExperience() {
             <div className="section-header">
               <div>
                 <p className="eyebrow">Milestones</p>
-                <h2>Latest mandate signals</h2>
+                <h2>Latest finance signals</h2>
               </div>
             </div>
             <div className="timeline compact-list">
@@ -1327,14 +1327,14 @@ export function PlayExperience() {
                 <p className="eyebrow">
                   {activeInsightDetail === "household"
                     ? "Household Impact"
-                    : activeInsightDetail === "mandate"
-                      ? "Mandate Status"
+                    : activeInsightDetail === "status"
+                      ? "Simulation Status"
                       : "Latest Briefing"}
                 </p>
                 <h2 id="insight-detail-title">
                   {activeInsightDetail === "household"
                     ? "How households experienced the latest year"
-                    : activeInsightDetail === "mandate"
+                    : activeInsightDetail === "status"
                       ? run.rankTitle
                       : "Detailed press note"}
                 </h2>
@@ -1348,7 +1348,7 @@ export function PlayExperience() {
               <div className="stack-md">
                 <p className="lede compact-lede">
                   {latestYear.citizenImpact ??
-                    "Families are still living with the inherited conditions from the starting year of your reign."}
+                    "Families are still living with the inherited conditions from the starting year of your simulation."}
                 </p>
                 {latestYear.briefing?.citizenGroups?.length ? (
                   <div className="briefing-groups">
@@ -1366,7 +1366,7 @@ export function PlayExperience() {
               </div>
             ) : null}
 
-            {activeInsightDetail === "mandate" ? (
+            {activeInsightDetail === "status" ? (
               <div className="stack-md">
                 <p className="lede compact-lede">{mandateSummary}</p>
                 <div className="timeline compact-list">
@@ -1526,47 +1526,47 @@ export function PlayExperience() {
         <div className="overlay-shell" role="dialog" aria-modal="true" aria-labelledby="inauguration-modal-title">
           <div className="overlay-card inauguration-overlay">
             <div className="stack-sm">
-              <p className="eyebrow">Inauguration Day</p>
-              <h2 id="inauguration-modal-title">You are now the {officeTitle}.</h2>
+              <p className="eyebrow">Simulation Briefing</p>
+              <h2 id="inauguration-modal-title">You are leading the financial system of {scenario.country}.</h2>
               <p className="muted">
                 You have inherited the <strong>{scenario.title}</strong> brief in {scenario.startingYear}, and every
-                policy choice from this point will shape growth, inflation, jobs, inequality, and the public mood.
+                decision from this point will shape markets, savings, loans, inflation, jobs, debt, and public trust.
               </p>
             </div>
 
             <div className="inauguration-grid">
               <section className="panel compact-panel stack-sm">
                 <p className="eyebrow">Your Role</p>
-                <h3>Chief steward of the economy</h3>
+                <h3>Finance and economy decision maker</h3>
                 <p>
-                  Lead a {scenario.politicalSystem.toLowerCase()} through a high-pressure macro cycle. Balance monetary,
-                  fiscal, and supply-side tools while protecting approval and governing credibility.
+                  Lead a {scenario.politicalSystem.toLowerCase()} through a high-pressure finance cycle. Balance interest rates,
+                  debt, banking stability, credit, markets, and household welfare while protecting credibility.
                 </p>
               </section>
 
               <section className="panel compact-panel stack-sm">
                 <p className="eyebrow">Your Mission</p>
-                <h3>Win the public and master the trade-offs</h3>
+                <h3>Protect households and master the trade-offs</h3>
                 <p>
                   Your immediate mission is to {firstGoal.charAt(0).toLowerCase() + firstGoal.slice(1)} while keeping
-                  households on side and building a record strong enough to {mandate.checkpointVerb}.
+                  households, investors, and public trust stable enough to {mandate.checkpointVerb}.
                 </p>
               </section>
             </div>
 
             <section className="panel compact-panel inauguration-term stack-sm">
-              <p className="eyebrow">Term Reminder</p>
-              <h3>This first mandate lasts four years.</h3>
+              <p className="eyebrow">Simulation Reminder</p>
+              <h3>The first checkpoint arrives after four years.</h3>
               <p>
-                After year {reelectionRound}, {mandate.checkpointAudience} judge your first mandate. If approval falls
+                After year {reelectionRound}, {mandate.checkpointAudience} judge your first simulation cycle. If approval falls
                 below {reelectionThreshold}%, {mandate.failureConsequence}
               </p>
             </section>
 
             <div className="section-header">
-              <p className="muted">Acknowledge the mandate to begin governing.</p>
+              <p className="muted">Acknowledge the briefing to begin the simulation.</p>
               <button className="button primary" onClick={acknowledgeInauguration} type="button">
-                I Accept This Mandate
+                Start Simulation
               </button>
             </div>
           </div>
@@ -1639,13 +1639,13 @@ export function PlayExperience() {
                 <p className="muted">
                   {electionFinished
                     ? electionNight.outcome === "won"
-                      ? electionNight.settledWinCopy ?? "The final calls are in. The next mandate begins immediately."
+                      ? electionNight.settledWinCopy ?? "The final calls are in. The next simulation cycle begins immediately."
                       : electionNight.settledLossCopy ?? "The result is settled. Your time in office ends tonight."
                     : electionNight.interimDeskCopy ?? "Each call shifts the live total until the result settles."}
                 </p>
                 {electionFinished ? (
                   <button className="button primary" onClick={continueAfterElectionNight} type="button">
-                    {run.complete ? "Continue To Results" : "Start New Mandate"}
+                    {run.complete ? "Continue To Results" : "Start Next Cycle"}
                   </button>
                 ) : null}
               </section>

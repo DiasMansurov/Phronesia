@@ -5,8 +5,8 @@ import { SavedGlossary } from "@/components/game/saved-glossary";
 import { BEGINNER_LESSONS, GLOSSARY_TERMS, LEARNING_LEVELS, TEXTBOOK_CASE_STUDIES } from "@/lib/game/learning";
 
 export const metadata: Metadata = {
-  title: "Learn Economics and Finance",
-  description: "Short economics and finance explanations used inside Phronesia learning mode.",
+  title: "Learn Finance and Economics",
+  description: "Short finance-first explanations used inside Phronesia learning mode.",
   alternates: {
     canonical: "/learn"
   }
@@ -18,9 +18,10 @@ export default function LearnPage() {
       <div className="hero-band compact">
         <div className="stack-sm">
           <p className="eyebrow">Learn</p>
-          <h1 className="display compact">Economics explained through consequences.</h1>
+          <h1 className="display compact">Finance explained through consequences.</h1>
           <p className="lede compact-lede">
-            The game teaches during play: each policy move changes the economy, then a short theory card explains why.
+            Phronesia teaches during play: each financial or policy decision changes households, markets, and the economy,
+            then a short theory card explains why.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/play/setup" prefetch={false}>
@@ -46,7 +47,7 @@ export default function LearnPage() {
         <div className="section-header">
           <div>
             <p className="eyebrow">Learning Path</p>
-            <h2>Start with four indicators, then grow into finance and crisis strategy.</h2>
+            <h2>Start with financial basics, then grow into markets, policy, and crisis strategy.</h2>
           </div>
         </div>
         <div className="level-path-grid expanded">
