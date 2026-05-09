@@ -4095,3 +4095,164 @@ h3 {
     overflow-wrap: anywhere;
   }
 }
+
+/* Final mobile overflow guard for real phone browsers */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.site-frame,
+main,
+.shell,
+.phronesia-home,
+.market-hero,
+.market-hero-copy,
+.market-terminal,
+.market-signal,
+.panel,
+.scenario-card,
+.feature-card,
+.progression-card,
+.mini-lab-card,
+.score-category-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.market-hero *,
+.panel *,
+.scenario-card *,
+.market-terminal * {
+  min-width: 0;
+}
+
+.market-display,
+.market-lede,
+.market-signal span,
+.market-signal strong,
+.terminal-score strong,
+.terminal-score small,
+.pill,
+.button,
+.text-link {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: 100%;
+    padding-inline: 0.75rem;
+  }
+
+  .section {
+    padding-top: 0.85rem;
+  }
+
+  .market-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 1rem;
+    width: 100%;
+    padding: 1rem;
+    overflow: hidden;
+  }
+
+  .market-display {
+    max-width: none;
+    font-size: clamp(2.25rem, 14vw, 3.6rem);
+    line-height: 0.98;
+  }
+
+  .market-lede {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  .market-hero .cta-row,
+  .market-signal-row,
+  .recommendation-grid,
+  .level-choice-grid,
+  .finance-progression-grid,
+  .feature-grid,
+  .finance-mini-lab-grid,
+  .score-category-grid,
+  .progress-overview-grid,
+  .scenario-filter-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+
+  .market-hero .button,
+  .market-hero .text-link {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .market-hero .text-link {
+    display: inline-flex;
+    justify-content: flex-start;
+    padding-block: 0.25rem;
+  }
+
+  .market-signal,
+  .market-terminal,
+  .level-choice-card,
+  .finance-scenario-card,
+  .progression-card,
+  .feature-card {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .terminal-topline,
+  .card-topline,
+  .stat-row,
+  .next-challenge-panel {
+    flex-wrap: wrap;
+  }
+
+  .terminal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .mini-chart {
+    width: 100%;
+    min-height: 120px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pill-row,
+  .concept-row {
+    max-width: 100%;
+  }
+
+  .pill,
+  .mini-status,
+  .concept-row span,
+  .concept-row small {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    padding-inline: 0.55rem;
+  }
+
+  .market-hero {
+    padding: 0.9rem;
+  }
+
+  .terminal-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
