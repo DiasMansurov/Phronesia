@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Attempt = {
   id: string;
   olympiadSlug: string;
   olympiadTitle: string;
-  teamName: string;
   participantLogin: string;
+  teamName: string;
   runId: string;
   scenarioTitle: string;
   status: "active" | "completed";
@@ -32,7 +32,7 @@ type Decision = {
   scoreAfter: number | null;
 };
 
-type AdminResponse = {
+type ResultsResponse = {
   ok?: boolean;
   persisted?: boolean;
   reason?: string;
@@ -41,14 +41,45 @@ type AdminResponse = {
   decisions?: Decision[];
 };
 
-export function OlympiadAdmin() {
+export function ResultsDashboard() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("Loading results...");
+  const [loading, setLoading] = useState(true);
+
+  async function loadResults() {
+    setLoading(true);
+    setStatus("Loading results...");
+    try {
+      const response = await fetch("/api/results", { cache: "no-store" });
+      const data = (await response.json()) as ResultsResponse;
+      if (!response.ok) throw new Error(data.error ?? "Unable to load results.");
+      setAttempts(data.attempts ?? []);
+      setDecisions(data.decisions ?? []);
+      setStatus(
+        data.persisted
+          ? "Results loaded."
+          : "Results opened, but Supabase persistence is not configured yet."
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to load results.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadResults();
+  }, []);
 
   const completed = attempts.filter((attempt) => attempt.status === "completed");
-  const topAttempt = [...completed].sort((a, b) => (b.finalScore ?? 0) - (a.finalScore ?? 0))[0];
+  const sortedAttempts = useMemo(
+    () => [...attempts].sort((a, b) => (b.finalScore ?? -1) - (a.finalScore ?? -1)),
+    [attempts]
+  );
+  const topAttempt = sortedAttempts.find((attempt) => attempt.finalScore !== null);
+  const olympiadLogins = new Set(attempts.map((attempt) => attempt.participantLogin || attempt.olympiadTitle));
+
   const decisionsByRun = useMemo(() => {
     const map = new Map<string, Decision[]>();
     for (const decision of decisions) {
@@ -59,66 +90,33 @@ export function OlympiadAdmin() {
     return map;
   }, [decisions]);
 
-  async function loadDashboard(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const code = String(formData.get("code") ?? "");
-    setLoading(true);
-    setStatus("Loading olympiad dashboard...");
-    try {
-      const response = await fetch("/api/olympiads/admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code })
-      });
-      const data = (await response.json()) as AdminResponse;
-      if (!response.ok) throw new Error(data.error ?? "Unable to open admin dashboard.");
-      setAttempts(data.attempts ?? []);
-      setDecisions(data.decisions ?? []);
-      setStatus(
-        data.persisted
-          ? "Dashboard loaded."
-          : "Dashboard opened, but Supabase persistence is not configured yet."
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to open admin dashboard.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <section className="shell section stack-lg">
       <div className="hero-band compact olympiad-hero">
         <div className="stack-sm">
-          <p className="eyebrow">Olympiad Admin</p>
-          <h1 className="display compact">Monitor teams, decisions, and rankings.</h1>
+          <p className="eyebrow">Organizer Results</p>
+          <h1 className="display compact">Olympiad teams, scores, and decisions.</h1>
           <p className="lede compact-lede">
-            Enter the admin access code to see team attempts, final scores, rank titles, summaries, and every saved policy decision.
+            Your organizer account can monitor each competition login, team name, final score, ranking, and the policies teams submitted during the scenario.
           </p>
         </div>
-        <form className="panel stack-md olympiad-login-card" onSubmit={loadDashboard} noValidate>
-          <p className="eyebrow">Admin access</p>
-          <label className="stack-xs">
-            <span>Admin code</span>
-            <input
-              name="code"
-              type="password"
-              autoComplete="off"
-              required
-            />
-          </label>
-          <button className="button primary" type="submit" disabled={loading}>
-            {loading ? "Loading..." : "Open Dashboard"}
+        <div className="panel stack-md olympiad-login-card">
+          <p className="eyebrow">Live overview</p>
+          <div className="stat-row">
+            <span>Status</span>
+            <strong>{loading ? "Loading" : "Ready"}</strong>
+          </div>
+          <p className="muted small">{status}</p>
+          <button className="button secondary" type="button" onClick={loadResults} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh Results"}
           </button>
-          {status ? <p className="muted small">{status}</p> : null}
-        </form>
+        </div>
       </div>
 
       <section className="stats-grid compact-stats olympiad-admin-stats">
+        <div className="stat-card"><span>Olympiads</span><strong>{olympiadLogins.size}</strong></div>
         <div className="stat-card"><span>Teams</span><strong>{attempts.length}</strong></div>
         <div className="stat-card"><span>Completed</span><strong>{completed.length}</strong></div>
-        <div className="stat-card"><span>Decisions</span><strong>{decisions.length}</strong></div>
         <div className="stat-card"><span>Leader</span><strong>{topAttempt?.teamName ?? "n/a"}</strong></div>
       </section>
 
@@ -129,12 +127,13 @@ export function OlympiadAdmin() {
             <h2>Teams by final score</h2>
           </div>
         </div>
-        {attempts.length ? (
+        {sortedAttempts.length ? (
           <div className="table-wrap">
             <table className="record-table">
               <thead>
                 <tr>
                   <th>Rank</th>
+                  <th>Olympiad login</th>
                   <th>Team</th>
                   <th>Scenario</th>
                   <th>Status</th>
@@ -144,19 +143,18 @@ export function OlympiadAdmin() {
                 </tr>
               </thead>
               <tbody>
-                {[...attempts]
-                  .sort((a, b) => (b.finalScore ?? -1) - (a.finalScore ?? -1))
-                  .map((attempt, index) => (
-                    <tr key={attempt.id}>
-                      <td>{attempt.finalScore === null ? "-" : index + 1}</td>
-                      <td>{attempt.teamName}</td>
-                      <td>{attempt.scenarioTitle}</td>
-                      <td>{attempt.status}</td>
-                      <td>{attempt.finalScore ?? "in progress"}</td>
-                      <td>{attempt.rankTitle ?? "n/a"}</td>
-                      <td>{attempt.roundsCompleted ?? 0}</td>
-                    </tr>
-                  ))}
+                {sortedAttempts.map((attempt, index) => (
+                  <tr key={attempt.id}>
+                    <td>{attempt.finalScore === null ? "-" : index + 1}</td>
+                    <td>{attempt.participantLogin || attempt.olympiadTitle}</td>
+                    <td>{attempt.teamName}</td>
+                    <td>{attempt.scenarioTitle}</td>
+                    <td>{attempt.status}</td>
+                    <td>{attempt.finalScore ?? "in progress"}</td>
+                    <td>{attempt.rankTitle ?? "n/a"}</td>
+                    <td>{attempt.roundsCompleted ?? 0}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -167,10 +165,10 @@ export function OlympiadAdmin() {
         )}
       </section>
 
-      {attempts.map((attempt) => (
+      {sortedAttempts.map((attempt) => (
         <details key={attempt.id} className="panel olympiad-attempt-detail">
           <summary>
-            <span>{attempt.teamName}</span>
+            <span>{attempt.participantLogin || attempt.olympiadTitle} · {attempt.teamName}</span>
             <strong>{attempt.finalScore ?? "in progress"} · {attempt.rankTitle ?? attempt.status}</strong>
           </summary>
           <div className="stack-md olympiad-detail-body">

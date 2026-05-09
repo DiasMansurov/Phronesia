@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/scenarios", priority: 0.9 },
     { path: "/play/setup", priority: 0.9 },
     { path: "/olympiad", priority: 0.8 },
+    { path: "/results", priority: 0.45 },
     { path: "/rankings", priority: 0.75 },
     { path: "/progress", priority: 0.7 },
     { path: "/teachers", priority: 0.75 },

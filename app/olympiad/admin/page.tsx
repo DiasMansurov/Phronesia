@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
-
-import { OlympiadAdmin } from "@/components/olympiad/olympiad-admin";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Olympiad Admin",
-  description: "Admin dashboard for Phronesia olympiad team scores, rankings, and policy decisions.",
+  title: "Organizer Results",
+  description: "Redirect to the organizer results dashboard for Phronesia olympiad team scores, rankings, and policy decisions.",
   alternates: {
-    canonical: "/olympiad/admin"
+    canonical: "/results"
   }
 };
 
 export default function OlympiadAdminPage() {
-  return <OlympiadAdmin />;
+  redirect("/results");
 }

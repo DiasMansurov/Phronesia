@@ -82,8 +82,7 @@ export function OlympiadPortal() {
             <input
               value={login}
               onChange={(event) => setLogin(event.target.value)}
-              placeholder="PHRONESIA-2008"
-              autoCapitalize="characters"
+              placeholder="Cask Finance"
             />
           </label>
           <label className="stack-xs">
@@ -113,7 +112,7 @@ export function OlympiadPortal() {
             ["1. Login", "Enter the code from the olympiad organizer and your team name."],
             ["2. Read the case", "The assigned scenario appears with the same rules for every team."],
             ["3. Simulate", "Choose policies, submit predictions, and complete the crisis."],
-            ["4. Ranking", "The admin dashboard stores scores and decisions for review."]
+            ["4. Ranking", "The organizer Results page stores scores and decisions for review."]
           ].map(([title, body]) => (
             <article key={title} className="goal-item">
               <strong>{title}</strong>
