@@ -19,12 +19,23 @@ export async function GET() {
     });
   }
 
-  const { attempts, decisions } = await listOlympiadAttemptsWithDecisions();
-  return NextResponse.json({
-    ok: true,
-    persisted: true,
-    olympiads: listActiveOlympiads(),
-    attempts,
-    decisions
-  });
+  try {
+    const { attempts, decisions } = await listOlympiadAttemptsWithDecisions();
+    return NextResponse.json({
+      ok: true,
+      persisted: true,
+      olympiads: listActiveOlympiads(),
+      attempts,
+      decisions
+    });
+  } catch {
+    return NextResponse.json({
+      ok: true,
+      persisted: false,
+      reason: "database_error",
+      olympiads: listActiveOlympiads(),
+      attempts: [],
+      decisions: []
+    });
+  }
 }

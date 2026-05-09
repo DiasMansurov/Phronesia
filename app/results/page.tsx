@@ -65,15 +65,24 @@ export default async function ResultsPage() {
     scenarioId: olympiad.scenarioId
   }));
 
-  const data = olympiadBackendConfigured()
-    ? await listOlympiadAttemptsWithDecisions()
-    : { attempts: [], decisions: [] };
+  const backendReady = olympiadBackendConfigured();
+  let data: Awaited<ReturnType<typeof listOlympiadAttemptsWithDecisions>> = { attempts: [], decisions: [] };
+  let loadError: string | undefined;
+
+  if (backendReady) {
+    try {
+      data = await listOlympiadAttemptsWithDecisions();
+    } catch {
+      loadError = "Results database is not ready yet. Apply the olympiad Supabase migration and check Supabase environment variables.";
+    }
+  }
 
   return (
     <ResultsDashboard
       initialData={{
-        persisted: olympiadBackendConfigured(),
-        reason: olympiadBackendConfigured() ? undefined : "missing_supabase_env",
+        persisted: backendReady && !loadError,
+        reason: loadError ? "database_error" : backendReady ? undefined : "missing_supabase_env",
+        loadError,
         olympiads,
         attempts: data.attempts,
         decisions: data.decisions

@@ -43,6 +43,7 @@ type Decision = {
 export type ResultsInitialData = {
   persisted: boolean;
   reason?: string;
+  loadError?: string;
   olympiads: Olympiad[];
   attempts: Attempt[];
   decisions: Decision[];
@@ -217,7 +218,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
 
   const statusText = initialData.persisted
     ? "Choose an olympiad folder to inspect rankings and team decisions."
-    : "Results opened, but Supabase persistence is not configured yet.";
+    : initialData.loadError ?? "Results opened, but Supabase persistence is not configured yet.";
 
   return (
     <section className="shell section stack-lg">
