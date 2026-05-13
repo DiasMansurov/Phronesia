@@ -1,10 +1,13 @@
 import type { MetadataRoute } from "next";
 
+import { getArticleSummaries } from "@/lib/articles";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = "https://phronesia.org";
   const routes = [
     { path: "", priority: 1 },
     { path: "/learn", priority: 0.9 },
+    { path: "/articles", priority: 0.85 },
     { path: "/finance-lab", priority: 0.95 },
     { path: "/scenarios", priority: 0.9 },
     { path: "/play/setup", priority: 0.9 },
@@ -16,10 +19,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/about", priority: 0.65 }
   ];
 
-  return routes.map((route) => ({
+  const staticRoutes = routes.map((route) => ({
     url: `${base}${route.path}`,
     lastModified: new Date(),
-    changeFrequency: "weekly",
+    changeFrequency: "weekly" as const,
     priority: route.priority
   }));
+
+  const articleRoutes = getArticleSummaries().map((article) => ({
+    url: `${base}/articles/${article.slug}`,
+    lastModified: new Date(article.date),
+    changeFrequency: "monthly" as const,
+    priority: 0.72
+  }));
+
+  return [...staticRoutes, ...articleRoutes];
 }

@@ -6,6 +6,7 @@ import { AuthControls } from "@/components/site/auth-controls";
 const links = [
   { href: "/", label: "Home" },
   { href: "/learn", label: "Learn" },
+  { href: "/articles", label: "Articles" },
   { href: "/finance-lab", label: "Finance Lab" },
   { href: "/scenarios", label: "Scenarios" },
   { href: "/play/setup", label: "Play" },

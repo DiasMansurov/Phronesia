@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 
 import { FinanceHome } from "@/components/site/finance-home";
+import { getFeaturedArticleSummaries } from "@/lib/articles";
 
 export const metadata: Metadata = {
   title: "Finance & Economics Education Through Simulation",
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
+  const featuredArticles = getFeaturedArticleSummaries();
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
@@ -45,7 +47,7 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <FinanceHome />
+      <FinanceHome featuredArticles={featuredArticles} />
     </>
   );
 }

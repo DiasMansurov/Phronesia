@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import type { ArticleSummary } from "@/lib/articles";
 import { SCENARIOS } from "@/lib/game/content";
 import {
   FINANCE_PROGRESSION_LEVELS,
@@ -46,7 +47,7 @@ function readStoredLevel(): UserLevelId {
   return USER_LEVELS.some((level) => level.id === stored) ? (stored as UserLevelId) : "beginner";
 }
 
-export function FinanceHome() {
+export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: ArticleSummary[] }) {
   const [userLevel, setUserLevel] = useState<UserLevelId>("beginner");
   const [completedIds, setCompletedIds] = useState<string[]>([]);
 
@@ -194,6 +195,35 @@ export function FinanceHome() {
           Start This Scenario
         </Link>
       </section>
+
+      {featuredArticles.length ? (
+        <section className="articles-preview-panel panel stack-md">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Latest Finance & Economics Articles</p>
+              <h2>Read the ideas behind the simulations.</h2>
+            </div>
+            <Link className="button secondary" href="/articles">
+              View All Articles
+            </Link>
+          </div>
+          <div className="article-preview-grid">
+            {featuredArticles.map((article) => (
+              <article className="article-preview-card" key={article.slug}>
+                <div className="article-card-topline">
+                  <span>{article.category}</span>
+                  <small>{article.level}</small>
+                </div>
+                <h3>{article.title}</h3>
+                <p>{article.excerpt}</p>
+                <Link className="text-link" href={`/articles/${article.slug}`}>
+                  Read article
+                </Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <details className="panel compact-details-panel">
         <summary>
