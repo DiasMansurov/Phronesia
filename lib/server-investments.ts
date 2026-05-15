@@ -82,6 +82,29 @@ const MARKET_CLOSED_MESSAGE =
   "US market is currently closed. Trading reopens at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
 
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
+type PriceSource = "live" | "cache" | "reference" | "unavailable";
+type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
+type MarketPriceResult =
+  | {
+      ok: true;
+      symbol: string;
+      priceDate: string;
+      closePrice: number;
+      adjustedClosePrice: number;
+      volume: number;
+      provider: string;
+      source: PriceSource;
+      message: string;
+      raw: unknown;
+    }
+  | {
+      ok: false;
+      symbol: string;
+      provider: string;
+      code: PriceFailureCode;
+      message: string;
+      raw?: unknown;
+    };
 
 function rowString(row: Payload, key: string) {
   return String(row[key] ?? "");
@@ -118,6 +141,44 @@ function alphaTypeToAssetType(type: unknown): "ETF" | "Stock" {
 function sanitizeAssetName(name: unknown, fallback: string) {
   const cleaned = String(name ?? "").trim();
   return cleaned ? cleaned.slice(0, 160) : fallback;
+}
+
+function parsePositiveNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function classifyAlphaResponse(data: Payload): { code: PriceFailureCode; message: string } | null {
+  if (typeof data["Error Message"] === "string") {
+    return { code: "symbol_not_found", message: "Symbol not found." };
+  }
+
+  const note = typeof data.Note === "string" ? data.Note : "";
+  const information = typeof data.Information === "string" ? data.Information : "";
+  const providerMessage = `${note} ${information}`.trim();
+  if (!providerMessage) return null;
+
+  if (/rate|limit|premium|standard api call frequency/i.test(providerMessage)) {
+    return { code: "rate_limit", message: "API rate limit reached. Try again later." };
+  }
+
+  return { code: "temporary_unavailable", message: "Market data temporarily unavailable." };
+}
+
+function choosePriceFailure(failures: MarketPriceResult[]) {
+  const failed = failures.filter((failure): failure is Extract<MarketPriceResult, { ok: false }> => !failure.ok);
+  const fallback = {
+      ok: false,
+      symbol: "",
+      provider: "alpha_vantage",
+      code: "temporary_unavailable" as const,
+      message: "Market data temporarily unavailable."
+  };
+  const rateLimit = failed.find((failure) => failure.code === "rate_limit");
+  if (rateLimit) return rateLimit;
+  const symbolNotFound = failed.find((failure) => failure.code === "symbol_not_found");
+  if (symbolNotFound) return symbolNotFound;
+  return failed.find((failure) => failure.code === "price_unavailable") ?? failed[0] ?? fallback;
 }
 
 function todayIsoInEt(date = new Date()) {
@@ -309,7 +370,7 @@ export async function validateAsset(symbol: string) {
   const candidate = existing ?? searchMatch ?? undefined;
   const latest = await getLatestClosePrice(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
-    return { ok: false as const, reason: "Price unavailable for this symbol." };
+    return { ok: false as const, reason: latest.priceMessage ?? "Daily close price unavailable." };
   }
 
   const asset =
@@ -329,44 +390,195 @@ export async function validateAsset(symbol: string) {
   return { ok: true as const, asset, price: latest };
 }
 
-export async function getDailyMarketPrice(symbol: string) {
+export async function getGlobalQuotePrice(symbol: string): Promise<MarketPriceResult> {
   const normalized = normalizeSymbol(symbol);
-  if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
+  if (!isSupportedSymbol(normalized)) {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "symbol_not_found",
+      message: "Symbol not found."
+    };
+  }
 
   const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
   const apiKey = process.env.MARKET_DATA_API_KEY;
   if (provider !== "alpha_vantage" || !apiKey) {
-    return null;
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "temporary_unavailable",
+      message: "Market data temporarily unavailable."
+    };
   }
 
   const params = new URLSearchParams({
-    function: "TIME_SERIES_DAILY_ADJUSTED",
+    function: "GLOBAL_QUOTE",
+    symbol: normalized,
+    apikey: apiKey
+  });
+
+  try {
+    const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        symbol: normalized,
+        provider: "alpha_vantage",
+        code: "temporary_unavailable",
+        message: "Market data temporarily unavailable."
+      };
+    }
+
+    const data = (await response.json()) as Payload;
+    const classified = classifyAlphaResponse(data);
+    if (classified) {
+      return { ok: false, symbol: normalized, provider: "alpha_vantage", ...classified, raw: data };
+    }
+
+    const quote = data["Global Quote"] as Payload | undefined;
+    const price = parsePositiveNumber(quote?.["05. price"]);
+    const tradingDay = String(quote?.["07. latest trading day"] ?? "").trim();
+    if (!price || !tradingDay) {
+      return {
+        ok: false,
+        symbol: normalized,
+        provider: "alpha_vantage",
+        code: "price_unavailable",
+        message: "Daily close price unavailable.",
+        raw: data
+      };
+    }
+
+    return {
+      ok: true,
+      symbol: normalized,
+      priceDate: tradingDay,
+      closePrice: price,
+      adjustedClosePrice: price,
+      volume: Number(quote?.["06. volume"] ?? 0),
+      provider: "alpha_vantage",
+      source: "live",
+      message: `Latest saved Alpha Vantage close from ${tradingDay}.`,
+      raw: quote
+    };
+  } catch {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "temporary_unavailable",
+      message: "Market data temporarily unavailable."
+    };
+  }
+}
+
+export async function getDailyClosePrice(symbol: string): Promise<MarketPriceResult> {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "symbol_not_found",
+      message: "Symbol not found."
+    };
+  }
+
+  const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
+  const apiKey = process.env.MARKET_DATA_API_KEY;
+  if (provider !== "alpha_vantage" || !apiKey) {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "temporary_unavailable",
+      message: "Market data temporarily unavailable."
+    };
+  }
+
+  const params = new URLSearchParams({
+    function: "TIME_SERIES_DAILY",
     symbol: normalized,
     outputsize: "compact",
     apikey: apiKey
   });
 
-  const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, {
-    cache: "no-store"
-  });
-  if (!response.ok) throw new Error(`Alpha Vantage request failed for ${normalized}.`);
+  try {
+    const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        symbol: normalized,
+        provider: "alpha_vantage",
+        code: "temporary_unavailable",
+        message: "Market data temporarily unavailable."
+      };
+    }
 
-  const data = (await response.json()) as Payload;
-  const series = data["Time Series (Daily)"] as Record<string, Payload> | undefined;
-  if (!series) return null;
+    const data = (await response.json()) as Payload;
+    const classified = classifyAlphaResponse(data);
+    if (classified) {
+      return { ok: false, symbol: normalized, provider: "alpha_vantage", ...classified, raw: data };
+    }
 
-  const [priceDate, latest] = Object.entries(series).sort(([a], [b]) => (a < b ? 1 : -1))[0] ?? [];
-  if (!priceDate || !latest) return null;
+    const series = data["Time Series (Daily)"] as Record<string, Payload> | undefined;
+    if (!series || !Object.keys(series).length) {
+      return {
+        ok: false,
+        symbol: normalized,
+        provider: "alpha_vantage",
+        code: "price_unavailable",
+        message: "Daily close price unavailable.",
+        raw: data
+      };
+    }
 
-  return {
-    symbol: normalized,
-    priceDate,
-    closePrice: Number(latest["4. close"]),
-    adjustedClosePrice: Number(latest["5. adjusted close"] ?? latest["4. close"]),
-    volume: Number(latest["6. volume"] ?? 0),
-    provider: "alpha_vantage",
-    raw: latest
-  };
+    const [priceDate, latest] = Object.entries(series).sort(([a], [b]) => (a < b ? 1 : -1))[0] ?? [];
+    const closePrice = parsePositiveNumber(latest?.["4. close"]);
+    if (!priceDate || !latest || !closePrice) {
+      return {
+        ok: false,
+        symbol: normalized,
+        provider: "alpha_vantage",
+        code: "price_unavailable",
+        message: "Daily close price unavailable.",
+        raw: data
+      };
+    }
+
+    return {
+      ok: true,
+      symbol: normalized,
+      priceDate,
+      closePrice,
+      adjustedClosePrice: closePrice,
+      volume: Number(latest["5. volume"] ?? 0),
+      provider: "alpha_vantage",
+      source: "live",
+      message: `Latest Alpha Vantage daily close from ${priceDate}.`,
+      raw: latest
+    };
+  } catch {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "alpha_vantage",
+      code: "temporary_unavailable",
+      message: "Market data temporarily unavailable."
+    };
+  }
+}
+
+export async function getDailyMarketPrice(symbol: string) {
+  const price = await getDailyClosePrice(symbol);
+  return price.ok ? price : null;
 }
 
 export async function getLatestClosePrice(
@@ -378,44 +590,50 @@ export async function getLatestClosePrice(
   if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
   const allowReferenceFallback = options.allowReferenceFallback ?? true;
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
+  const failures: MarketPriceResult[] = [];
 
-  try {
-    const marketPrice = await getDailyMarketPrice(normalized);
-    if (marketPrice?.closePrice && Number.isFinite(marketPrice.closePrice)) {
-      if (supabaseConfigured()) {
-        await upsertInvestmentAsset({
-          symbol: normalized,
-          name: asset?.name ?? normalized,
-          type: asset?.type ?? "Stock",
-          theme: asset?.theme ?? "US-listed asset",
-          referencePrice: marketPrice.closePrice,
-          region: asset?.region ?? "United States",
-          currency: asset?.currency ?? "USD",
-          exchange: asset?.exchange ?? null,
-          featured: Boolean(asset?.featured)
-        });
-        await upsertInvestmentDailyPrice(marketPrice);
-      }
-      return {
-        latestClose: marketPrice.closePrice,
-        priceDate: marketPrice.priceDate,
-        provider: marketPrice.provider,
-        priceAvailable: true
-      };
-    }
-  } catch {
-    // Stored prices are the fallback when the provider is rate-limited or temporarily unavailable.
+  const globalQuote = await getGlobalQuotePrice(normalized);
+  if (globalQuote.ok) {
+    await savePriceToCache(normalized, globalQuote.closePrice, globalQuote.priceDate, asset, globalQuote);
+    return {
+      latestClose: globalQuote.closePrice,
+      priceDate: globalQuote.priceDate,
+      provider: globalQuote.provider,
+      priceAvailable: true,
+      priceSource: "live" as const,
+      priceMessage: globalQuote.message
+    };
+  }
+  failures.push(globalQuote);
+
+  const dailyClose = await getDailyClosePrice(normalized);
+  if (dailyClose.ok) {
+    await savePriceToCache(normalized, dailyClose.closePrice, dailyClose.priceDate, asset, dailyClose);
+    return {
+      latestClose: dailyClose.closePrice,
+      priceDate: dailyClose.priceDate,
+      provider: dailyClose.provider,
+      priceAvailable: true,
+      priceSource: "live" as const,
+      priceMessage: dailyClose.message
+    };
+  }
+  failures.push(dailyClose);
+
+  const stored = await getCachedPrice(normalized);
+  if (stored) {
+    return stored;
   }
 
-  const stored = await getStoredLatestPrice(normalized);
-  if (stored) return stored;
-
   if (!allowReferenceFallback) {
+    const failure = choosePriceFailure(failures);
     return {
       latestClose: 0,
       priceDate: null,
-      provider: "unavailable",
-      priceAvailable: false
+      provider: failure.provider,
+      priceAvailable: false,
+      priceSource: "unavailable" as const,
+      priceMessage: failure.message
     };
   }
 
@@ -423,8 +641,55 @@ export async function getLatestClosePrice(
     latestClose: asset?.referencePrice ?? 0,
     priceDate: null,
     provider: "educational_reference",
-    priceAvailable: Boolean(asset?.referencePrice)
+    priceAvailable: Boolean(asset?.referencePrice),
+    priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
+    priceMessage: asset?.referencePrice ? "Educational reference price shown until a market close is saved." : "Daily close price unavailable."
   };
+}
+
+export async function getCachedPrice(symbol: string) {
+  const stored = await getStoredLatestPrice(normalizeSymbol(symbol));
+  if (!stored) return null;
+  return {
+    ...stored,
+    provider: stored.provider || "alpha_vantage",
+    priceSource: "cache" as const,
+    priceMessage: `Using latest saved close price from ${stored.priceDate}.`
+  };
+}
+
+export async function savePriceToCache(
+  symbol: string,
+  price: number,
+  tradingDay: string,
+  assetInput?: InvestmentAsset | null,
+  marketPrice?: Extract<MarketPriceResult, { ok: true }>
+) {
+  const normalized = normalizeSymbol(symbol);
+  if (!supabaseConfigured() || !price || !tradingDay) return null;
+
+  const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
+  await upsertInvestmentAsset({
+    symbol: normalized,
+    name: asset?.name ?? normalized,
+    type: asset?.type ?? "Stock",
+    theme: asset?.theme ?? "US-listed asset",
+    referencePrice: price,
+    region: asset?.region ?? "United States",
+    currency: asset?.currency ?? "USD",
+    exchange: asset?.exchange ?? null,
+    featured: Boolean(asset?.featured)
+  });
+
+  return upsertInvestmentDailyPrice({
+    symbol: normalized,
+    priceDate: tradingDay,
+    closePrice: price,
+    adjustedClosePrice: marketPrice?.adjustedClosePrice ?? price,
+    volume: marketPrice?.volume ?? 0,
+    provider: marketPrice?.provider ?? "alpha_vantage",
+    raw: marketPrice?.raw ?? { cached: true }
+  });
 }
 
 export async function updateDailyPrices() {
@@ -434,13 +699,12 @@ export async function updateDailyPrices() {
 
   for (const asset of assets) {
     try {
-      const price = await getDailyMarketPrice(asset.symbol);
-      if (!price) {
-        results.push({ symbol: asset.symbol, ok: false, message: "No Alpha Vantage daily series returned." });
+      const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false });
+      if (!price.priceAvailable) {
+        results.push({ symbol: asset.symbol, ok: false, message: price.priceMessage ?? "Daily close price unavailable." });
         continue;
       }
-      await upsertInvestmentDailyPrice(price);
-      results.push({ symbol: asset.symbol, ok: true });
+      results.push({ symbol: asset.symbol, ok: true, message: price.priceMessage });
     } catch (error) {
       results.push({
         symbol: asset.symbol,
@@ -790,12 +1054,17 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
 
   return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
+    const storedDate = stored ? rowString(stored, "price_date") : null;
     return {
       ...asset,
       latestClose: stored ? rowNumber(stored, "close_price", asset.referencePrice) : asset.referencePrice,
-      priceDate: stored ? rowString(stored, "price_date") : null,
+      priceDate: storedDate,
       provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
-      priceAvailable: Boolean(stored || asset.referencePrice > 0)
+      priceAvailable: Boolean(stored || asset.referencePrice > 0),
+      priceSource: stored ? ("cache" as const) : ("reference" as const),
+      priceMessage: storedDate
+        ? `Using latest saved close price from ${storedDate}.`
+        : "Educational reference price shown until a market close is saved."
     };
   });
 }
@@ -837,14 +1106,18 @@ async function resolveInvestmentAsset(symbol: string): Promise<InvestmentAsset |
   if (featured) return featured;
 
   if (!supabaseConfigured()) return null;
-  const rows = await selectRows("investment_assets", {
-    select: "*",
-    symbol: `eq.${normalized}`,
-    enabled: "eq.true",
-    limit: "1"
-  });
-  if (!Array.isArray(rows) || !rows[0]) return null;
-  return mapAssetRow(rows[0]);
+  try {
+    const rows = await selectRows("investment_assets", {
+      select: "*",
+      symbol: `eq.${normalized}`,
+      enabled: "eq.true",
+      limit: "1"
+    });
+    if (!Array.isArray(rows) || !rows[0]) return null;
+    return mapAssetRow(rows[0]);
+  } catch {
+    return null;
+  }
 }
 
 function mapAssetRow(row: Payload): InvestmentAsset {
@@ -959,19 +1232,23 @@ async function upsertInvestmentDailyPrice(price: {
 
 async function getStoredLatestPrice(symbol: string) {
   if (!supabaseConfigured()) return null;
-  const rows = await selectRows("investment_daily_prices", {
-    select: "symbol,price_date,close_price,provider",
-    symbol: `eq.${symbol}`,
-    order: "price_date.desc",
-    limit: "1"
-  });
-  if (!Array.isArray(rows) || !rows[0]) return null;
-  return {
-    latestClose: rowNumber(rows[0], "close_price"),
-    priceDate: rowString(rows[0], "price_date"),
-    provider: rowString(rows[0], "provider") || "stored",
-    priceAvailable: true
-  };
+  try {
+    const rows = await selectRows("investment_daily_prices", {
+      select: "symbol,price_date,close_price,provider",
+      symbol: `eq.${symbol}`,
+      order: "price_date.desc",
+      limit: "1"
+    });
+    if (!Array.isArray(rows) || !rows[0]) return null;
+    return {
+      latestClose: rowNumber(rows[0], "close_price"),
+      priceDate: rowString(rows[0], "price_date"),
+      provider: rowString(rows[0], "provider") || "stored",
+      priceAvailable: true
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getAccountRow(accountId: string) {
@@ -1009,7 +1286,11 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     latestClose: priceMapInput?.get(asset.symbol) ?? asset.referencePrice,
     priceDate: null,
     provider: priceMapInput?.has(asset.symbol) ? "stored" : "educational_reference",
-    priceAvailable: Boolean(priceMapInput?.has(asset.symbol) || asset.referencePrice > 0)
+    priceAvailable: Boolean(priceMapInput?.has(asset.symbol) || asset.referencePrice > 0),
+    priceSource: priceMapInput?.has(asset.symbol) ? ("cache" as const) : ("reference" as const),
+    priceMessage: priceMapInput?.has(asset.symbol)
+      ? "Using latest saved close price."
+      : "Educational reference price shown until a market close is saved."
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)

@@ -5627,6 +5627,23 @@ li,
   background: rgba(230, 247, 241, 0.72);
 }
 
+.asset-direct-pick {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed rgba(15, 107, 122, 0.32);
+  border-radius: 8px;
+  background: rgba(230, 247, 241, 0.52);
+  color: var(--accent-strong);
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.asset-direct-pick:hover {
+  border-color: rgba(15, 107, 122, 0.58);
+  background: rgba(230, 247, 241, 0.86);
+}
+
 .asset-results strong {
   grid-area: symbol;
   align-self: center;

@@ -53,7 +53,9 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     latestClose: asset.referencePrice,
     priceDate: null,
     provider: "educational_reference",
-    priceAvailable: true
+    priceAvailable: true,
+    priceSource: "reference",
+    priceMessage: "Educational reference price shown until a market close is saved."
   }));
 }
 
@@ -77,6 +79,7 @@ export function InvestmentChallengeDashboard() {
   const [assetQuery, setAssetQuery] = useState("SPY");
   const [assetResults, setAssetResults] = useState<InvestmentAssetSearchResult[]>([]);
   const [assetSearchStatus, setAssetSearchStatus] = useState("");
+  const [priceLoading, setPriceLoading] = useState(false);
   const [side, setSide] = useState<TradeSide>("buy");
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
@@ -140,7 +143,7 @@ export function InvestmentChallengeDashboard() {
   const estimatedGross = selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
   const estimatedFee = estimatedGross * INVESTMENT_TRANSACTION_FEE_RATE;
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
-  const canTrade = Boolean(account && marketStatus.isOpen && !busy && selectedQuote.priceAvailable);
+  const canTrade = Boolean(account && marketStatus.isOpen && !busy && !priceLoading && selectedQuote.priceAvailable);
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
 
   async function loadMarket() {
@@ -200,18 +203,22 @@ export function InvestmentChallengeDashboard() {
   }
 
   async function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
+    const hasOptimisticPrice = Boolean(asset.priceAvailable || asset.latestClose || asset.referencePrice);
     const optimistic: InvestmentAssetQuote = {
       ...asset,
       latestClose: asset.latestClose ?? asset.referencePrice,
       priceDate: asset.priceDate ?? null,
       provider: "search",
-      priceAvailable: Boolean(asset.priceAvailable || asset.latestClose || asset.referencePrice)
+      priceAvailable: hasOptimisticPrice,
+      priceSource: hasOptimisticPrice ? "reference" : "unavailable",
+      priceMessage: hasOptimisticPrice ? "Checking Alpha Vantage for the latest close price..." : "Checking latest close price..."
     };
     setSymbol(asset.symbol);
     setAssetQuery(asset.symbol);
     setSelectedQuote(optimistic);
     setAssetResults([]);
     setAssetSearchStatus("Checking latest close price...");
+    setPriceLoading(true);
 
     try {
       const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(asset.symbol)}`, {
@@ -223,11 +230,30 @@ export function InvestmentChallengeDashboard() {
         setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
         setAssetSearchStatus("");
       } else {
-        setSelectedQuote({ ...optimistic, latestClose: 0, priceAvailable: false, provider: "unavailable" });
+        const reason = data.reason ?? "Daily close price unavailable.";
+        setSelectedQuote({
+          ...optimistic,
+          latestClose: 0,
+          priceAvailable: false,
+          provider: "unavailable",
+          priceSource: "unavailable",
+          priceMessage: reason
+        });
         setAssetSearchStatus(data.reason ?? "Price unavailable for this asset.");
       }
     } catch {
-      setAssetSearchStatus("Price unavailable right now. Try another symbol or use a featured asset.");
+      const reason = "Market data temporarily unavailable.";
+      setSelectedQuote({
+        ...optimistic,
+        latestClose: 0,
+        priceAvailable: false,
+        provider: "unavailable",
+        priceSource: "unavailable",
+        priceMessage: reason
+      });
+      setAssetSearchStatus(reason);
+    } finally {
+      setPriceLoading(false);
     }
   }
 
@@ -292,6 +318,10 @@ export function InvestmentChallengeDashboard() {
   const educationCards = market.educationalCards.filter((card) =>
     ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
   );
+  const typedTickerCandidate = assetQuery.trim().toUpperCase();
+  const canTryTypedTicker =
+    /^[A-Z][A-Z0-9.-]{0,11}$/.test(typedTickerCandidate) &&
+    !assetResults.some((asset) => asset.symbol === typedTickerCandidate);
 
   return (
     <div className="investment-app stack-xl">
@@ -402,6 +432,27 @@ export function InvestmentChallengeDashboard() {
                 ))}
               </div>
             ) : null}
+            {canTryTypedTicker ? (
+              <button
+                className="asset-direct-pick"
+                type="button"
+                onClick={() =>
+                  selectAsset({
+                    symbol: typedTickerCandidate,
+                    name: typedTickerCandidate,
+                    type: "Stock",
+                    theme: "US-listed asset",
+                    referencePrice: 0,
+                    region: "United States",
+                    currency: "USD",
+                    exchange: null,
+                    featured: false
+                  })
+                }
+              >
+                Use ticker {typedTickerCandidate} and check price
+              </button>
+            ) : null}
             {assetSearchStatus ? <p className="asset-search-status">{assetSearchStatus}</p> : null}
           </div>
 
@@ -413,8 +464,13 @@ export function InvestmentChallengeDashboard() {
             </div>
             <div>
               <span>Latest close</span>
-              <strong>{selectedQuote.priceAvailable ? formatUsd(selectedQuote.latestClose) : "Price unavailable"}</strong>
-              <p>{selectedQuote.priceDate ? `Close date: ${selectedQuote.priceDate}` : selectedQuote.provider}</p>
+              <strong>
+                {priceLoading ? "Checking..." : selectedQuote.priceAvailable ? formatUsd(selectedQuote.latestClose) : "Price unavailable"}
+              </strong>
+              <p>
+                {selectedQuote.priceMessage ??
+                  (selectedQuote.priceDate ? `Close date: ${selectedQuote.priceDate}` : selectedQuote.provider)}
+              </p>
             </div>
           </div>
 
@@ -454,9 +510,11 @@ export function InvestmentChallengeDashboard() {
           </div>
 
           {!marketStatus.isOpen ? <p className="market-closed-note">{closedMessage}</p> : null}
-          {!selectedQuote.priceAvailable ? <p className="market-closed-note">Price unavailable. Select another asset or try again later.</p> : null}
+          {!selectedQuote.priceAvailable ? (
+            <p className="market-closed-note">{selectedQuote.priceMessage ?? "Daily close price unavailable."}</p>
+          ) : null}
           <button className="button primary" type="submit" disabled={!canTrade}>
-            Submit server-validated trade
+            {priceLoading ? "Checking latest close..." : "Submit server-validated trade"}
           </button>
         </form>
       </section>

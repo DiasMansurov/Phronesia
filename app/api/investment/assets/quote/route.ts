@@ -21,7 +21,9 @@ export async function GET(request: Request) {
       latestClose: validation.price.latestClose,
       priceDate: validation.price.priceDate,
       provider: validation.price.provider,
-      priceAvailable: validation.price.priceAvailable
+      priceAvailable: validation.price.priceAvailable,
+      priceSource: validation.price.priceSource,
+      priceMessage: validation.price.priceMessage
     }
   });
 }

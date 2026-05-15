@@ -40,6 +40,8 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   priceDate: string | null;
   provider: string;
   priceAvailable: boolean;
+  priceSource?: "live" | "cache" | "reference" | "unavailable";
+  priceMessage?: string;
 };
 
 export type InvestmentAssetSearchResult = InvestmentAsset & {
