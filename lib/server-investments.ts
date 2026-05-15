@@ -5,7 +5,9 @@ import {
   INVESTMENT_TRANSACTION_FEE_RATE,
   clampScore,
   getInvestmentAsset,
+  type InvestmentAsset,
   type InvestmentAssetQuote,
+  type InvestmentAssetSearchResult,
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
@@ -31,6 +33,8 @@ export type InvestmentAccountView = {
 
 export type InvestmentHoldingView = {
   symbol: string;
+  assetName: string;
+  assetType: string;
   quantity: number;
   averageBuyPrice: number;
   latestClose: number;
@@ -48,6 +52,7 @@ export type InvestmentPortfolioSummary = {
   dailyChange: number;
   totalReturn: number;
   diversificationScore: number;
+  riskScore: number;
 };
 
 export type InvestmentThesisView = {
@@ -74,7 +79,9 @@ export type InvestmentLeaderboardRow = {
 };
 
 const MARKET_CLOSED_MESSAGE =
-  "US market is currently closed. Trading will reopen at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
+  "US market is currently closed. Trading reopens at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
+
+const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
 
 function rowString(row: Payload, key: string) {
   return String(row[key] ?? "");
@@ -93,6 +100,24 @@ function rowNumber(row: Payload, key: string, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
+}
+
+function normalizeSymbol(symbol: string) {
+  return symbol.trim().toUpperCase();
+}
+
+function isSupportedSymbol(symbol: string) {
+  return SYMBOL_PATTERN.test(normalizeSymbol(symbol));
+}
+
+function alphaTypeToAssetType(type: unknown): "ETF" | "Stock" {
+  const value = String(type ?? "").toLowerCase();
+  return value.includes("etf") || value.includes("fund") ? "ETF" : "Stock";
+}
+
+function sanitizeAssetName(name: unknown, fallback: string) {
+  const cleaned = String(name ?? "").trim();
+  return cleaned ? cleaned.slice(0, 160) : fallback;
 }
 
 function todayIsoInEt(date = new Date()) {
@@ -236,9 +261,77 @@ export function isValidUsMarketDay(date = new Date()) {
   return status.isMarketDay;
 }
 
+export async function searchAssets(query: string): Promise<InvestmentAssetSearchResult[]> {
+  const keyword = query.trim();
+  if (keyword.length < 1) return featuredAssetSearchResults();
+
+  const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
+  const apiKey = process.env.MARKET_DATA_API_KEY;
+
+  if (provider === "alpha_vantage" && apiKey) {
+    try {
+      const params = new URLSearchParams({
+        function: "SYMBOL_SEARCH",
+        keywords: keyword,
+        apikey: apiKey
+      });
+      const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, { cache: "no-store" });
+      if (response.ok) {
+        const data = (await response.json()) as Payload;
+        const matches = (data.bestMatches as Payload[] | undefined) ?? [];
+        const normalized = matches
+          .map(mapAlphaSearchMatch)
+          .filter((asset): asset is InvestmentAssetSearchResult => Boolean(asset))
+          .filter((asset) => asset.region === "United States" && asset.currency === "USD")
+          .filter((asset) => asset.type === "Stock" || asset.type === "ETF")
+          .slice(0, 12);
+        if (normalized.length) return normalized;
+      }
+    } catch {
+      // Fall through to local featured search when the provider is rate-limited.
+    }
+  }
+
+  const lower = keyword.toLowerCase();
+  return featuredAssetSearchResults().filter(
+    (asset) => asset.symbol.toLowerCase().includes(lower) || asset.name.toLowerCase().includes(lower)
+  );
+}
+
+export async function validateAsset(symbol: string) {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) {
+    return { ok: false as const, reason: "Invalid ticker format." };
+  }
+
+  const existing = await resolveInvestmentAsset(normalized);
+  const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
+  const candidate = existing ?? searchMatch ?? undefined;
+  const latest = await getLatestClosePrice(normalized, candidate, { allowReferenceFallback: false });
+  if (!latest.priceAvailable) {
+    return { ok: false as const, reason: "Price unavailable for this symbol." };
+  }
+
+  const asset =
+    candidate ??
+    ({
+      symbol: normalized,
+      name: normalized,
+      type: "Stock",
+      theme: "US-listed asset",
+      referencePrice: latest.latestClose,
+      region: "United States",
+      currency: "USD",
+      exchange: null,
+      featured: false
+    } satisfies InvestmentAsset);
+  await upsertInvestmentAsset({ ...asset, referencePrice: latest.latestClose });
+  return { ok: true as const, asset, price: latest };
+}
+
 export async function getDailyMarketPrice(symbol: string) {
-  const asset = getInvestmentAsset(symbol);
-  if (!asset) throw new Error("Unsupported investment asset.");
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
 
   const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
   const apiKey = process.env.MARKET_DATA_API_KEY;
@@ -248,7 +341,7 @@ export async function getDailyMarketPrice(symbol: string) {
 
   const params = new URLSearchParams({
     function: "TIME_SERIES_DAILY_ADJUSTED",
-    symbol: asset.symbol,
+    symbol: normalized,
     outputsize: "compact",
     apikey: apiKey
   });
@@ -256,7 +349,7 @@ export async function getDailyMarketPrice(symbol: string) {
   const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, {
     cache: "no-store"
   });
-  if (!response.ok) throw new Error(`Alpha Vantage request failed for ${asset.symbol}.`);
+  if (!response.ok) throw new Error(`Alpha Vantage request failed for ${normalized}.`);
 
   const data = (await response.json()) as Payload;
   const series = data["Time Series (Daily)"] as Record<string, Payload> | undefined;
@@ -266,7 +359,7 @@ export async function getDailyMarketPrice(symbol: string) {
   if (!priceDate || !latest) return null;
 
   return {
-    symbol: asset.symbol,
+    symbol: normalized,
     priceDate,
     closePrice: Number(latest["4. close"]),
     adjustedClosePrice: Number(latest["5. adjusted close"] ?? latest["4. close"]),
@@ -276,41 +369,70 @@ export async function getDailyMarketPrice(symbol: string) {
   };
 }
 
-export async function getLatestClosePrice(symbol: string) {
-  const asset = getInvestmentAsset(symbol);
-  if (!asset) throw new Error("Unsupported investment asset.");
+export async function getLatestClosePrice(
+  symbol: string,
+  assetInput?: InvestmentAsset,
+  options: { allowReferenceFallback?: boolean } = {}
+) {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
+  const allowReferenceFallback = options.allowReferenceFallback ?? true;
+  const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
 
   try {
-    const marketPrice = await getDailyMarketPrice(asset.symbol);
+    const marketPrice = await getDailyMarketPrice(normalized);
     if (marketPrice?.closePrice && Number.isFinite(marketPrice.closePrice)) {
       if (supabaseConfigured()) {
+        await upsertInvestmentAsset({
+          symbol: normalized,
+          name: asset?.name ?? normalized,
+          type: asset?.type ?? "Stock",
+          theme: asset?.theme ?? "US-listed asset",
+          referencePrice: marketPrice.closePrice,
+          region: asset?.region ?? "United States",
+          currency: asset?.currency ?? "USD",
+          exchange: asset?.exchange ?? null,
+          featured: Boolean(asset?.featured)
+        });
         await upsertInvestmentDailyPrice(marketPrice);
       }
       return {
         latestClose: marketPrice.closePrice,
         priceDate: marketPrice.priceDate,
-        provider: marketPrice.provider
+        provider: marketPrice.provider,
+        priceAvailable: true
       };
     }
   } catch {
     // Stored prices are the fallback when the provider is rate-limited or temporarily unavailable.
   }
 
-  const stored = await getStoredLatestPrice(asset.symbol);
+  const stored = await getStoredLatestPrice(normalized);
   if (stored) return stored;
 
+  if (!allowReferenceFallback) {
+    return {
+      latestClose: 0,
+      priceDate: null,
+      provider: "unavailable",
+      priceAvailable: false
+    };
+  }
+
   return {
-    latestClose: asset.referencePrice,
+    latestClose: asset?.referencePrice ?? 0,
     priceDate: null,
-    provider: "educational_reference"
+    provider: "educational_reference",
+    priceAvailable: Boolean(asset?.referencePrice)
   };
 }
 
 export async function updateDailyPrices() {
   await ensureInvestmentSeedData();
   const results: Array<{ symbol: string; ok: boolean; message?: string }> = [];
+  const assets = await listInvestmentAssets();
 
-  for (const asset of INVESTMENT_ASSETS) {
+  for (const asset of assets) {
     try {
       const price = await getDailyMarketPrice(asset.symbol);
       if (!price) {
@@ -449,6 +571,11 @@ export async function ensureInvestmentSeedData() {
         name: asset.name,
         asset_type: asset.type,
         theme: asset.theme,
+        region: asset.region ?? "United States",
+        currency: asset.currency ?? "USD",
+        exchange: asset.exchange ?? null,
+        reference_price: asset.referencePrice,
+        featured: Boolean(asset.featured),
         enabled: true,
         sort_order: index + 1
       },
@@ -517,18 +644,21 @@ export async function executeInvestmentTrade(input: {
   const account = await getAccountRow(input.accountId);
   if (!account) return { ok: false as const, reason: "Investment account was not found." };
 
-  const asset = getInvestmentAsset(input.symbol);
   const quantity = Number(input.quantity);
-  if (!asset) return rejectTrade(account, input.symbol, input.side, quantity, "Unsupported asset.");
-  if (input.side !== "buy" && input.side !== "sell") return rejectTrade(account, asset.symbol, input.side, quantity, "Invalid trade side.");
+  const normalizedSymbol = normalizeSymbol(input.symbol);
+  if (input.side !== "buy" && input.side !== "sell") return rejectTrade(account, normalizedSymbol, input.side, quantity, "Invalid trade side.");
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return rejectTrade(account, asset.symbol, input.side, quantity, "Quantity must be a positive whole number of shares.");
+    return rejectTrade(account, normalizedSymbol, input.side, quantity, "Quantity must be a positive whole number of shares.");
   }
   if (!status.isOpen) {
-    return rejectTrade(account, asset.symbol, input.side, quantity, status.message);
+    return rejectTrade(account, normalizedSymbol, input.side, quantity, status.message);
   }
 
-  const latest = await getLatestClosePrice(asset.symbol);
+  const validation = await validateAsset(normalizedSymbol);
+  if (!validation.ok) return rejectTrade(account, normalizedSymbol, input.side, quantity, validation.reason);
+  const asset = validation.asset;
+
+  const latest = validation.price;
   const price = latest.latestClose;
   if (!price || !Number.isFinite(price) || price <= 0) {
     return rejectTrade(account, asset.symbol, input.side, quantity, "Latest close price is unavailable.");
@@ -638,30 +768,151 @@ export async function listInvestmentAdminBundle() {
 }
 
 export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[]> {
-  const storedRows = supabaseConfigured()
-    ? await selectRows("investment_daily_prices", {
+  const assets = await listInvestmentAssets();
+  let storedRows: Payload[] = [];
+  if (supabaseConfigured()) {
+    try {
+      const rows = await selectRows("investment_daily_prices", {
         select: "symbol,price_date,close_price,provider",
         order: "price_date.desc",
         limit: "400"
-      })
-    : [];
-  const latestBySymbol = new Map<string, Payload>();
-  if (Array.isArray(storedRows)) {
-    for (const row of storedRows) {
-      const symbol = rowString(row, "symbol");
-      if (!latestBySymbol.has(symbol)) latestBySymbol.set(symbol, row);
+      });
+      storedRows = Array.isArray(rows) ? rows : [];
+    } catch {
+      storedRows = [];
     }
   }
+  const latestBySymbol = new Map<string, Payload>();
+  for (const row of storedRows) {
+    const symbol = rowString(row, "symbol");
+    if (!latestBySymbol.has(symbol)) latestBySymbol.set(symbol, row);
+  }
 
-  return INVESTMENT_ASSETS.map((asset) => {
+  return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
     return {
       ...asset,
       latestClose: stored ? rowNumber(stored, "close_price", asset.referencePrice) : asset.referencePrice,
       priceDate: stored ? rowString(stored, "price_date") : null,
-      provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference"
+      provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
+      priceAvailable: Boolean(stored || asset.referencePrice > 0)
     };
   });
+}
+
+async function listInvestmentAssets(): Promise<InvestmentAsset[]> {
+  const assets = new Map<string, InvestmentAsset>();
+  for (const asset of INVESTMENT_ASSETS) {
+    assets.set(asset.symbol, asset);
+  }
+
+  if (supabaseConfigured()) {
+    try {
+      const rows = await selectRows("investment_assets", {
+        select: "*",
+        enabled: "eq.true",
+        order: "featured.desc,sort_order.asc,symbol.asc",
+        limit: "300"
+      });
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          const asset = mapAssetRow(row);
+          assets.set(asset.symbol, { ...assets.get(asset.symbol), ...asset });
+        }
+      }
+    } catch {
+      return Array.from(assets.values());
+    }
+  }
+
+  return Array.from(assets.values()).sort((a, b) => {
+    if (a.featured !== b.featured) return a.featured ? -1 : 1;
+    return a.symbol.localeCompare(b.symbol);
+  });
+}
+
+async function resolveInvestmentAsset(symbol: string): Promise<InvestmentAsset | null> {
+  const normalized = normalizeSymbol(symbol);
+  const featured = getInvestmentAsset(normalized);
+  if (featured) return featured;
+
+  if (!supabaseConfigured()) return null;
+  const rows = await selectRows("investment_assets", {
+    select: "*",
+    symbol: `eq.${normalized}`,
+    enabled: "eq.true",
+    limit: "1"
+  });
+  if (!Array.isArray(rows) || !rows[0]) return null;
+  return mapAssetRow(rows[0]);
+}
+
+function mapAssetRow(row: Payload): InvestmentAsset {
+  const symbol = normalizeSymbol(rowString(row, "symbol"));
+  return {
+    symbol,
+    name: rowString(row, "name") || symbol,
+    type: alphaTypeToAssetType(rowString(row, "asset_type")),
+    theme: rowString(row, "theme") || "US-listed asset",
+    referencePrice: rowNumber(row, "reference_price"),
+    region: rowString(row, "region") || "United States",
+    currency: rowString(row, "currency") || "USD",
+    exchange: rowNullableString(row, "exchange"),
+    featured: Boolean(row.featured)
+  };
+}
+
+async function upsertInvestmentAsset(asset: InvestmentAsset) {
+  if (!supabaseConfigured()) return null;
+  return upsertRow(
+    "investment_assets",
+    {
+      symbol: normalizeSymbol(asset.symbol),
+      name: asset.name,
+      asset_type: asset.type,
+      theme: asset.theme || "US-listed asset",
+      region: asset.region ?? "United States",
+      currency: asset.currency ?? "USD",
+      exchange: asset.exchange ?? null,
+      reference_price: asset.referencePrice ?? 0,
+      featured: Boolean(asset.featured),
+      enabled: true
+    },
+    "symbol"
+  );
+}
+
+function featuredAssetSearchResults(): InvestmentAssetSearchResult[] {
+  return INVESTMENT_ASSETS.map((asset, index) => ({
+    ...asset,
+    matchScore: 1 - index / 100,
+    latestClose: asset.referencePrice,
+    priceAvailable: true,
+    priceDate: null
+  }));
+}
+
+function mapAlphaSearchMatch(match: Payload): InvestmentAssetSearchResult | null {
+  const symbol = normalizeSymbol(String(match["1. symbol"] ?? ""));
+  if (!isSupportedSymbol(symbol)) return null;
+  const region = String(match["4. region"] ?? "").trim();
+  const currency = String(match["8. currency"] ?? "").trim();
+  const type = alphaTypeToAssetType(match["3. type"]);
+  return {
+    symbol,
+    name: sanitizeAssetName(match["2. name"], symbol),
+    type,
+    theme: type === "ETF" ? "Exchange-traded fund" : "US-listed company",
+    referencePrice: getInvestmentAsset(symbol)?.referencePrice ?? 0,
+    region,
+    currency,
+    exchange: null,
+    featured: Boolean(getInvestmentAsset(symbol)?.featured),
+    matchScore: Number(match["9. matchScore"] ?? 0),
+    priceAvailable: false,
+    latestClose: null,
+    priceDate: null
+  };
 }
 
 async function ensureDefaultCompetition(slug = DEFAULT_INVESTMENT_COMPETITION_SLUG) {
@@ -718,7 +969,8 @@ async function getStoredLatestPrice(symbol: string) {
   return {
     latestClose: rowNumber(rows[0], "close_price"),
     priceDate: rowString(rows[0], "price_date"),
-    provider: rowString(rows[0], "provider") || "stored"
+    provider: rowString(rows[0], "provider") || "stored",
+    priceAvailable: true
   };
 }
 
@@ -744,18 +996,20 @@ async function getHoldingRow(accountId: string, symbol: string) {
 async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
   const account = await getAccountRow(accountId);
   if (!account) return null;
-  const [holdingsRows, quotes, thesisRows, previousSnapshotValue] = await Promise.all([
+  const [holdingsRows, quotes, thesisRows, previousSnapshotValue, assets] = await Promise.all([
     selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "symbol.asc" }),
     priceMapInput ? Promise.resolve(null) : listInvestmentAssetQuotes(),
     selectRows("investment_theses", { select: "*", account_id: `eq.${accountId}`, limit: "1" }),
-    getPreviousSnapshotTotal(accountId)
+    getPreviousSnapshotTotal(accountId),
+    listInvestmentAssets()
   ]);
 
-  const quoteList = quotes ?? INVESTMENT_ASSETS.map((asset) => ({
+  const quoteList = quotes ?? assets.map((asset) => ({
     ...asset,
     latestClose: priceMapInput?.get(asset.symbol) ?? asset.referencePrice,
     priceDate: null,
-    provider: priceMapInput?.has(asset.symbol) ? "stored" : "educational_reference"
+    provider: priceMapInput?.has(asset.symbol) ? "stored" : "educational_reference",
+    priceAvailable: Boolean(priceMapInput?.has(asset.symbol) || asset.referencePrice > 0)
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)
@@ -763,12 +1017,15 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
         .filter((row) => rowNumber(row, "quantity") > 0)
         .map((row) => {
           const symbol = rowString(row, "symbol");
-          const latestClose = priceMap.get(symbol) ?? getInvestmentAsset(symbol)?.referencePrice ?? 0;
+          const asset = quoteList.find((quote) => quote.symbol === symbol) ?? getInvestmentAsset(symbol);
+          const latestClose = priceMap.get(symbol) ?? asset?.referencePrice ?? 0;
           const quantity = rowNumber(row, "quantity");
           const averageBuyPrice = rowNumber(row, "average_buy_price");
           const marketValue = quantity * latestClose;
           return {
             symbol,
+            assetName: asset?.name ?? symbol,
+            assetType: asset?.type ?? "Stock",
             quantity,
             averageBuyPrice,
             latestClose,
@@ -817,7 +1074,8 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       totalValue,
       dailyChange,
       totalReturn: startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0,
-      diversificationScore: calculateDiversificationScore(holdingViews, totalValue)
+      diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
+      riskScore: calculateRiskScore(holdingViews, totalValue)
     },
     marketStatus: getMarketStatus()
   };
@@ -829,6 +1087,15 @@ function calculateDiversificationScore(holdings: InvestmentHoldingView[], totalV
   const concentrationPenalty = maxWeight <= 0.2 ? 0 : ((maxWeight - 0.2) / 0.8) * 100;
   const assetCountBonus = Math.min(20, holdings.length * 4);
   return clampScore(100 - concentrationPenalty + assetCountBonus - 20);
+}
+
+function calculateRiskScore(holdings: InvestmentHoldingView[], totalValue: number) {
+  if (!holdings.length || totalValue <= 0) return 0;
+  const singleStockWeight = holdings
+    .filter((holding) => holding.assetType === "Stock")
+    .reduce((sum, holding) => sum + holding.marketValue / totalValue, 0);
+  const maxWeight = holdings.reduce((max, holding) => Math.max(max, holding.marketValue / totalValue), 0);
+  return clampScore(100 - singleStockWeight * 45 - Math.max(0, maxWeight - 0.2) * 120);
 }
 
 function scoreThesis(input: { thesis: string; risks: string; diversificationLogic: string; macroView: string }) {

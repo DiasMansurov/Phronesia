@@ -11,6 +11,10 @@ export type InvestmentAsset = {
   type: InvestmentAssetType;
   theme: string;
   referencePrice: number;
+  region?: string;
+  currency?: string;
+  exchange?: string | null;
+  featured?: boolean;
 };
 
 export type InvestmentMarketStatus = {
@@ -35,24 +39,32 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   latestClose: number;
   priceDate: string | null;
   provider: string;
+  priceAvailable: boolean;
+};
+
+export type InvestmentAssetSearchResult = InvestmentAsset & {
+  matchScore?: number;
+  priceAvailable?: boolean;
+  latestClose?: number | null;
+  priceDate?: string | null;
 };
 
 export const INVESTMENT_ASSETS: InvestmentAsset[] = [
-  { symbol: "SPY", name: "SPDR S&P 500 ETF", type: "ETF", theme: "Broad US stocks", referencePrice: 520 },
-  { symbol: "QQQ", name: "Invesco QQQ ETF", type: "ETF", theme: "Large technology stocks", referencePrice: 440 },
-  { symbol: "VTI", name: "Vanguard Total Stock Market ETF", type: "ETF", theme: "Total US market", referencePrice: 255 },
-  { symbol: "GLD", name: "SPDR Gold Shares", type: "ETF", theme: "Gold exposure", referencePrice: 215 },
-  { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", type: "ETF", theme: "Long US bonds", referencePrice: 92 },
-  { symbol: "AAPL", name: "Apple", type: "Stock", theme: "Consumer technology", referencePrice: 190 },
-  { symbol: "MSFT", name: "Microsoft", type: "Stock", theme: "Software and cloud", referencePrice: 420 },
-  { symbol: "NVDA", name: "NVIDIA", type: "Stock", theme: "AI chips", referencePrice: 120 },
-  { symbol: "TSLA", name: "Tesla", type: "Stock", theme: "Electric vehicles", referencePrice: 180 },
-  { symbol: "JPM", name: "JPMorgan Chase", type: "Stock", theme: "Banking", referencePrice: 205 },
-  { symbol: "KO", name: "Coca-Cola", type: "Stock", theme: "Consumer staples", referencePrice: 62 },
-  { symbol: "XOM", name: "Exxon Mobil", type: "Stock", theme: "Energy", referencePrice: 115 },
-  { symbol: "AMZN", name: "Amazon", type: "Stock", theme: "E-commerce and cloud", referencePrice: 185 },
-  { symbol: "META", name: "Meta Platforms", type: "Stock", theme: "Social media and AI", referencePrice: 500 },
-  { symbol: "GOOGL", name: "Alphabet", type: "Stock", theme: "Search, ads, and cloud", referencePrice: 170 }
+  { symbol: "SPY", name: "SPDR S&P 500 ETF", type: "ETF", theme: "Broad US stocks", referencePrice: 520, region: "United States", currency: "USD", exchange: "NYSE Arca", featured: true },
+  { symbol: "QQQ", name: "Invesco QQQ ETF", type: "ETF", theme: "Large technology stocks", referencePrice: 440, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "VTI", name: "Vanguard Total Stock Market ETF", type: "ETF", theme: "Total US market", referencePrice: 255, region: "United States", currency: "USD", exchange: "NYSE Arca", featured: true },
+  { symbol: "GLD", name: "SPDR Gold Shares", type: "ETF", theme: "Gold exposure", referencePrice: 215, region: "United States", currency: "USD", exchange: "NYSE Arca", featured: true },
+  { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", type: "ETF", theme: "Long US bonds", referencePrice: 92, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "AAPL", name: "Apple Inc.", type: "Stock", theme: "Consumer technology", referencePrice: 190, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "MSFT", name: "Microsoft Corporation", type: "Stock", theme: "Software and cloud", referencePrice: 420, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "NVDA", name: "NVIDIA Corporation", type: "Stock", theme: "AI chips", referencePrice: 120, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "TSLA", name: "Tesla Inc.", type: "Stock", theme: "Electric vehicles", referencePrice: 180, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "JPM", name: "JPMorgan Chase & Co.", type: "Stock", theme: "Banking", referencePrice: 205, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "KO", name: "Coca-Cola Company", type: "Stock", theme: "Consumer staples", referencePrice: 62, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "XOM", name: "Exxon Mobil Corporation", type: "Stock", theme: "Energy", referencePrice: 115, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "AMZN", name: "Amazon.com Inc.", type: "Stock", theme: "E-commerce and cloud", referencePrice: 185, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "META", name: "Meta Platforms Inc.", type: "Stock", theme: "Social media and AI", referencePrice: 500, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "GOOGL", name: "Alphabet Inc.", type: "Stock", theme: "Search, ads, and cloud", referencePrice: 170, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true }
 ];
 
 export const INVESTMENT_EDUCATIONAL_CARDS: InvestmentEducationalCard[] = [

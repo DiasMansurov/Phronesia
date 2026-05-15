@@ -5408,3 +5408,487 @@ li,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Investment Challenge redesign */
+.investment-app,
+.investment-app * {
+  min-width: 0;
+}
+
+.investment-app {
+  overflow-x: clip;
+}
+
+.investment-hero-v2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  gap: clamp(1rem, 2.5vw, 1.5rem);
+  align-items: stretch;
+  width: 100%;
+  padding: clamp(1.1rem, 3vw, 2rem);
+  border: 1px solid rgba(8, 79, 92, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(7, 29, 34, 0.98), rgba(8, 77, 83, 0.94)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 84px);
+  color: #f7fbf7;
+  box-shadow: 0 28px 80px rgba(8, 42, 49, 0.18);
+}
+
+.investment-hero-copy {
+  align-content: center;
+}
+
+.investment-hero-copy .eyebrow,
+.investment-hero-copy .text-link {
+  color: #8cefd2;
+}
+
+.investment-hero-copy h1 {
+  max-width: 12.5ch;
+  font-size: clamp(2.35rem, 7vw, 5.25rem);
+  line-height: 0.95;
+  overflow-wrap: normal;
+}
+
+.investment-hero-copy p {
+  max-width: 62ch;
+  margin: 0;
+  color: rgba(247, 251, 247, 0.76);
+  font-size: clamp(1rem, 1.6vw, 1.12rem);
+  line-height: 1.65;
+}
+
+.market-status-card-v2 {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.market-status-head,
+.leaderboard-preview-row,
+.asset-results button,
+.selected-asset-card,
+.trade-estimate-grid,
+.market-status-grid {
+  display: grid;
+}
+
+.market-status-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.market-status-head span,
+.market-status-grid span,
+.trade-estimate-grid span,
+.selected-asset-card span,
+.metric-card-v2 span {
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.market-status-card-v2 p {
+  margin: 0;
+  color: rgba(247, 251, 247, 0.72);
+  line-height: 1.48;
+}
+
+.market-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.market-status-grid div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.market-status-grid span {
+  color: rgba(247, 251, 247, 0.62);
+}
+
+.market-status-grid strong {
+  color: #f7fbf7;
+  font-size: 0.96rem;
+}
+
+.investment-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.72fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.portfolio-panel,
+.trade-ticket-v2,
+.holdings-panel-v2,
+.investment-thesis-panel,
+.leaderboard-preview-panel {
+  width: 100%;
+  overflow: visible;
+}
+
+.team-setup-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.portfolio-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.metric-card-v2 {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 5.8rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(8, 79, 92, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.metric-card-v2 strong {
+  font-family: var(--font-heading), serif;
+  font-size: clamp(1.18rem, 2.4vw, 1.8rem);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.investment-status {
+  padding: 0.8rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(15, 107, 122, 0.08);
+}
+
+.trade-ticket-v2 {
+  gap: 1rem;
+  border-color: rgba(15, 107, 122, 0.2);
+}
+
+.asset-picker {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.asset-results {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  z-index: 12;
+  display: grid;
+  gap: 0.35rem;
+  max-height: min(22rem, 56vh);
+  overflow: auto;
+  padding: 0.45rem;
+  border: 1px solid rgba(8, 79, 92, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 52px rgba(8, 42, 49, 0.18);
+}
+
+.asset-results button {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "symbol name"
+    "symbol meta";
+  gap: 0.1rem 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(8, 79, 92, 0.08);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.asset-results button:hover {
+  border-color: rgba(15, 107, 122, 0.3);
+  background: rgba(230, 247, 241, 0.72);
+}
+
+.asset-results strong {
+  grid-area: symbol;
+  align-self: center;
+  color: var(--accent-strong);
+}
+
+.asset-results span {
+  grid-area: name;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.asset-results small {
+  grid-area: meta;
+  color: var(--ink-soft);
+}
+
+.asset-search-status {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.selected-asset-card {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr);
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(8, 79, 92, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(15, 107, 122, 0.1), rgba(255, 255, 255, 0.9)),
+    #fff;
+}
+
+.selected-asset-card div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.selected-asset-card strong {
+  font-family: var(--font-heading), serif;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+  line-height: 1;
+}
+
+.selected-asset-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.featured-asset-row,
+.trade-side-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.featured-asset-row button,
+.trade-side-toggle button {
+  min-height: 2.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(8, 79, 92, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.featured-asset-row button.selected,
+.trade-side-toggle button.selected {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), #1e8a73);
+  color: #fff;
+}
+
+.trade-estimate-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.trade-estimate-grid div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  background: rgba(15, 107, 122, 0.08);
+}
+
+.trade-estimate-grid strong {
+  font-size: 1.08rem;
+}
+
+.investment-table-v2 {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.investment-table-v2 th,
+.investment-table-v2 td {
+  padding: 0.85rem 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.investment-table-v2 td:nth-child(2) {
+  color: var(--ink-soft);
+}
+
+.mobile-holding-cards {
+  display: none;
+}
+
+.mobile-holding-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.mobile-holding-card > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.mobile-holding-card span {
+  color: var(--ink-soft);
+}
+
+.mobile-holding-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.mobile-holding-card dt {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mobile-holding-card dd {
+  margin: 0.1rem 0 0;
+  font-weight: 800;
+}
+
+.leaderboard-preview-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.leaderboard-preview-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.leaderboard-preview-row > span {
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.leaderboard-preview-row div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.leaderboard-preview-row small,
+.score-formula-note {
+  color: var(--ink-soft);
+}
+
+.leaderboard-preview-row b {
+  display: grid;
+  place-items: center;
+  min-width: 2.6rem;
+  min-height: 2.6rem;
+  border-radius: 999px;
+  background: rgba(15, 107, 122, 0.1);
+  color: var(--accent-strong);
+}
+
+.score-formula-note {
+  padding: 0.85rem;
+  border-radius: 8px;
+  background: rgba(15, 107, 122, 0.07);
+  line-height: 1.5;
+}
+
+.investment-education-grid-v2 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+@media (max-width: 1080px) {
+  .investment-hero-v2,
+  .investment-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investment-hero-copy h1 {
+    max-width: 100%;
+  }
+
+  .portfolio-metric-grid,
+  .investment-education-grid-v2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-setup-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .investment-hero-v2 {
+    padding: 1rem;
+  }
+
+  .investment-hero-copy h1 {
+    font-size: clamp(2.25rem, 13vw, 3.6rem);
+  }
+
+  .market-status-grid,
+  .portfolio-metric-grid,
+  .trade-estimate-grid,
+  .selected-asset-card,
+  .investment-education-grid-v2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investment-hero-v2 .button,
+  .trade-ticket-v2 .button,
+  .investment-thesis-panel .button {
+    width: 100%;
+  }
+
+  .asset-results {
+    position: static;
+    max-height: 18rem;
+  }
+
+  .desktop-holdings {
+    display: none;
+  }
+
+  .mobile-holding-cards {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .mobile-holding-card dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

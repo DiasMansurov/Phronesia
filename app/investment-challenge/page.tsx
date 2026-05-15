@@ -7,7 +7,7 @@ import { InvestmentChallengeDashboard } from "@/components/investment/investment
 export const metadata: Metadata = {
   title: "Phronesia Investment Challenge — Virtual Stock Market Simulation",
   description:
-    "Students manage a $100,000 virtual portfolio using real market data to learn stocks, ETFs, diversification, risk, and financial decision-making.",
+    "Build a $100,000 virtual portfolio using real market data and learn stocks, ETFs, diversification, risk, and financial decision-making.",
   alternates: {
     canonical: "https://phronesia.org/investment-challenge"
   },

@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   INVESTMENT_ASSETS,
   INVESTMENT_EDUCATIONAL_CARDS,
   INVESTMENT_STARTING_CASH,
+  INVESTMENT_TRANSACTION_FEE_RATE,
   formatPercent,
   formatUsd,
   type InvestmentAssetQuote,
+  type InvestmentAssetSearchResult,
   type InvestmentEducationalCard,
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
-import type { InvestmentAccountView } from "@/lib/server-investments";
+import type { InvestmentAccountView, InvestmentLeaderboardRow } from "@/lib/server-investments";
 
 type MarketPayload = {
   marketStatus: InvestmentMarketStatus;
@@ -22,7 +24,14 @@ type MarketPayload = {
   educationalCards: InvestmentEducationalCard[];
 };
 
+type LeaderboardPayload = {
+  rows: InvestmentLeaderboardRow[];
+  persisted: boolean;
+};
+
 const accountStorageKey = "phronesia.investmentChallenge.accountId";
+const closedMessage =
+  "US market is currently closed. Trading reopens at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
 
 function defaultMarketStatus(): InvestmentMarketStatus {
   return {
@@ -34,26 +43,40 @@ function defaultMarketStatus(): InvestmentMarketStatus {
     etTime: "",
     opensAtEt: "9:30 AM ET",
     closesAtEt: "4:00 PM ET",
-    message:
-      "US market is currently closed. Trading will reopen at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled."
+    message: closedMessage
   };
+}
+
+function featuredQuotes(): InvestmentAssetQuote[] {
+  return INVESTMENT_ASSETS.map((asset) => ({
+    ...asset,
+    latestClose: asset.referencePrice,
+    priceDate: null,
+    provider: "educational_reference",
+    priceAvailable: true
+  }));
+}
+
+function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) {
+  const filtered = quotes.filter((quote) => quote.symbol !== next.symbol);
+  return [next, ...filtered];
 }
 
 export function InvestmentChallengeDashboard() {
   const [market, setMarket] = useState<MarketPayload>({
     marketStatus: defaultMarketStatus(),
-    quotes: INVESTMENT_ASSETS.map((asset) => ({
-      ...asset,
-      latestClose: asset.referencePrice,
-      priceDate: null,
-      provider: "educational_reference"
-    })),
+    quotes: featuredQuotes(),
     educationalCards: INVESTMENT_EDUCATIONAL_CARDS
   });
+  const [leaderboard, setLeaderboard] = useState<LeaderboardPayload>({ rows: [], persisted: false });
   const [account, setAccount] = useState<InvestmentAccountView | null>(null);
   const [teamName, setTeamName] = useState("");
   const [participantLogin, setParticipantLogin] = useState("");
   const [symbol, setSymbol] = useState("SPY");
+  const [selectedQuote, setSelectedQuote] = useState<InvestmentAssetQuote>(featuredQuotes()[0]);
+  const [assetQuery, setAssetQuery] = useState("SPY");
+  const [assetResults, setAssetResults] = useState<InvestmentAssetSearchResult[]>([]);
+  const [assetSearchStatus, setAssetSearchStatus] = useState("");
   const [side, setSide] = useState<TradeSide>("buy");
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
@@ -67,6 +90,7 @@ export function InvestmentChallengeDashboard() {
 
   useEffect(() => {
     void loadMarket();
+    void loadLeaderboard();
     const storedAccountId = window.localStorage.getItem(accountStorageKey);
     if (storedAccountId) void loadAccount(storedAccountId);
   }, []);
@@ -81,17 +105,58 @@ export function InvestmentChallengeDashboard() {
     });
   }, [account]);
 
+  useEffect(() => {
+    const query = assetQuery.trim();
+    if (query.length < 2) {
+      setAssetResults([]);
+      setAssetSearchStatus("");
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      setAssetSearchStatus("Searching assets...");
+      try {
+        const response = await fetch(`/api/investment/assets/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        const data = (await response.json()) as { results?: InvestmentAssetSearchResult[] };
+        if (cancelled) return;
+        setAssetResults(data.results ?? []);
+        setAssetSearchStatus(data.results?.length ? "" : "No US-listed stocks or ETFs found.");
+      } catch {
+        if (!cancelled) setAssetSearchStatus("Asset search is temporarily unavailable.");
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [assetQuery]);
+
   const quotes = account?.quotes ?? market.quotes;
-  const selectedQuote = useMemo(() => quotes.find((quote) => quote.symbol === symbol) ?? quotes[0], [quotes, symbol]);
   const marketStatus = account?.marketStatus ?? market.marketStatus;
   const portfolio = account?.portfolio;
-  const canTrade = Boolean(account && marketStatus.isOpen && !busy);
+  const holdingsCount = account?.holdings.length ?? 0;
+  const estimatedGross = selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
+  const estimatedFee = estimatedGross * INVESTMENT_TRANSACTION_FEE_RATE;
+  const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
+  const canTrade = Boolean(account && marketStatus.isOpen && !busy && selectedQuote.priceAvailable);
+  const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
     if (!response.ok) return;
     const data = (await response.json()) as MarketPayload;
     setMarket(data);
+    const current = data.quotes.find((quote) => quote.symbol === symbol) ?? data.quotes[0];
+    if (current) setSelectedQuote(current);
+  }
+
+  async function loadLeaderboard() {
+    const response = await fetch("/api/investment/leaderboard", { cache: "no-store" });
+    if (!response.ok) return;
+    const data = (await response.json()) as LeaderboardPayload;
+    setLeaderboard(data);
   }
 
   async function loadAccount(accountId: string) {
@@ -103,7 +168,11 @@ export function InvestmentChallengeDashboard() {
       return;
     }
     const data = (await response.json()) as { account: InvestmentAccountView | null };
-    if (data.account) setAccount(data.account);
+    if (data.account) {
+      setAccount(data.account);
+      const current = data.account.quotes.find((quote) => quote.symbol === symbol) ?? data.account.quotes[0];
+      if (current) setSelectedQuote(current);
+    }
   }
 
   async function createAccount(event: React.FormEvent<HTMLFormElement>) {
@@ -124,8 +193,41 @@ export function InvestmentChallengeDashboard() {
       window.localStorage.setItem(accountStorageKey, data.account.account.id);
       setAccount(data.account);
       setStatus(`Portfolio ready for ${data.account.account.teamName}.`);
+      void loadLeaderboard();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
+    const optimistic: InvestmentAssetQuote = {
+      ...asset,
+      latestClose: asset.latestClose ?? asset.referencePrice,
+      priceDate: asset.priceDate ?? null,
+      provider: "search",
+      priceAvailable: Boolean(asset.priceAvailable || asset.latestClose || asset.referencePrice)
+    };
+    setSymbol(asset.symbol);
+    setAssetQuery(asset.symbol);
+    setSelectedQuote(optimistic);
+    setAssetResults([]);
+    setAssetSearchStatus("Checking latest close price...");
+
+    try {
+      const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(asset.symbol)}`, {
+        cache: "no-store"
+      });
+      const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string };
+      if (response.ok && data.ok && data.quote) {
+        setSelectedQuote(data.quote);
+        setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
+        setAssetSearchStatus("");
+      } else {
+        setSelectedQuote({ ...optimistic, latestClose: 0, priceAvailable: false, provider: "unavailable" });
+        setAssetSearchStatus(data.reason ?? "Price unavailable for this asset.");
+      }
+    } catch {
+      setAssetSearchStatus("Price unavailable right now. Try another symbol or use a featured asset.");
     }
   }
 
@@ -156,6 +258,7 @@ export function InvestmentChallengeDashboard() {
       setStatus(
         `${side === "buy" ? "Bought" : "Sold"} ${quantity} ${symbol} at ${formatUsd(data.price ?? 0)}. Fee: ${formatUsd(data.fee ?? 0)}.`
       );
+      void loadLeaderboard();
     } finally {
       setBusy(false);
     }
@@ -179,21 +282,27 @@ export function InvestmentChallengeDashboard() {
       }
       setAccount(data.account);
       setStatus(`Investment thesis saved. Thesis score: ${data.account.thesis?.thesisScore ?? 0}/100.`);
+      void loadLeaderboard();
     } finally {
       setBusy(false);
     }
   }
 
+  const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
+  const educationCards = market.educationalCards.filter((card) =>
+    ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
+  );
+
   return (
     <div className="investment-app stack-xl">
-      <section className="investment-hero">
-        <div className="stack-lg">
+      <section className="investment-hero-v2">
+        <div className="investment-hero-copy stack-lg">
           <div className="stack-sm">
             <p className="eyebrow">Phronesia Investment Challenge</p>
-            <h1 className="display investment-display">Build a $100,000 virtual portfolio.</h1>
-            <p className="lede compact-lede">
-              Use real daily closing prices to learn stocks, ETFs, risk, diversification, thesis writing, and market
-              discipline. No real money is used. This is not financial advice.
+            <h1>Build a $100,000 virtual portfolio</h1>
+            <p>
+              Search US stocks and ETFs, use daily closing prices, write an investment thesis, and learn how return,
+              risk, diversification, and market discipline work together.
             </p>
           </div>
           <div className="cta-row">
@@ -203,51 +312,40 @@ export function InvestmentChallengeDashboard() {
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               View Leaderboard
             </Link>
-            <Link className="text-link" href="/investment-challenge/rules">
+            <Link className="button secondary" href="/investment-challenge/rules">
               Read Rules
             </Link>
           </div>
         </div>
-        <aside className="investment-market-card">
-          <div className="terminal-topline">
+        <aside className="market-status-card-v2">
+          <div className="market-status-head">
             <span>US market</span>
             <strong className={marketStatus.isOpen ? "positive-text" : "negative-text"}>
               {marketStatus.isOpen ? "Open" : "Closed"}
             </strong>
           </div>
-          <p>{marketStatus.message}</p>
-          <div className="terminal-grid">
-            <div>
-              <span>Starting cash</span>
-              <strong>{formatUsd(INVESTMENT_STARTING_CASH)}</strong>
-            </div>
-            <div>
-              <span>Fee</span>
-              <strong>0.1%</strong>
-            </div>
-            <div>
-              <span>Data</span>
-              <strong>Daily close</strong>
-            </div>
-            <div>
-              <span>ET time</span>
-              <strong>{marketStatus.etTime || "Review"}</strong>
-            </div>
+          <p>{compactMarketMessage}</p>
+          <div className="market-status-grid">
+            <div><span>Starting cash</span><strong>{formatUsd(INVESTMENT_STARTING_CASH)}</strong></div>
+            <div><span>Fee</span><strong>0.1%</strong></div>
+            <div><span>Prices</span><strong>Daily close</strong></div>
+            <div><span>ET time</span><strong>{marketStatus.etTime || "Review"}</strong></div>
           </div>
         </aside>
       </section>
 
-      <section className="investment-grid" id="team-portfolio">
-        <div className="panel stack-md">
+      <section className="investment-dashboard-grid" id="team-portfolio">
+        <article className="panel stack-md portfolio-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Team setup</p>
-              <h2>{account ? account.account.teamName : "Create your portfolio account."}</h2>
+              <p className="eyebrow">Portfolio dashboard</p>
+              <h2>{account ? account.account.teamName : "Create your team account"}</h2>
             </div>
             <span className="pill">Virtual cash only</span>
           </div>
+
           {!account ? (
-            <form className="stack-sm" onSubmit={createAccount}>
+            <form className="team-setup-form" onSubmit={createAccount}>
               <label className="form-field">
                 <span>Team name</span>
                 <input value={teamName} onChange={(event) => setTeamName(event.target.value)} required />
@@ -260,74 +358,85 @@ export function InvestmentChallengeDashboard() {
                 Create $100,000 Portfolio
               </button>
             </form>
-          ) : (
-            <div className="investment-kpi-grid">
-              <div className="stat-card">
-                <span>Starting balance</span>
-                <strong>{formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)}</strong>
-              </div>
-              <div className="stat-card">
-                <span>Current cash</span>
-                <strong>{formatUsd(portfolio?.cash ?? 0)}</strong>
-              </div>
-              <div className="stat-card">
-                <span>Total value</span>
-                <strong>{formatUsd(portfolio?.totalValue ?? 0)}</strong>
-              </div>
-              <div className="stat-card">
-                <span>Total return</span>
-                <strong className={(portfolio?.totalReturn ?? 0) >= 0 ? "positive-text" : "negative-text"}>
-                  {formatPercent(portfolio?.totalReturn ?? 0)}
-                </strong>
-              </div>
-              <div className="stat-card">
-                <span>Daily change</span>
-                <strong className={(portfolio?.dailyChange ?? 0) >= 0 ? "positive-text" : "negative-text"}>
-                  {formatPercent(portfolio?.dailyChange ?? 0)}
-                </strong>
-              </div>
-              <div className="stat-card">
-                <span>Diversification</span>
-                <strong>{portfolio?.diversificationScore ?? 0}/100</strong>
-              </div>
-            </div>
-          )}
-          {status ? <p className="form-status">{status}</p> : null}
-        </div>
+          ) : null}
 
-        <form className="panel stack-md trade-ticket" onSubmit={submitTrade}>
+          <div className="portfolio-metric-grid">
+            <MetricCard label="Starting balance" value={formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)} />
+            <MetricCard label="Current cash" value={formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH)} />
+            <MetricCard label="Portfolio value" value={formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH)} />
+            <MetricCard label="Daily change" value={formatPercent(portfolio?.dailyChange ?? 0)} tone={(portfolio?.dailyChange ?? 0) >= 0 ? "positive" : "negative"} />
+            <MetricCard label="Total return" value={formatPercent(portfolio?.totalReturn ?? 0)} tone={(portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"} />
+            <MetricCard label="Holdings" value={String(holdingsCount)} />
+            <MetricCard label="Diversification" value={`${portfolio?.diversificationScore ?? 0}/100`} />
+            <MetricCard label="Risk score" value={`${portfolio?.riskScore ?? 0}/100`} />
+          </div>
+          {status ? <p className="form-status investment-status">{status}</p> : null}
+        </article>
+
+        <form className="panel stack-md trade-ticket-v2" onSubmit={submitTrade}>
           <div className="section-header">
             <div>
               <p className="eyebrow">Trade ticket</p>
-              <h2>Buy or sell shares.</h2>
+              <h2>Submit a server-validated trade</h2>
             </div>
           </div>
-          <div className="grid two">
+
+          <div className="asset-picker">
             <label className="form-field">
-              <span>Asset</span>
-              <select value={symbol} onChange={(event) => setSymbol(event.target.value)}>
-                {quotes.map((quote) => (
-                  <option key={quote.symbol} value={quote.symbol}>
-                    {quote.symbol} - {quote.name}
-                  </option>
+              <span>Search asset</span>
+              <input
+                value={assetQuery}
+                onChange={(event) => setAssetQuery(event.target.value)}
+                placeholder="Type AAPL, Apple, Microsoft, SPY..."
+                autoComplete="off"
+              />
+            </label>
+            {assetResults.length ? (
+              <div className="asset-results" role="listbox" aria-label="Asset search results">
+                {assetResults.map((asset) => (
+                  <button key={asset.symbol} type="button" onClick={() => selectAsset(asset)}>
+                    <strong>{asset.symbol}</strong>
+                    <span>{asset.name}</span>
+                    <small>{asset.type} · {asset.region ?? "United States"} · {asset.currency ?? "USD"}</small>
+                  </button>
                 ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Side</span>
-              <select value={side} onChange={(event) => setSide(event.target.value as TradeSide)}>
-                <option value="buy">Buy</option>
-                <option value="sell">Sell</option>
-              </select>
-            </label>
+              </div>
+            ) : null}
+            {assetSearchStatus ? <p className="asset-search-status">{assetSearchStatus}</p> : null}
           </div>
-          <div className="trade-price-box">
-            <span>Latest close price</span>
-            <strong>{formatUsd(selectedQuote?.latestClose ?? 0)}</strong>
-            <small>{selectedQuote?.priceDate ? `Close date: ${selectedQuote.priceDate}` : "Reference price until market data is loaded"}</small>
+
+          <div className="selected-asset-card">
+            <div>
+              <span>Selected asset</span>
+              <strong>{selectedQuote.symbol}</strong>
+              <p>{selectedQuote.name}</p>
+            </div>
+            <div>
+              <span>Latest close</span>
+              <strong>{selectedQuote.priceAvailable ? formatUsd(selectedQuote.latestClose) : "Price unavailable"}</strong>
+              <p>{selectedQuote.priceDate ? `Close date: ${selectedQuote.priceDate}` : selectedQuote.provider}</p>
+            </div>
           </div>
+
+          <div className="featured-asset-row" aria-label="Featured assets">
+            {quotes.slice(0, 8).map((quote) => (
+              <button key={quote.symbol} type="button" onClick={() => selectAsset(quote)} className={quote.symbol === symbol ? "selected" : ""}>
+                {quote.symbol}
+              </button>
+            ))}
+          </div>
+
+          <div className="trade-side-toggle" aria-label="Trade side">
+            <button type="button" className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>
+              Buy
+            </button>
+            <button type="button" className={side === "sell" ? "selected" : ""} onClick={() => setSide("sell")}>
+              Sell
+            </button>
+          </div>
+
           <label className="form-field">
-            <span>Shares</span>
+            <span>Quantity</span>
             <input
               min={1}
               step={1}
@@ -337,30 +446,39 @@ export function InvestmentChallengeDashboard() {
               required
             />
           </label>
-          {!marketStatus.isOpen ? <p className="market-closed-note">{marketStatus.message}</p> : null}
+
+          <div className="trade-estimate-grid">
+            <div><span>Trade value</span><strong>{formatUsd(estimatedGross)}</strong></div>
+            <div><span>Fee</span><strong>{formatUsd(estimatedFee)}</strong></div>
+            <div><span>{side === "buy" ? "Total cost" : "Net proceeds"}</span><strong>{formatUsd(estimatedNet)}</strong></div>
+          </div>
+
+          {!marketStatus.isOpen ? <p className="market-closed-note">{closedMessage}</p> : null}
+          {!selectedQuote.priceAvailable ? <p className="market-closed-note">Price unavailable. Select another asset or try again later.</p> : null}
           <button className="button primary" type="submit" disabled={!canTrade}>
-            Submit Server-Validated Trade
+            Submit server-validated trade
           </button>
         </form>
       </section>
 
-      <section className="panel stack-md">
+      <section className="panel stack-md holdings-panel-v2">
         <div className="section-header">
           <div>
             <p className="eyebrow">Holdings</p>
-            <h2>Portfolio dashboard.</h2>
+            <h2>Positions, value, gains, and weights</h2>
           </div>
           <span className="pill">No short selling · No margin</span>
         </div>
-        <div className="table-wrap">
-          <table className="record-table investment-table">
+        <div className="table-wrap desktop-holdings">
+          <table className="record-table investment-table-v2">
             <thead>
               <tr>
+                <th>Ticker</th>
                 <th>Asset</th>
                 <th>Quantity</th>
                 <th>Average buy</th>
                 <th>Latest close</th>
-                <th>Market value</th>
+                <th>Current value</th>
                 <th>Unrealized gain/loss</th>
                 <th>Weight</th>
               </tr>
@@ -370,6 +488,7 @@ export function InvestmentChallengeDashboard() {
                 account.holdings.map((holding) => (
                   <tr key={holding.symbol}>
                     <td>{holding.symbol}</td>
+                    <td>{holding.assetName}</td>
                     <td>{holding.quantity}</td>
                     <td>{formatUsd(holding.averageBuyPrice)}</td>
                     <td>{formatUsd(holding.latestClose)}</td>
@@ -382,20 +501,40 @@ export function InvestmentChallengeDashboard() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7}>Create a team account and make your first trade to see holdings here.</td>
+                  <td colSpan={8}>Create a team account and make your first trade to see holdings here.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        <div className="mobile-holding-cards">
+          {account?.holdings.length ? (
+            account.holdings.map((holding) => (
+              <article className="mobile-holding-card" key={holding.symbol}>
+                <div>
+                  <strong>{holding.symbol}</strong>
+                  <span>{holding.assetName}</span>
+                </div>
+                <dl>
+                  <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
+                  <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
+                  <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
+                  <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
+                </dl>
+              </article>
+            ))
+          ) : (
+            <p className="muted">No holdings yet.</p>
+          )}
+        </div>
       </section>
 
-      <section className="investment-grid">
-        <form className="panel stack-md" onSubmit={submitThesis}>
+      <section className="investment-dashboard-grid">
+        <form className="panel stack-md investment-thesis-panel" onSubmit={submitThesis}>
           <div className="section-header">
             <div>
               <p className="eyebrow">Investment thesis</p>
-              <h2>Explain your strategy.</h2>
+              <h2>Explain the thinking behind your portfolio</h2>
             </div>
             <span className="pill">{account?.thesis ? `${account.thesis.thesisScore}/100` : "15% of score"}</span>
           </div>
@@ -423,34 +562,47 @@ export function InvestmentChallengeDashboard() {
           </button>
         </form>
 
-        <div className="panel stack-md">
-          <div>
-            <p className="eyebrow">Allowed assets</p>
-            <h2>Stocks and ETFs.</h2>
+        <aside className="panel stack-md leaderboard-preview-panel">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Leaderboard preview</p>
+              <h2>Ranked by balanced score</h2>
+            </div>
+            <Link className="text-link" href="/investment-challenge/leaderboard">
+              Full leaderboard
+            </Link>
           </div>
-          <div className="asset-quote-list">
-            {quotes.map((quote) => (
-              <article className="asset-quote-card" key={quote.symbol}>
-                <div>
-                  <strong>{quote.symbol}</strong>
-                  <span>{quote.type} · {quote.theme}</span>
-                </div>
-                <b>{formatUsd(quote.latestClose)}</b>
-              </article>
-            ))}
+          <div className="leaderboard-preview-list">
+            {topLeaderboard.length ? (
+              topLeaderboard.map((row) => (
+                <article key={row.accountId} className="leaderboard-preview-row">
+                  <span>#{row.rank}</span>
+                  <div>
+                    <strong>{row.teamName}</strong>
+                    <small>{formatUsd(row.totalValue)} · {formatPercent(row.totalReturn)}</small>
+                  </div>
+                  <b>{row.overallScore}</b>
+                </article>
+              ))
+            ) : (
+              <p className="muted">No ranked portfolios yet. Create the first team portfolio to start the board.</p>
+            )}
           </div>
-        </div>
+          <div className="score-formula-note">
+            40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
+          </div>
+        </aside>
       </section>
 
       <section className="panel stack-md">
         <div className="section-header">
           <div>
             <p className="eyebrow">Educational cards</p>
-            <h2>Learn the concepts while managing the portfolio.</h2>
+            <h2>Short finance explanations while you invest</h2>
           </div>
         </div>
-        <div className="investment-education-grid">
-          {market.educationalCards.map((card) => (
+        <div className="investment-education-grid-v2">
+          {educationCards.map((card) => (
             <article className="lesson-card stack-sm" key={card.title}>
               <span className="mini-status open">{card.concept}</span>
               <h3>{card.title}</h3>
@@ -459,6 +611,17 @@ export function InvestmentChallengeDashboard() {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
+  return (
+    <div className="metric-card-v2">
+      <span>{label}</span>
+      <strong className={tone === "positive" ? "positive-text" : tone === "negative" ? "negative-text" : undefined}>
+        {value}
+      </strong>
     </div>
   );
 }
