@@ -5170,3 +5170,241 @@ li,
     width: 100%;
   }
 }
+
+/* Investment Challenge */
+.investment-app {
+  min-width: 0;
+}
+
+.investment-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
+  gap: 1.25rem;
+  align-items: stretch;
+  padding: clamp(1.1rem, 3vw, 2rem);
+  border-radius: 8px;
+  border: 1px solid rgba(8, 79, 92, 0.16);
+  background:
+    linear-gradient(135deg, rgba(6, 32, 37, 0.96), rgba(11, 75, 82, 0.92)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 72px);
+  color: #f8fbf7;
+  box-shadow: var(--shadow);
+}
+
+.investment-display {
+  max-width: 11.5ch;
+}
+
+.investment-hero .eyebrow,
+.investment-hero .text-link {
+  color: #84efd0;
+}
+
+.investment-hero .lede {
+  color: rgba(248, 251, 247, 0.76);
+}
+
+.investment-market-card {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  min-width: 0;
+  padding: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.investment-market-card p {
+  margin: 0;
+  color: rgba(248, 251, 247, 0.74);
+  line-height: 1.55;
+}
+
+.investment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.45fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.investment-kpi-grid,
+.investment-preview-grid,
+.investment-education-grid,
+.grid.four {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.investment-preview-panel {
+  border-color: rgba(15, 107, 122, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(230, 247, 241, 0.92)),
+    var(--surface);
+}
+
+.investment-preview-grid article {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(8, 79, 92, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.investment-preview-grid strong {
+  font-family: var(--font-heading), serif;
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  line-height: 1;
+}
+
+.investment-preview-grid span {
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+.trade-ticket {
+  border-color: rgba(199, 145, 47, 0.28);
+}
+
+.trade-price-box {
+  display: grid;
+  gap: 0.2rem;
+  padding: 1rem;
+  border: 1px solid rgba(8, 79, 92, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(16, 36, 33, 0.96), rgba(12, 74, 76, 0.94)),
+    #102421;
+  color: #f8fbf7;
+}
+
+.trade-price-box span,
+.trade-price-box small {
+  color: rgba(248, 251, 247, 0.7);
+}
+
+.trade-price-box strong {
+  font-family: var(--font-heading), serif;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1;
+}
+
+.market-closed-note {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(159, 47, 59, 0.2);
+  background: rgba(159, 47, 59, 0.08);
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.asset-quote-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 760px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.asset-quote-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.asset-quote-card div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.asset-quote-card span {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.asset-quote-card b {
+  color: var(--accent-strong);
+}
+
+.investment-table {
+  min-width: 860px;
+}
+
+.positive-text {
+  color: var(--success);
+}
+
+.negative-text {
+  color: var(--danger);
+}
+
+.investment-disclaimer {
+  border-color: rgba(159, 47, 59, 0.16);
+}
+
+.asset-symbol-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.investment-lab-card {
+  background:
+    linear-gradient(145deg, rgba(15, 107, 122, 0.12), rgba(255, 255, 255, 0.96)),
+    var(--surface-strong);
+  border-color: rgba(15, 107, 122, 0.2);
+}
+
+.investment-learn-panel {
+  border-color: rgba(15, 107, 122, 0.16);
+}
+
+.investment-admin-list {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 520px;
+  overflow: auto;
+}
+
+@media (max-width: 980px) {
+  .investment-hero,
+  .investment-grid,
+  .investment-kpi-grid,
+  .investment-preview-grid,
+  .investment-education-grid,
+  .grid.four {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investment-display {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .investment-hero,
+  .investment-market-card {
+    padding: 1rem;
+  }
+
+  .investment-hero .cta-row .button,
+  .investment-hero .cta-row .text-link,
+  .trade-ticket .button {
+    width: 100%;
+  }
+
+  .asset-quote-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

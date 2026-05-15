@@ -8,6 +8,7 @@ const links = [
   { href: "/learn", label: "Learn" },
   { href: "/articles", label: "Articles" },
   { href: "/finance-lab", label: "Finance Lab" },
+  { href: "/investment-challenge", label: "Investment" },
   { href: "/scenarios", label: "Scenarios" },
   { href: "/play/setup", label: "Play" },
   { href: "/olympiad", label: "Olympiad" },
@@ -42,7 +43,11 @@ export function SiteNav() {
                 key={link.href}
                 href={link.href}
                 prefetch={link.href === "/play/setup" ? false : undefined}
-                className={link.href === "/finance-lab" || link.href === "/play/setup" ? "nav-cta" : undefined}
+                className={
+                  link.href === "/finance-lab" || link.href === "/investment-challenge" || link.href === "/play/setup"
+                    ? "nav-cta"
+                    : undefined
+                }
               >
                 {link.label}
               </Link>

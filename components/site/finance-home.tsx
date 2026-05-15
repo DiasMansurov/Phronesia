@@ -84,6 +84,9 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
             <Link className="button primary" href="/play/setup" prefetch={false}>
               Start Learning
             </Link>
+            <Link className="button secondary" href="/investment-challenge">
+              Investment Challenge
+            </Link>
             <Link className="button secondary" href={`/play/setup?scenario=${nextScenario.id}`} prefetch={false}>
               Try a Scenario
             </Link>
@@ -194,6 +197,36 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
         <Link className="button primary" href={`/play/setup?scenario=${nextScenario.id}`} prefetch={false}>
           Start This Scenario
         </Link>
+      </section>
+
+      <section className="investment-preview-panel panel stack-md">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">New mode</p>
+            <h2>Run a $100,000 virtual stock portfolio.</h2>
+            <p className="muted">
+              The Investment Challenge teaches stocks, ETFs, closing prices, diversification, risk, thesis writing, and
+              market discipline with virtual cash only.
+            </p>
+          </div>
+          <Link className="button primary" href="/investment-challenge">
+            Open Investment Challenge
+          </Link>
+        </div>
+        <div className="investment-preview-grid">
+          <article>
+            <strong>$100,000</strong>
+            <span>virtual starting cash</span>
+          </article>
+          <article>
+            <strong>15</strong>
+            <span>US stocks and ETFs</span>
+          </article>
+          <article>
+            <strong>5-part</strong>
+            <span>score: return, risk, thesis, drawdown, diversification</span>
+          </article>
+        </div>
       </section>
 
       {featuredArticles.length ? (

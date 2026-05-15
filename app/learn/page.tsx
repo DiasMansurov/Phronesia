@@ -30,6 +30,9 @@ export default function LearnPage() {
             <Link className="button secondary" href="/finance-lab">
               Open Finance Lab
             </Link>
+            <Link className="button secondary" href="/investment-challenge">
+              Try Investment Challenge
+            </Link>
           </div>
         </div>
         <div className="panel compact-panel stack-sm">
@@ -62,6 +65,22 @@ export default function LearnPage() {
       </section>
 
       <SavedGlossary />
+
+      <section className="panel stack-md investment-learn-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Applied investing</p>
+            <h2>Practice the concepts with a virtual portfolio.</h2>
+            <p className="muted">
+              The Investment Challenge connects glossary terms like stocks, ETFs, bonds, diversification, market hours,
+              closing price, interest rates, and risk vs return to a $100,000 educational simulation.
+            </p>
+          </div>
+          <Link className="button primary" href="/investment-challenge">
+            Open Challenge
+          </Link>
+        </div>
+      </section>
 
       <section className="panel stack-md">
         <div className="section-header">

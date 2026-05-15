@@ -97,6 +97,9 @@ export default function FinanceLabPage() {
             <Link className="button primary" href="/play/setup?scenario=finance-basics-inflation-savings" prefetch={false}>
               Start Beginner Lab
             </Link>
+            <Link className="button secondary" href="/investment-challenge">
+              Open Investment Challenge
+            </Link>
             <Link className="button secondary" href="/scenarios">
               Browse Finance Cases
             </Link>
@@ -122,6 +125,23 @@ export default function FinanceLabPage() {
       </div>
 
       <section className="finance-mini-lab-grid">
+        <article className="mini-lab-card investment-lab-card">
+          <div className="card-topline">
+            <span className="pill">Paper trading</span>
+            <span className="mini-status open">Virtual portfolio</span>
+          </div>
+          <div className="mini-lab-value">
+            <span>Starting cash</span>
+            <strong>$100k</strong>
+          </div>
+          <p>
+            Build a virtual portfolio with US stocks and ETFs, write an investment thesis, and compare your score on
+            return, risk, diversification, thesis quality, and drawdown control.
+          </p>
+          <Link className="text-link" href="/investment-challenge">
+            Launch Investment Challenge
+          </Link>
+        </article>
         {miniLabs.map((lab, index) => (
           <article key={lab.title} className="mini-lab-card">
             <div className="card-topline">
