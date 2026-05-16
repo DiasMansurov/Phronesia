@@ -205,13 +205,18 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
             <p className="eyebrow">New mode</p>
             <h2>Run a $100,000 virtual stock portfolio.</h2>
             <p className="muted">
-              The Investment Challenge teaches stocks, ETFs, closing prices, diversification, risk, thesis writing, and
-              market discipline with virtual cash only.
+              The Investment Challenge teaches stocks, ETFs, options basics, closing prices, diversification, risk,
+              thesis writing, and market discipline with virtual cash only.
             </p>
           </div>
-          <Link className="button primary" href="/investment-challenge">
-            Open Investment Challenge
-          </Link>
+          <div className="cta-row">
+            <Link className="button primary" href="/investment-challenge">
+              Open Investment Challenge
+            </Link>
+            <Link className="button secondary" href="/investment-challenge/options">
+              Learn Options
+            </Link>
+          </div>
         </div>
         <div className="investment-preview-grid">
           <article>
@@ -219,8 +224,8 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
             <span>virtual starting cash</span>
           </article>
           <article>
-            <strong>15</strong>
-            <span>US stocks and ETFs</span>
+            <strong>25</strong>
+            <span>featured US stocks and ETFs</span>
           </article>
           <article>
             <strong>5-part</strong>

@@ -53,9 +53,9 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     latestClose: asset.referencePrice,
     priceDate: null,
     provider: "educational_reference",
-    priceAvailable: true,
+    priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "Educational reference price shown until a market close is saved."
+    priceMessage: "No saved price yet. Try refresh price or wait for the daily refresh."
   }));
 }
 
@@ -145,6 +145,12 @@ export function InvestmentChallengeDashboard() {
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
   const canTrade = Boolean(account && marketStatus.isOpen && !busy && !priceLoading && selectedQuote.priceAvailable);
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
+  const selectedHasDisplayPrice = Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
+  const selectedPriceText = priceLoading
+    ? "Checking..."
+    : selectedHasDisplayPrice
+      ? formatUsd(selectedQuote.latestClose)
+      : "No saved close yet";
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
@@ -209,7 +215,7 @@ export function InvestmentChallengeDashboard() {
       latestClose: asset.latestClose ?? asset.referencePrice,
       priceDate: asset.priceDate ?? null,
       provider: "search",
-      priceAvailable: hasOptimisticPrice,
+      priceAvailable: Boolean(asset.priceAvailable),
       priceSource: hasOptimisticPrice ? "reference" : "unavailable",
       priceMessage: hasOptimisticPrice ? "Checking Alpha Vantage for the latest close price..." : "Checking latest close price..."
     };
@@ -321,7 +327,8 @@ export function InvestmentChallengeDashboard() {
   const typedTickerCandidate = assetQuery.trim().toUpperCase();
   const canTryTypedTicker =
     /^[A-Z][A-Z0-9.-]{0,11}$/.test(typedTickerCandidate) &&
-    !assetResults.some((asset) => asset.symbol === typedTickerCandidate);
+    !assetResults.some((asset) => asset.symbol === typedTickerCandidate) &&
+    !quotes.some((asset) => asset.symbol === typedTickerCandidate);
 
   return (
     <div className="investment-app stack-xl">
@@ -345,6 +352,9 @@ export function InvestmentChallengeDashboard() {
             <Link className="button secondary" href="/investment-challenge/rules">
               Read Rules
             </Link>
+            <Link className="button secondary" href="/investment-challenge/options">
+              Options Simulator
+            </Link>
           </div>
         </div>
         <aside className="market-status-card-v2">
@@ -364,7 +374,7 @@ export function InvestmentChallengeDashboard() {
         </aside>
       </section>
 
-      <section className="investment-dashboard-grid" id="team-portfolio">
+      <section className="investment-summary-section" id="team-portfolio">
         <article className="panel stack-md portfolio-panel">
           <div className="section-header">
             <div>
@@ -402,7 +412,9 @@ export function InvestmentChallengeDashboard() {
           </div>
           {status ? <p className="form-status investment-status">{status}</p> : null}
         </article>
+      </section>
 
+      <section className="investment-workspace-grid">
         <form className="panel stack-md trade-ticket-v2" onSubmit={submitTrade}>
           <div className="section-header">
             <div>
@@ -427,7 +439,10 @@ export function InvestmentChallengeDashboard() {
                   <button key={asset.symbol} type="button" onClick={() => selectAsset(asset)}>
                     <strong>{asset.symbol}</strong>
                     <span>{asset.name}</span>
-                    <small>{asset.type} · {asset.region ?? "United States"} · {asset.currency ?? "USD"}</small>
+                    <small>
+                      {asset.type} · {asset.region ?? "United States"} · {asset.currency ?? "USD"}
+                      {asset.priceAvailable && asset.latestClose ? ` · ${formatUsd(asset.latestClose)}` : ""}
+                    </small>
                   </button>
                 ))}
               </div>
@@ -464,9 +479,7 @@ export function InvestmentChallengeDashboard() {
             </div>
             <div>
               <span>Latest close</span>
-              <strong>
-                {priceLoading ? "Checking..." : selectedQuote.priceAvailable ? formatUsd(selectedQuote.latestClose) : "Price unavailable"}
-              </strong>
+              <strong>{selectedPriceText}</strong>
               <p>
                 {selectedQuote.priceMessage ??
                   (selectedQuote.priceDate ? `Close date: ${selectedQuote.priceDate}` : selectedQuote.provider)}
@@ -475,7 +488,7 @@ export function InvestmentChallengeDashboard() {
           </div>
 
           <div className="featured-asset-row" aria-label="Featured assets">
-            {quotes.slice(0, 8).map((quote) => (
+            {quotes.slice(0, 25).map((quote) => (
               <button key={quote.symbol} type="button" onClick={() => selectAsset(quote)} className={quote.symbol === symbol ? "selected" : ""}>
                 {quote.symbol}
               </button>
@@ -513,78 +526,83 @@ export function InvestmentChallengeDashboard() {
           {!selectedQuote.priceAvailable ? (
             <p className="market-closed-note">{selectedQuote.priceMessage ?? "Daily close price unavailable."}</p>
           ) : null}
+          {!selectedQuote.priceAvailable ? (
+            <button className="button secondary" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
+              Try refresh price
+            </button>
+          ) : null}
           <button className="button primary" type="submit" disabled={!canTrade}>
             {priceLoading ? "Checking latest close..." : "Submit server-validated trade"}
           </button>
         </form>
-      </section>
 
-      <section className="panel stack-md holdings-panel-v2">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Holdings</p>
-            <h2>Positions, value, gains, and weights</h2>
+        <section className="panel stack-md holdings-panel-v2">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Holdings</p>
+              <h2>Positions, value, gains, and weights</h2>
+            </div>
+            <span className="pill">No short selling · No margin</span>
           </div>
-          <span className="pill">No short selling · No margin</span>
-        </div>
-        <div className="table-wrap desktop-holdings">
-          <table className="record-table investment-table-v2">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Asset</th>
-                <th>Quantity</th>
-                <th>Average buy</th>
-                <th>Latest close</th>
-                <th>Current value</th>
-                <th>Unrealized gain/loss</th>
-                <th>Weight</th>
-              </tr>
-            </thead>
-            <tbody>
-              {account?.holdings.length ? (
-                account.holdings.map((holding) => (
-                  <tr key={holding.symbol}>
-                    <td>{holding.symbol}</td>
-                    <td>{holding.assetName}</td>
-                    <td>{holding.quantity}</td>
-                    <td>{formatUsd(holding.averageBuyPrice)}</td>
-                    <td>{formatUsd(holding.latestClose)}</td>
-                    <td>{formatUsd(holding.marketValue)}</td>
-                    <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
-                      {formatUsd(holding.unrealizedGainLoss)}
-                    </td>
-                    <td>{holding.weight.toFixed(1)}%</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8}>Create a team account and make your first trade to see holdings here.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="mobile-holding-cards">
-          {account?.holdings.length ? (
-            account.holdings.map((holding) => (
-              <article className="mobile-holding-card" key={holding.symbol}>
-                <div>
-                  <strong>{holding.symbol}</strong>
-                  <span>{holding.assetName}</span>
-                </div>
-                <dl>
-                  <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
-                  <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
-                  <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
-                  <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
-                </dl>
-              </article>
-            ))
+
+          {!account?.holdings.length ? (
+            <div className="investment-empty-state">
+              <strong>Your portfolio is empty.</strong>
+              <p>Search for an asset and place your first simulated trade. Holdings, weights, and gains will appear here.</p>
+            </div>
           ) : (
-            <p className="muted">No holdings yet.</p>
+            <>
+              <div className="table-wrap desktop-holdings">
+                <table className="record-table investment-table-v2">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Asset</th>
+                      <th>Quantity</th>
+                      <th>Average buy</th>
+                      <th>Latest close</th>
+                      <th>Current value</th>
+                      <th>Unrealized gain/loss</th>
+                      <th>Weight</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {account.holdings.map((holding) => (
+                      <tr key={holding.symbol}>
+                        <td>{holding.symbol}</td>
+                        <td>{holding.assetName}</td>
+                        <td>{holding.quantity}</td>
+                        <td>{formatUsd(holding.averageBuyPrice)}</td>
+                        <td>{formatUsd(holding.latestClose)}</td>
+                        <td>{formatUsd(holding.marketValue)}</td>
+                        <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
+                          {formatUsd(holding.unrealizedGainLoss)}
+                        </td>
+                        <td>{holding.weight.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mobile-holding-cards">
+                {account.holdings.map((holding) => (
+                  <article className="mobile-holding-card" key={holding.symbol}>
+                    <div>
+                      <strong>{holding.symbol}</strong>
+                      <span>{holding.assetName}</span>
+                    </div>
+                    <dl>
+                      <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
+                      <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
+                      <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
+                      <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            </>
           )}
-        </div>
+        </section>
       </section>
 
       <section className="investment-dashboard-grid">

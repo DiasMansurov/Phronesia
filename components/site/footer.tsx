@@ -39,6 +39,7 @@ export function SiteFooter() {
             <Link href="/articles">Articles</Link>
             <Link href="/finance-lab">Finance Lab</Link>
             <Link href="/investment-challenge">Investment Challenge</Link>
+            <Link href="/investment-challenge/options">Options Simulator</Link>
             <Link href="/scenarios">Scenarios</Link>
             <Link href="/olympiad">Olympiad Portal</Link>
             <Link href="/results">Organizer Results</Link>

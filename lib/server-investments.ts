@@ -159,7 +159,7 @@ function classifyAlphaResponse(data: Payload): { code: PriceFailureCode; message
   if (!providerMessage) return null;
 
   if (/rate|limit|premium|standard api call frequency/i.test(providerMessage)) {
-    return { code: "rate_limit", message: "API rate limit reached. Try again later." };
+    return { code: "rate_limit", message: "API rate limit reached. Using latest saved close if available." };
   }
 
   return { code: "temporary_unavailable", message: "Market data temporarily unavailable." };
@@ -346,7 +346,7 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
           .filter((asset) => asset.region === "United States" && asset.currency === "USD")
           .filter((asset) => asset.type === "Stock" || asset.type === "ETF")
           .slice(0, 12);
-        if (normalized.length) return normalized;
+        if (normalized.length) return attachCachedPricesToSearchResults(normalized);
       }
     } catch {
       // Fall through to local featured search when the provider is rate-limited.
@@ -354,9 +354,45 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
   }
 
   const lower = keyword.toLowerCase();
-  return featuredAssetSearchResults().filter(
+  return attachCachedPricesToSearchResults(featuredAssetSearchResults().filter(
     (asset) => asset.symbol.toLowerCase().includes(lower) || asset.name.toLowerCase().includes(lower)
-  );
+  ));
+}
+
+export async function getAssetQuote(symbol: string) {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) {
+    return { ok: false as const, reason: "Invalid ticker format." };
+  }
+
+  const existing = await resolveInvestmentAsset(normalized);
+  const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
+  const candidate = existing ?? searchMatch ?? getInvestmentAsset(normalized) ?? null;
+  const latest = await getLatestClosePrice(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
+
+  if (!candidate && !latest.priceAvailable) {
+    return { ok: false as const, reason: latest.priceMessage ?? "Symbol not found." };
+  }
+
+  const asset =
+    candidate ??
+    ({
+      symbol: normalized,
+      name: normalized,
+      type: "Stock",
+      theme: "US-listed asset",
+      referencePrice: latest.latestClose,
+      region: "United States",
+      currency: "USD",
+      exchange: null,
+      featured: false
+    } satisfies InvestmentAsset);
+
+  if (latest.priceAvailable || asset.referencePrice > 0) {
+    await upsertInvestmentAsset({ ...asset, referencePrice: latest.latestClose || asset.referencePrice });
+  }
+
+  return { ok: true as const, asset, price: latest };
 }
 
 export async function validateAsset(symbol: string) {
@@ -641,9 +677,11 @@ export async function getLatestClosePrice(
     latestClose: asset?.referencePrice ?? 0,
     priceDate: null,
     provider: "educational_reference",
-    priceAvailable: Boolean(asset?.referencePrice),
+    priceAvailable: false,
     priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
-    priceMessage: asset?.referencePrice ? "Educational reference price shown until a market close is saved." : "Daily close price unavailable."
+    priceMessage: asset?.referencePrice
+      ? "No saved price yet. Try refresh price or wait for the daily refresh."
+      : "No saved price yet. Try again after daily price refresh."
   };
 }
 
@@ -694,14 +732,27 @@ export async function savePriceToCache(
 
 export async function updateDailyPrices() {
   await ensureInvestmentSeedData();
+  const featured = await refreshFeaturedAssetPrices();
+  const held = await refreshHeldAssetPrices();
+  return [...featured, ...held];
+}
+
+export async function refreshFeaturedAssetPrices() {
+  await ensureInvestmentSeedData();
   const results: Array<{ symbol: string; ok: boolean; message?: string }> = [];
-  const assets = await listInvestmentAssets();
+  const assets = (await listInvestmentAssets()).filter((asset) => asset.featured);
+  const today = todayIsoInEt();
 
   for (const asset of assets) {
     try {
+      const cached = await getCachedPrice(asset.symbol);
+      if (cached?.priceDate === today) {
+        results.push({ symbol: asset.symbol, ok: true, message: `Already updated for ${today}.` });
+        continue;
+      }
       const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false });
       if (!price.priceAvailable) {
-        results.push({ symbol: asset.symbol, ok: false, message: price.priceMessage ?? "Daily close price unavailable." });
+        results.push({ symbol: asset.symbol, ok: false, message: price.priceMessage ?? "No saved price yet. Try again after daily price refresh." });
         continue;
       }
       results.push({ symbol: asset.symbol, ok: true, message: price.priceMessage });
@@ -715,6 +766,138 @@ export async function updateDailyPrices() {
   }
 
   return results;
+}
+
+export async function refreshHeldAssetPrices() {
+  await ensureInvestmentSeedData();
+  const results: Array<{ symbol: string; ok: boolean; message?: string }> = [];
+  if (!supabaseConfigured()) return results;
+
+  let symbols: string[] = [];
+  try {
+    const rows = await selectRows("investment_holdings", {
+      select: "symbol,quantity",
+      quantity: "gt.0",
+      limit: "200"
+    });
+    if (Array.isArray(rows)) {
+      symbols = Array.from(new Set(rows.map((row) => normalizeSymbol(rowString(row, "symbol"))).filter(Boolean)));
+    }
+  } catch {
+    return results;
+  }
+
+  const featuredSymbols = new Set(INVESTMENT_ASSETS.map((asset) => asset.symbol));
+  const today = todayIsoInEt();
+  for (const symbol of symbols.filter((item) => !featuredSymbols.has(item))) {
+    try {
+      const cached = await getCachedPrice(symbol);
+      if (cached?.priceDate === today) {
+        results.push({ symbol, ok: true, message: `Already updated for ${today}.` });
+        continue;
+      }
+      const asset = await resolveInvestmentAsset(symbol);
+      const price = await getLatestClosePrice(symbol, asset ?? undefined, { allowReferenceFallback: false });
+      results.push({
+        symbol,
+        ok: price.priceAvailable,
+        message: price.priceMessage ?? (price.priceAvailable ? "Updated." : "No saved price yet. Try again after daily price refresh.")
+      });
+    } catch (error) {
+      results.push({
+        symbol,
+        ok: false,
+        message: error instanceof Error ? error.message : "Unknown market data error."
+      });
+    }
+  }
+
+  return results;
+}
+
+export async function searchOptionChain(symbol: string) {
+  return getOptionChain(symbol);
+}
+
+export async function getOptionChain(symbol: string) {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) {
+    return { ok: false as const, reason: "Symbol not found.", contracts: [] as Payload[] };
+  }
+
+  const apiKey = process.env.MARKET_DATA_API_KEY;
+  const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
+  if (provider !== "alpha_vantage" || !apiKey) {
+    return {
+      ok: false as const,
+      reason: "Real options data is unavailable on the current market data plan. Educational mode is available.",
+      contracts: [] as Payload[]
+    };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      function: "HISTORICAL_OPTIONS",
+      symbol: normalized,
+      apikey: apiKey
+    });
+    const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, { cache: "no-store" });
+    if (!response.ok) {
+      return { ok: false as const, reason: "Market data temporarily unavailable.", contracts: [] as Payload[] };
+    }
+    const data = (await response.json()) as Payload;
+    const classified = classifyAlphaResponse(data);
+    if (classified) {
+      return {
+        ok: false as const,
+        reason:
+          classified.code === "rate_limit"
+            ? "Real options data is unavailable on the current market data plan. Educational mode is available."
+            : classified.message,
+        contracts: [] as Payload[]
+      };
+    }
+    const contracts = Array.isArray(data.data) ? (data.data as Payload[]) : [];
+    return {
+      ok: contracts.length > 0,
+      reason: contracts.length ? null : "Real options data is unavailable on the current market data plan. Educational mode is available.",
+      contracts
+    };
+  } catch {
+    return { ok: false as const, reason: "Market data temporarily unavailable.", contracts: [] as Payload[] };
+  }
+}
+
+export async function getOptionContractPrice(contract: Payload) {
+  const premium = parsePositiveNumber(contract.mark) ?? parsePositiveNumber(contract.last) ?? parsePositiveNumber(contract.ask) ?? parsePositiveNumber(contract.bid);
+  return premium
+    ? { ok: true as const, premium, provider: "alpha_vantage" }
+    : { ok: false as const, reason: "Real options quote unavailable." };
+}
+
+export async function cacheOptionChain(symbol: string, expiration?: string) {
+  const chain = await getOptionChain(symbol);
+  if (!chain.ok || !supabaseConfigured()) return chain;
+
+  for (const contract of chain.contracts.slice(0, 80)) {
+    const contractSymbol = rowString(contract, "contractID") || rowString(contract, "symbol");
+    const premium = await getOptionContractPrice(contract);
+    if (!contractSymbol || !premium.ok) continue;
+    await upsertRow(
+      "investment_option_price_cache",
+      {
+        contract_symbol: contractSymbol,
+        underlying_symbol: normalizeSymbol(symbol),
+        premium: premium.premium,
+        provider: premium.provider,
+        raw_source: contract,
+        fetched_at: new Date().toISOString()
+      },
+      "contract_symbol"
+    );
+  }
+
+  return { ...chain, expiration: expiration ?? null };
 }
 
 export async function recalculatePortfolios() {
@@ -1060,11 +1243,11 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       latestClose: stored ? rowNumber(stored, "close_price", asset.referencePrice) : asset.referencePrice,
       priceDate: storedDate,
       provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
-      priceAvailable: Boolean(stored || asset.referencePrice > 0),
+      priceAvailable: Boolean(stored),
       priceSource: stored ? ("cache" as const) : ("reference" as const),
       priceMessage: storedDate
         ? `Using latest saved close price from ${storedDate}.`
-        : "Educational reference price shown until a market close is saved."
+        : "No saved price yet. Try refresh price or wait for the daily refresh."
     };
   });
 }
@@ -1160,9 +1343,29 @@ function featuredAssetSearchResults(): InvestmentAssetSearchResult[] {
     ...asset,
     matchScore: 1 - index / 100,
     latestClose: asset.referencePrice,
-    priceAvailable: true,
+    priceAvailable: false,
     priceDate: null
   }));
+}
+
+async function attachCachedPricesToSearchResults(results: InvestmentAssetSearchResult[]) {
+  if (!results.length || !supabaseConfigured()) return results;
+
+  const enriched = await Promise.all(
+    results.map(async (asset) => {
+      const cached = await getCachedPrice(asset.symbol);
+      if (!cached) return asset;
+      return {
+        ...asset,
+        latestClose: cached.latestClose,
+        priceAvailable: cached.priceAvailable,
+        priceDate: cached.priceDate,
+        referencePrice: cached.latestClose || asset.referencePrice
+      };
+    })
+  );
+
+  return enriched;
 }
 
 function mapAlphaSearchMatch(match: Payload): InvestmentAssetSearchResult | null {
@@ -1286,11 +1489,11 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     latestClose: priceMapInput?.get(asset.symbol) ?? asset.referencePrice,
     priceDate: null,
     provider: priceMapInput?.has(asset.symbol) ? "stored" : "educational_reference",
-    priceAvailable: Boolean(priceMapInput?.has(asset.symbol) || asset.referencePrice > 0),
+    priceAvailable: Boolean(priceMapInput?.has(asset.symbol)),
     priceSource: priceMapInput?.has(asset.symbol) ? ("cache" as const) : ("reference" as const),
     priceMessage: priceMapInput?.has(asset.symbol)
       ? "Using latest saved close price."
-      : "Educational reference price shown until a market close is saved."
+      : "No saved price yet. Try refresh price or wait for the daily refresh."
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)

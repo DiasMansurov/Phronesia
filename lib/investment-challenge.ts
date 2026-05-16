@@ -66,7 +66,17 @@ export const INVESTMENT_ASSETS: InvestmentAsset[] = [
   { symbol: "XOM", name: "Exxon Mobil Corporation", type: "Stock", theme: "Energy", referencePrice: 115, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
   { symbol: "AMZN", name: "Amazon.com Inc.", type: "Stock", theme: "E-commerce and cloud", referencePrice: 185, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
   { symbol: "META", name: "Meta Platforms Inc.", type: "Stock", theme: "Social media and AI", referencePrice: 500, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
-  { symbol: "GOOGL", name: "Alphabet Inc.", type: "Stock", theme: "Search, ads, and cloud", referencePrice: 170, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true }
+  { symbol: "GOOGL", name: "Alphabet Inc.", type: "Stock", theme: "Search, ads, and cloud", referencePrice: 170, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "AMD", name: "Advanced Micro Devices Inc.", type: "Stock", theme: "Semiconductors", referencePrice: 150, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "NFLX", name: "Netflix Inc.", type: "Stock", theme: "Streaming media", referencePrice: 640, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "DIS", name: "The Walt Disney Company", type: "Stock", theme: "Media and entertainment", referencePrice: 105, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "WMT", name: "Walmart Inc.", type: "Stock", theme: "Retail", referencePrice: 68, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "COST", name: "Costco Wholesale Corporation", type: "Stock", theme: "Retail membership", referencePrice: 815, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "BAC", name: "Bank of America Corporation", type: "Stock", theme: "Banking", referencePrice: 39, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "V", name: "Visa Inc.", type: "Stock", theme: "Payments", referencePrice: 280, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "MA", name: "Mastercard Incorporated", type: "Stock", theme: "Payments", referencePrice: 455, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "PEP", name: "PepsiCo Inc.", type: "Stock", theme: "Consumer staples", referencePrice: 175, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
+  { symbol: "MCD", name: "McDonald's Corporation", type: "Stock", theme: "Restaurants", referencePrice: 290, region: "United States", currency: "USD", exchange: "NYSE", featured: true }
 ];
 
 export const INVESTMENT_EDUCATIONAL_CARDS: InvestmentEducationalCard[] = [

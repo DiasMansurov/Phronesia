@@ -59,6 +59,11 @@ export default async function InvestmentChallengeAdminPage() {
             <Link className="button primary" href="/api/investment/admin?format=csv">
               Export CSV
             </Link>
+            <form action="/api/investment/admin/refresh-prices" method="post">
+              <button className="button secondary" type="submit">
+                Refresh featured prices
+              </button>
+            </form>
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               Public Leaderboard
             </Link>

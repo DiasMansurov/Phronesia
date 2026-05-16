@@ -12,6 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/investment-challenge", priority: 0.96 },
     { path: "/investment-challenge/rules", priority: 0.76 },
     { path: "/investment-challenge/leaderboard", priority: 0.78 },
+    { path: "/investment-challenge/options", priority: 0.82 },
     { path: "/scenarios", priority: 0.9 },
     { path: "/play/setup", priority: 0.9 },
     { path: "/olympiad", priority: 0.8 },

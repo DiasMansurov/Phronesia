@@ -45,6 +45,9 @@ export default function InvestmentChallengeRulesPage() {
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               View Leaderboard
             </Link>
+            <Link className="button secondary" href="/investment-challenge/options">
+              Learn Options
+            </Link>
           </div>
         </div>
         <div className="panel compact-panel stack-sm">
@@ -64,6 +67,7 @@ export default function InvestmentChallengeRulesPage() {
             <div className="goal-item">No short selling and no margin borrowing.</div>
             <div className="goal-item">Teams cannot buy more than available cash.</div>
             <div className="goal-item">Teams cannot sell more shares than they own.</div>
+            <div className="goal-item">Options mode is educational, buy-only, virtual-only, and capped at 10% portfolio exposure.</div>
             <div className="goal-item">Transaction fee: {(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(1)}% per trade.</div>
             <div className="goal-item">Buy/sell is enabled Monday-Friday, 9:30 AM-4:00 PM America/New_York.</div>
           </div>

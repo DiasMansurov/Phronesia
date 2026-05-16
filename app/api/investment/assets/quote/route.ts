@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { validateAsset } from "@/lib/server-investments";
+import { getAssetQuote } from "@/lib/server-investments";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "symbol is required." }, { status: 400 });
   }
 
-  const validation = await validateAsset(symbol);
+  const validation = await getAssetQuote(symbol);
   if (!validation.ok) {
     return NextResponse.json({ ok: false, reason: validation.reason }, { status: 404 });
   }
