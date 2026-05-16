@@ -31,7 +31,7 @@ type LeaderboardPayload = {
 
 const accountStorageKey = "phronesia.investmentChallenge.accountId";
 const closedMessage =
-  "US market is currently closed. Trading reopens at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
+  "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
 
 function defaultMarketStatus(): InvestmentMarketStatus {
   return {
@@ -55,7 +55,7 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     provider: "educational_reference",
     priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "No saved price yet. Try refresh price or wait for the daily refresh."
+    priceMessage: "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
   }));
 }
 
@@ -94,6 +94,7 @@ export function InvestmentChallengeDashboard() {
   useEffect(() => {
     void loadMarket();
     void loadLeaderboard();
+    void selectAsset(featuredQuotes()[0]);
     const storedAccountId = window.localStorage.getItem(accountStorageKey);
     if (storedAccountId) void loadAccount(storedAccountId);
   }, []);
@@ -145,12 +146,12 @@ export function InvestmentChallengeDashboard() {
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
   const canTrade = Boolean(account && marketStatus.isOpen && !busy && !priceLoading && selectedQuote.priceAvailable);
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
-  const selectedHasDisplayPrice = Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
+  const selectedHasDisplayPrice = selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
   const selectedPriceText = priceLoading
     ? "Checking..."
     : selectedHasDisplayPrice
       ? formatUsd(selectedQuote.latestClose)
-      : "No saved close yet";
+      : "Latest close not saved";
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
@@ -248,7 +249,7 @@ export function InvestmentChallengeDashboard() {
         setAssetSearchStatus(data.reason ?? "Price unavailable for this asset.");
       }
     } catch {
-      const reason = "Market data temporarily unavailable.";
+      const reason = "No saved market price yet. Try refreshing featured prices or selecting another asset.";
       setSelectedQuote({
         ...optimistic,
         latestClose: 0,
@@ -321,6 +322,8 @@ export function InvestmentChallengeDashboard() {
   }
 
   const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
+  const featuredPriceQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 25), [quotes]);
+  const recentTrades = account?.trades.slice(0, 5) ?? [];
   const educationCards = market.educationalCards.filter((card) =>
     ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
   );
@@ -536,6 +539,7 @@ export function InvestmentChallengeDashboard() {
           </button>
         </form>
 
+        <aside className="investment-side-stack">
         <section className="panel stack-md holdings-panel-v2">
           <div className="section-header">
             <div>
@@ -548,7 +552,9 @@ export function InvestmentChallengeDashboard() {
           {!account?.holdings.length ? (
             <div className="investment-empty-state">
               <strong>Your portfolio is empty.</strong>
-              <p>Search for an asset and place your first simulated trade. Holdings, weights, and gains will appear here.</p>
+              <p>
+                Search for an asset, review the latest close price, and place your first simulated trade when the market is open.
+              </p>
             </div>
           ) : (
             <>
@@ -603,6 +609,83 @@ export function InvestmentChallengeDashboard() {
             </>
           )}
         </section>
+
+          <section className="panel stack-md featured-prices-panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Featured assets</p>
+                <h2>Latest close watchlist</h2>
+              </div>
+              <span className="pill">Cache first</span>
+            </div>
+            <div className="featured-price-grid">
+              {featuredPriceQuotes.map((quote) => (
+                <button
+                  className="featured-price-card"
+                  key={quote.symbol}
+                  type="button"
+                  onClick={() => selectAsset(quote)}
+                >
+                  <span>{quote.symbol}</span>
+                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Not saved"}</strong>
+                  <small>
+                    {quote.priceDate ? `${quote.priceDate} · ${quote.priceSource === "cache" ? "cached" : "Alpha Vantage"}` : "Refresh needed"}
+                  </small>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel stack-md portfolio-activity-panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Portfolio activity</p>
+                <h2>Latest simulated orders</h2>
+              </div>
+            </div>
+            <div className="activity-list">
+              {recentTrades.length ? (
+                recentTrades.map((trade) => (
+                  <article className="activity-row" key={trade.id}>
+                    <span>{trade.side.toUpperCase()} {trade.quantity} {trade.symbol}</span>
+                    <strong>{trade.price ? formatUsd(trade.price) : "Rejected"}</strong>
+                    <small>{trade.rejected ? trade.rejectReason ?? "Rejected" : trade.createdAt.slice(0, 16)}</small>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">Your trades will appear here after your first simulated order.</p>
+              )}
+            </div>
+          </section>
+
+          <aside className="panel stack-md leaderboard-preview-panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Leaderboard preview</p>
+                <h2>Balanced score ranking</h2>
+              </div>
+              <Link className="text-link" href="/investment-challenge/leaderboard">
+                Full leaderboard
+              </Link>
+            </div>
+            <div className="leaderboard-preview-list">
+              {topLeaderboard.length ? (
+                topLeaderboard.map((row) => (
+                  <article key={row.accountId} className="leaderboard-preview-row">
+                    <span>#{row.rank}</span>
+                    <div>
+                      <strong>{row.teamName}</strong>
+                      <small>{formatUsd(row.totalValue)} · {formatPercent(row.totalReturn)}</small>
+                    </div>
+                    <b>{row.diversificationScore}</b>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">No ranked portfolios yet. Create the first team portfolio to start the board.</p>
+              )}
+            </div>
+          </aside>
+        </aside>
       </section>
 
       <section className="investment-dashboard-grid">
@@ -638,32 +721,13 @@ export function InvestmentChallengeDashboard() {
           </button>
         </form>
 
-        <aside className="panel stack-md leaderboard-preview-panel">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Leaderboard preview</p>
-              <h2>Ranked by balanced score</h2>
-            </div>
-            <Link className="text-link" href="/investment-challenge/leaderboard">
-              Full leaderboard
-            </Link>
-          </div>
-          <div className="leaderboard-preview-list">
-            {topLeaderboard.length ? (
-              topLeaderboard.map((row) => (
-                <article key={row.accountId} className="leaderboard-preview-row">
-                  <span>#{row.rank}</span>
-                  <div>
-                    <strong>{row.teamName}</strong>
-                    <small>{formatUsd(row.totalValue)} · {formatPercent(row.totalReturn)}</small>
-                  </div>
-                  <b>{row.overallScore}</b>
-                </article>
-              ))
-            ) : (
-              <p className="muted">No ranked portfolios yet. Create the first team portfolio to start the board.</p>
-            )}
-          </div>
+        <aside className="panel stack-md investment-risk-panel">
+          <p className="eyebrow">Rules and risk</p>
+          <h2>Market closed means orders pause, not prices.</h2>
+          <p className="muted">
+            Latest closing prices remain visible whenever they are saved or available from Alpha Vantage. Buy and sell
+            orders are disabled outside regular US market hours so every team competes under the same rules.
+          </p>
           <div className="score-formula-note">
             40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
           </div>

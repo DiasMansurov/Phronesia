@@ -5540,7 +5540,7 @@ li,
 
 .investment-workspace-grid {
   display: grid;
-  grid-template-columns: minmax(340px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(320px, 0.58fr) minmax(0, 1.42fr);
   gap: 1rem;
   align-items: start;
 }
@@ -5549,9 +5549,18 @@ li,
 .trade-ticket-v2,
 .holdings-panel-v2,
 .investment-thesis-panel,
-.leaderboard-preview-panel {
+.leaderboard-preview-panel,
+.featured-prices-panel,
+.portfolio-activity-panel,
+.investment-risk-panel {
   width: 100%;
   overflow: visible;
+}
+
+.investment-side-stack {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .team-setup-form {
@@ -5780,7 +5789,7 @@ li,
 .investment-empty-state {
   display: grid;
   gap: 0.5rem;
-  min-height: 18rem;
+  min-height: 11rem;
   place-content: center;
   padding: 1.2rem;
   border: 1px dashed rgba(15, 107, 122, 0.26);
@@ -5801,6 +5810,76 @@ li,
   margin: 0 auto;
   color: var(--ink-soft);
   line-height: 1.55;
+}
+
+.featured-price-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.featured-price-card {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(230, 247, 241, 0.58), rgba(255, 255, 255, 0.84)),
+    #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.featured-price-card:hover {
+  border-color: rgba(15, 107, 122, 0.28);
+  transform: translateY(-1px);
+}
+
+.featured-price-card span {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.featured-price-card strong {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.featured-price-card small,
+.activity-row small {
+  color: var(--ink-soft);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.activity-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.activity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem 0.75rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.activity-row span {
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.activity-row small {
+  grid-column: 1 / -1;
 }
 
 .mobile-holding-card {
@@ -6058,6 +6137,7 @@ li,
 
   .portfolio-metric-grid,
   .investment-education-grid-v2,
+  .featured-price-grid,
   .options-input-grid,
   .options-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6082,6 +6162,7 @@ li,
   .trade-estimate-grid,
   .selected-asset-card,
   .investment-education-grid-v2,
+  .featured-price-grid,
   .options-input-grid,
   .options-metrics {
     grid-template-columns: minmax(0, 1fr);

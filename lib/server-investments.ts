@@ -25,6 +25,7 @@ export type InvestmentAccountView = {
     cash: number;
   };
   holdings: InvestmentHoldingView[];
+  trades: InvestmentTradeView[];
   thesis: InvestmentThesisView | null;
   quotes: InvestmentAssetQuote[];
   portfolio: InvestmentPortfolioSummary;
@@ -78,8 +79,19 @@ export type InvestmentLeaderboardRow = {
   updatedAt: string;
 };
 
+export type InvestmentTradeView = {
+  id: string;
+  createdAt: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  price: number;
+  rejected: boolean;
+  rejectReason: string | null;
+};
+
 const MARKET_CLOSED_MESSAGE =
-  "US market is currently closed. Trading reopens at 9:30 AM ET. You can review your portfolio and thesis, but buy/sell orders are disabled.";
+  "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
 
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
 type PriceSource = "live" | "cache" | "reference" | "unavailable";
@@ -312,7 +324,7 @@ export function getMarketStatus(now = new Date()): InvestmentMarketStatus {
     message: isOpen
       ? "US market is open. Buy and sell orders use the latest available daily closing price."
       : holidayName
-        ? `US market is closed for ${holidayName}. You can review your portfolio and thesis, but buy/sell orders are disabled.`
+        ? `US market is closed for ${holidayName}. Latest closing prices are still shown, but buy/sell orders are disabled.`
         : MARKET_CLOSED_MESSAGE
   };
 }
@@ -513,6 +525,10 @@ export async function getGlobalQuotePrice(symbol: string): Promise<MarketPriceRe
   }
 }
 
+export async function fetchGlobalQuote(symbol: string) {
+  return getGlobalQuotePrice(symbol);
+}
+
 export async function getDailyClosePrice(symbol: string): Promise<MarketPriceResult> {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) {
@@ -612,6 +628,10 @@ export async function getDailyClosePrice(symbol: string): Promise<MarketPriceRes
   }
 }
 
+export async function fetchDailyClose(symbol: string) {
+  return getDailyClosePrice(symbol);
+}
+
 export async function getDailyMarketPrice(symbol: string) {
   const price = await getDailyClosePrice(symbol);
   return price.ok ? price : null;
@@ -627,6 +647,11 @@ export async function getLatestClosePrice(
   const allowReferenceFallback = options.allowReferenceFallback ?? true;
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
   const failures: MarketPriceResult[] = [];
+
+  const stored = await getCachedPrice(normalized);
+  if (stored) {
+    return stored;
+  }
 
   const globalQuote = await getGlobalQuotePrice(normalized);
   if (globalQuote.ok) {
@@ -656,11 +681,6 @@ export async function getLatestClosePrice(
   }
   failures.push(dailyClose);
 
-  const stored = await getCachedPrice(normalized);
-  if (stored) {
-    return stored;
-  }
-
   if (!allowReferenceFallback) {
     const failure = choosePriceFailure(failures);
     return {
@@ -669,7 +689,12 @@ export async function getLatestClosePrice(
       provider: failure.provider,
       priceAvailable: false,
       priceSource: "unavailable" as const,
-      priceMessage: failure.message
+      priceMessage:
+        failure.code === "symbol_not_found"
+          ? "Symbol not found."
+          : failure.code === "price_unavailable"
+            ? "Daily close price unavailable for this asset."
+            : "No saved market price yet. Try refreshing featured prices or selecting another asset."
     };
   }
 
@@ -680,8 +705,8 @@ export async function getLatestClosePrice(
     priceAvailable: false,
     priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
     priceMessage: asset?.referencePrice
-      ? "No saved price yet. Try refresh price or wait for the daily refresh."
-      : "No saved price yet. Try again after daily price refresh."
+      ? "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+      : "No saved market price yet. Try refreshing featured prices or selecting another asset."
   };
 }
 
@@ -752,7 +777,11 @@ export async function refreshFeaturedAssetPrices() {
       }
       const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false });
       if (!price.priceAvailable) {
-        results.push({ symbol: asset.symbol, ok: false, message: price.priceMessage ?? "No saved price yet. Try again after daily price refresh." });
+        results.push({
+          symbol: asset.symbol,
+          ok: false,
+          message: price.priceMessage ?? "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+        });
         continue;
       }
       results.push({ symbol: asset.symbol, ok: true, message: price.priceMessage });
@@ -766,6 +795,10 @@ export async function refreshFeaturedAssetPrices() {
   }
 
   return results;
+}
+
+export async function refreshFeaturedPrices() {
+  return refreshFeaturedAssetPrices();
 }
 
 export async function refreshHeldAssetPrices() {
@@ -801,7 +834,9 @@ export async function refreshHeldAssetPrices() {
       results.push({
         symbol,
         ok: price.priceAvailable,
-        message: price.priceMessage ?? (price.priceAvailable ? "Updated." : "No saved price yet. Try again after daily price refresh.")
+        message:
+          price.priceMessage ??
+          (price.priceAvailable ? "Updated." : "No saved price yet. Use Refresh featured prices or wait for the next daily market update.")
       });
     } catch (error) {
       results.push({
@@ -1247,7 +1282,7 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       priceSource: stored ? ("cache" as const) : ("reference" as const),
       priceMessage: storedDate
         ? `Using latest saved close price from ${storedDate}.`
-        : "No saved price yet. Try refresh price or wait for the daily refresh."
+        : "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
     };
   });
 }
@@ -1483,6 +1518,12 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     getPreviousSnapshotTotal(accountId),
     listInvestmentAssets()
   ]);
+  const tradesRows = await selectRows("investment_trades", {
+    select: "*",
+    account_id: `eq.${accountId}`,
+    order: "created_at.desc",
+    limit: "8"
+  });
 
   const quoteList = quotes ?? assets.map((asset) => ({
     ...asset,
@@ -1493,7 +1534,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     priceSource: priceMapInput?.has(asset.symbol) ? ("cache" as const) : ("reference" as const),
     priceMessage: priceMapInput?.has(asset.symbol)
       ? "Using latest saved close price."
-      : "No saved price yet. Try refresh price or wait for the daily refresh."
+      : "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)
@@ -1541,6 +1582,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       cash
     },
     holdings: holdingViews,
+    trades: Array.isArray(tradesRows) ? tradesRows.map(mapTradeRow) : [],
     thesis: thesisRow
       ? {
           thesis: rowString(thesisRow, "thesis"),
@@ -1580,6 +1622,19 @@ function calculateRiskScore(holdings: InvestmentHoldingView[], totalValue: numbe
     .reduce((sum, holding) => sum + holding.marketValue / totalValue, 0);
   const maxWeight = holdings.reduce((max, holding) => Math.max(max, holding.marketValue / totalValue), 0);
   return clampScore(100 - singleStockWeight * 45 - Math.max(0, maxWeight - 0.2) * 120);
+}
+
+function mapTradeRow(row: Payload): InvestmentTradeView {
+  return {
+    id: rowString(row, "id"),
+    createdAt: rowString(row, "created_at"),
+    symbol: rowString(row, "symbol"),
+    side: rowString(row, "side"),
+    quantity: rowNumber(row, "quantity"),
+    price: rowNumber(row, "price"),
+    rejected: Boolean(row.rejected),
+    rejectReason: rowNullableString(row, "reject_reason")
+  };
 }
 
 function scoreThesis(input: { thesis: string; risks: string; diversificationLogic: string; macroView: string }) {
