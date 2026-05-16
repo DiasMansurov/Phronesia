@@ -29,6 +29,22 @@ type LeaderboardPayload = {
   persisted: boolean;
 };
 
+type RefreshPricesPayload = {
+  ok?: boolean;
+  apiLimitReached?: boolean;
+  results?: Array<{
+    symbol: string;
+    ok: boolean;
+    price?: number;
+    priceDate?: string | null;
+    source?: string;
+    apiLimitReached?: boolean;
+    message?: string;
+  }>;
+  quotes?: InvestmentAssetQuote[];
+  error?: string;
+};
+
 const accountStorageKey = "phronesia.investmentChallenge.accountId";
 const closedMessage =
   "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
@@ -55,7 +71,7 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     provider: "educational_reference",
     priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+    priceMessage: "Latest close not saved yet. Click Refresh featured prices."
   }));
 }
 
@@ -80,6 +96,8 @@ export function InvestmentChallengeDashboard() {
   const [assetResults, setAssetResults] = useState<InvestmentAssetSearchResult[]>([]);
   const [assetSearchStatus, setAssetSearchStatus] = useState("");
   const [priceLoading, setPriceLoading] = useState(false);
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [priceRefreshDetails, setPriceRefreshDetails] = useState("");
   const [side, setSide] = useState<TradeSide>("buy");
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
@@ -144,14 +162,35 @@ export function InvestmentChallengeDashboard() {
   const estimatedGross = selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
   const estimatedFee = estimatedGross * INVESTMENT_TRANSACTION_FEE_RATE;
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
-  const canTrade = Boolean(account && marketStatus.isOpen && !busy && !priceLoading && selectedQuote.priceAvailable);
+  const ownedQuantity = account?.holdings.find((holding) => holding.symbol === symbol)?.quantity ?? 0;
+  const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
+  const clientTradeWarning =
+    !selectedQuote.priceAvailable
+      ? selectedQuote.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."
+      : !marketStatus.isOpen
+        ? "US market is closed. Latest close prices are shown, but buy/sell orders are disabled."
+        : side === "buy" && account && estimatedNet > cashBalance + 0.00001
+          ? `Insufficient virtual cash. Total cost including commission is ${formatUsd(estimatedNet)}.`
+          : side === "sell" && account && quantity > ownedQuantity
+            ? "You cannot sell more shares than you own."
+            : "";
+  const canTrade = Boolean(
+    account &&
+      marketStatus.isOpen &&
+      !busy &&
+      !priceLoading &&
+      selectedQuote.priceAvailable &&
+      !(side === "buy" && estimatedNet > cashBalance + 0.00001) &&
+      !(side === "sell" && quantity > ownedQuantity)
+  );
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
   const selectedHasDisplayPrice = selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
   const selectedPriceText = priceLoading
     ? "Checking..."
     : selectedHasDisplayPrice
       ? formatUsd(selectedQuote.latestClose)
-      : "Latest close not saved";
+      : "Latest close not saved yet";
+  const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
@@ -246,10 +285,10 @@ export function InvestmentChallengeDashboard() {
           priceSource: "unavailable",
           priceMessage: reason
         });
-        setAssetSearchStatus(data.reason ?? "Price unavailable for this asset.");
+        setAssetSearchStatus(data.reason ?? "No saved market price yet for this asset.");
       }
     } catch {
-      const reason = "No saved market price yet. Try refreshing featured prices or selecting another asset.";
+      const reason = "No saved market price yet for this asset.";
       setSelectedQuote({
         ...optimistic,
         latestClose: 0,
@@ -261,6 +300,44 @@ export function InvestmentChallengeDashboard() {
       setAssetSearchStatus(reason);
     } finally {
       setPriceLoading(false);
+    }
+  }
+
+  async function refreshFeaturedPrices() {
+    setRefreshingPrices(true);
+    setStatus("Refreshing featured prices from Alpha Vantage...");
+    setPriceRefreshDetails("");
+    try {
+      const response = await fetch("/api/investment/refresh-featured-prices", {
+        method: "POST",
+        cache: "no-store"
+      });
+      const data = (await response.json()) as RefreshPricesPayload;
+      if (!response.ok || !data.ok) {
+        const message = data.error ?? "Featured prices could not be refreshed.";
+        setStatus(message);
+        setPriceRefreshDetails(message);
+        return;
+      }
+
+      if (data.quotes?.length) {
+        setMarket((current) => ({ ...current, quotes: data.quotes as InvestmentAssetQuote[] }));
+        const refreshedSelected = data.quotes.find((quote) => quote.symbol === symbol);
+        if (refreshedSelected) setSelectedQuote(refreshedSelected);
+      } else {
+        await loadMarket();
+      }
+
+      const successes = data.results?.filter((result) => result.ok).length ?? 0;
+      const failures = data.results?.filter((result) => !result.ok).length ?? 0;
+      const apiLimit = data.apiLimitReached ? " API rate limit reached for some tickers; saved prices are still used when available." : "";
+      const detail = `Featured price refresh complete: ${successes} updated or cached, ${failures} failed.${apiLimit}`;
+      setStatus(detail);
+      setPriceRefreshDetails(detail);
+      void loadLeaderboard();
+      if (account) void loadAccount(account.account.id);
+    } finally {
+      setRefreshingPrices(false);
     }
   }
 
@@ -280,6 +357,8 @@ export function InvestmentChallengeDashboard() {
         account?: InvestmentAccountView | null;
         price?: number;
         fee?: number;
+        gross?: number;
+        net?: number;
         reason?: string;
         error?: string;
       };
@@ -289,7 +368,9 @@ export function InvestmentChallengeDashboard() {
       }
       setAccount(data.account);
       setStatus(
-        `${side === "buy" ? "Bought" : "Sold"} ${quantity} ${symbol} at ${formatUsd(data.price ?? 0)}. Fee: ${formatUsd(data.fee ?? 0)}.`
+        `${side === "buy" ? "Bought" : "Sold"} ${quantity} ${symbol} at ${formatUsd(data.price ?? 0)}. Commission: ${formatUsd(
+          data.fee ?? 0
+        )}. ${side === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`
       );
       void loadLeaderboard();
     } finally {
@@ -349,6 +430,9 @@ export function InvestmentChallengeDashboard() {
             <a className="button primary" href="#team-portfolio">
               Start Portfolio
             </a>
+            <button className="button secondary" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
+              {refreshingPrices ? "Refreshing prices..." : "Refresh featured prices"}
+            </button>
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               View Leaderboard
             </Link>
@@ -370,7 +454,7 @@ export function InvestmentChallengeDashboard() {
           <p>{compactMarketMessage}</p>
           <div className="market-status-grid">
             <div><span>Starting cash</span><strong>{formatUsd(INVESTMENT_STARTING_CASH)}</strong></div>
-            <div><span>Fee</span><strong>0.1%</strong></div>
+            <div><span>Commission</span><strong>{feeRateLabel}</strong></div>
             <div><span>Prices</span><strong>Daily close</strong></div>
             <div><span>ET time</span><strong>{marketStatus.etTime || "Review"}</strong></div>
           </div>
@@ -484,8 +568,9 @@ export function InvestmentChallengeDashboard() {
               <span>Latest close</span>
               <strong>{selectedPriceText}</strong>
               <p>
-                {selectedQuote.priceMessage ??
-                  (selectedQuote.priceDate ? `Close date: ${selectedQuote.priceDate}` : selectedQuote.provider)}
+                {selectedQuote.priceAvailable
+                  ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)}`
+                  : selectedQuote.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."}
               </p>
             </div>
           </div>
@@ -521,14 +606,11 @@ export function InvestmentChallengeDashboard() {
 
           <div className="trade-estimate-grid">
             <div><span>Trade value</span><strong>{formatUsd(estimatedGross)}</strong></div>
-            <div><span>Fee</span><strong>{formatUsd(estimatedFee)}</strong></div>
+            <div><span>Commission {feeRateLabel}</span><strong>{formatUsd(estimatedFee)}</strong></div>
             <div><span>{side === "buy" ? "Total cost" : "Net proceeds"}</span><strong>{formatUsd(estimatedNet)}</strong></div>
           </div>
 
-          {!marketStatus.isOpen ? <p className="market-closed-note">{closedMessage}</p> : null}
-          {!selectedQuote.priceAvailable ? (
-            <p className="market-closed-note">{selectedQuote.priceMessage ?? "Daily close price unavailable."}</p>
-          ) : null}
+          {clientTradeWarning ? <p className="market-closed-note">{clientTradeWarning}</p> : null}
           {!selectedQuote.priceAvailable ? (
             <button className="button secondary" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
               Try refresh price
@@ -616,8 +698,11 @@ export function InvestmentChallengeDashboard() {
                 <p className="eyebrow">Featured assets</p>
                 <h2>Latest close watchlist</h2>
               </div>
-              <span className="pill">Cache first</span>
+              <button className="button secondary compact-button" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
+                {refreshingPrices ? "Refreshing..." : "Refresh featured prices"}
+              </button>
             </div>
+            {priceRefreshDetails ? <p className="asset-search-status">{priceRefreshDetails}</p> : null}
             <div className="featured-price-grid">
               {featuredPriceQuotes.map((quote) => (
                 <button
@@ -627,9 +712,9 @@ export function InvestmentChallengeDashboard() {
                   onClick={() => selectAsset(quote)}
                 >
                   <span>{quote.symbol}</span>
-                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Not saved"}</strong>
+                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Not refreshed"}</strong>
                   <small>
-                    {quote.priceDate ? `${quote.priceDate} · ${quote.priceSource === "cache" ? "cached" : "Alpha Vantage"}` : "Refresh needed"}
+                    {quote.priceDate ? `${quote.priceDate} · ${sourceLabel(quote)}` : "Admin can refresh featured prices"}
                   </small>
                 </button>
               ))}
@@ -649,7 +734,11 @@ export function InvestmentChallengeDashboard() {
                   <article className="activity-row" key={trade.id}>
                     <span>{trade.side.toUpperCase()} {trade.quantity} {trade.symbol}</span>
                     <strong>{trade.price ? formatUsd(trade.price) : "Rejected"}</strong>
-                    <small>{trade.rejected ? trade.rejectReason ?? "Rejected" : trade.createdAt.slice(0, 16)}</small>
+                    <small>
+                      {trade.rejected
+                        ? trade.rejectReason ?? "Rejected"
+                        : `${trade.executedAt?.slice(0, 16) ?? trade.createdAt.slice(0, 16)} · commission ${formatUsd(trade.feeAmount)}`}
+                    </small>
                   </article>
                 ))
               ) : (
@@ -753,6 +842,14 @@ export function InvestmentChallengeDashboard() {
       </section>
     </div>
   );
+}
+
+function sourceLabel(quote: InvestmentAssetQuote) {
+  if (quote.priceSource === "cache") return "Saved cache";
+  if (quote.priceSource === "live") return "Alpha Vantage";
+  if (quote.provider === "alpha_vantage") return "Alpha Vantage";
+  if (quote.priceSource === "reference") return "Educational reference";
+  return quote.provider || "Market data";
 }
 
 function MetricCard({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {

@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, reason: result.reason }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, account: result.account, price: result.price, fee: result.fee });
+    return NextResponse.json({ ok: true, account: result.account, price: result.price, fee: result.fee, gross: result.gross, net: result.net });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to execute investment trade." },

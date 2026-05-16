@@ -82,10 +82,17 @@ export type InvestmentLeaderboardRow = {
 export type InvestmentTradeView = {
   id: string;
   createdAt: string;
+  executedAt: string | null;
   symbol: string;
   side: string;
   quantity: number;
   price: number;
+  grossValue: number;
+  feeRate: number;
+  feeAmount: number;
+  netValue: number;
+  priceDate: string | null;
+  priceSource: string | null;
   rejected: boolean;
   rejectReason: string | null;
 };
@@ -137,6 +144,10 @@ function rowNumber(row: Payload, key: string, fallback = 0) {
   return fallback;
 }
 
+function formatTradeUsd(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+}
+
 function normalizeSymbol(symbol: string) {
   return symbol.trim().toUpperCase();
 }
@@ -171,10 +182,10 @@ function classifyAlphaResponse(data: Payload): { code: PriceFailureCode; message
   if (!providerMessage) return null;
 
   if (/rate|limit|premium|standard api call frequency/i.test(providerMessage)) {
-    return { code: "rate_limit", message: "API rate limit reached. Using latest saved close if available." };
+    return { code: "rate_limit", message: "API rate limit reached. Saved prices will still be used if available." };
   }
 
-  return { code: "temporary_unavailable", message: "Market data temporarily unavailable." };
+  return { code: "temporary_unavailable", message: "No saved market price yet for this asset." };
 }
 
 function choosePriceFailure(failures: MarketPriceResult[]) {
@@ -184,7 +195,7 @@ function choosePriceFailure(failures: MarketPriceResult[]) {
       symbol: "",
       provider: "alpha_vantage",
       code: "temporary_unavailable" as const,
-      message: "Market data temporarily unavailable."
+      message: "No saved market price yet for this asset."
   };
   const rateLimit = failed.find((failure) => failure.code === "rate_limit");
   if (rateLimit) return rateLimit;
@@ -458,7 +469,7 @@ export async function getGlobalQuotePrice(symbol: string): Promise<MarketPriceRe
       symbol: normalized,
       provider: "alpha_vantage",
       code: "temporary_unavailable",
-      message: "Market data temporarily unavailable."
+      message: "No saved market price yet for this asset."
     };
   }
 
@@ -478,7 +489,7 @@ export async function getGlobalQuotePrice(symbol: string): Promise<MarketPriceRe
         symbol: normalized,
         provider: "alpha_vantage",
         code: "temporary_unavailable",
-        message: "Market data temporarily unavailable."
+        message: "No saved market price yet for this asset."
       };
     }
 
@@ -520,7 +531,7 @@ export async function getGlobalQuotePrice(symbol: string): Promise<MarketPriceRe
       symbol: normalized,
       provider: "alpha_vantage",
       code: "temporary_unavailable",
-      message: "Market data temporarily unavailable."
+      message: "No saved market price yet for this asset."
     };
   }
 }
@@ -549,7 +560,7 @@ export async function getDailyClosePrice(symbol: string): Promise<MarketPriceRes
       symbol: normalized,
       provider: "alpha_vantage",
       code: "temporary_unavailable",
-      message: "Market data temporarily unavailable."
+      message: "No saved market price yet for this asset."
     };
   }
 
@@ -570,7 +581,7 @@ export async function getDailyClosePrice(symbol: string): Promise<MarketPriceRes
         symbol: normalized,
         provider: "alpha_vantage",
         code: "temporary_unavailable",
-        message: "Market data temporarily unavailable."
+        message: "No saved market price yet for this asset."
       };
     }
 
@@ -623,7 +634,7 @@ export async function getDailyClosePrice(symbol: string): Promise<MarketPriceRes
       symbol: normalized,
       provider: "alpha_vantage",
       code: "temporary_unavailable",
-      message: "Market data temporarily unavailable."
+      message: "No saved market price yet for this asset."
     };
   }
 }
@@ -640,16 +651,17 @@ export async function getDailyMarketPrice(symbol: string) {
 export async function getLatestClosePrice(
   symbol: string,
   assetInput?: InvestmentAsset,
-  options: { allowReferenceFallback?: boolean } = {}
+  options: { allowReferenceFallback?: boolean; refresh?: boolean } = {}
 ) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
   const allowReferenceFallback = options.allowReferenceFallback ?? true;
+  const refresh = options.refresh ?? false;
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
   const failures: MarketPriceResult[] = [];
 
   const stored = await getCachedPrice(normalized);
-  if (stored) {
+  if (stored && !refresh) {
     return stored;
   }
 
@@ -681,6 +693,20 @@ export async function getLatestClosePrice(
   }
   failures.push(dailyClose);
 
+  if (stored) {
+    const failure = choosePriceFailure(failures);
+    const prefix =
+      failure.code === "rate_limit"
+        ? "API rate limit reached."
+        : failure.code === "temporary_unavailable"
+          ? "Market data refresh failed."
+          : failure.message;
+    return {
+      ...stored,
+      priceMessage: `${prefix} Using latest saved close from ${stored.priceDate}.`
+    };
+  }
+
   if (!allowReferenceFallback) {
     const failure = choosePriceFailure(failures);
     return {
@@ -694,7 +720,9 @@ export async function getLatestClosePrice(
           ? "Symbol not found."
           : failure.code === "price_unavailable"
             ? "Daily close price unavailable for this asset."
-            : "No saved market price yet. Try refreshing featured prices or selecting another asset."
+            : failure.code === "rate_limit"
+              ? "API rate limit reached. Saved prices will still be used if available."
+              : "No saved market price yet for this asset."
     };
   }
 
@@ -705,8 +733,8 @@ export async function getLatestClosePrice(
     priceAvailable: false,
     priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
     priceMessage: asset?.referencePrice
-      ? "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
-      : "No saved market price yet. Try refreshing featured prices or selecting another asset."
+      ? "Latest close not saved yet. Click Refresh featured prices."
+      : "No saved market price yet for this asset."
   };
 }
 
@@ -717,7 +745,7 @@ export async function getCachedPrice(symbol: string) {
     ...stored,
     provider: stored.provider || "alpha_vantage",
     priceSource: "cache" as const,
-    priceMessage: `Using latest saved close price from ${stored.priceDate}.`
+    priceMessage: `Using latest saved close from ${stored.priceDate}.`
   };
 }
 
@@ -762,9 +790,19 @@ export async function updateDailyPrices() {
   return [...featured, ...held];
 }
 
+export type InvestmentPriceRefreshResult = {
+  symbol: string;
+  ok: boolean;
+  price?: number;
+  priceDate?: string | null;
+  source?: string;
+  apiLimitReached?: boolean;
+  message?: string;
+};
+
 export async function refreshFeaturedAssetPrices() {
   await ensureInvestmentSeedData();
-  const results: Array<{ symbol: string; ok: boolean; message?: string }> = [];
+  const results: InvestmentPriceRefreshResult[] = [];
   const assets = (await listInvestmentAssets()).filter((asset) => asset.featured);
   const today = todayIsoInEt();
 
@@ -772,19 +810,36 @@ export async function refreshFeaturedAssetPrices() {
     try {
       const cached = await getCachedPrice(asset.symbol);
       if (cached?.priceDate === today) {
-        results.push({ symbol: asset.symbol, ok: true, message: `Already updated for ${today}.` });
+        results.push({
+          symbol: asset.symbol,
+          ok: true,
+          price: cached.latestClose,
+          priceDate: cached.priceDate,
+          source: "cache",
+          message: `Already updated for ${today}.`
+        });
         continue;
       }
-      const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false });
+      const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false, refresh: true });
+      const apiLimitReached = Boolean(price.priceMessage?.toLowerCase().includes("api rate limit"));
       if (!price.priceAvailable) {
         results.push({
           symbol: asset.symbol,
           ok: false,
-          message: price.priceMessage ?? "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+          apiLimitReached,
+          message: price.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."
         });
         continue;
       }
-      results.push({ symbol: asset.symbol, ok: true, message: price.priceMessage });
+      results.push({
+        symbol: asset.symbol,
+        ok: true,
+        price: price.latestClose,
+        priceDate: price.priceDate,
+        source: price.priceSource,
+        apiLimitReached,
+        message: price.priceMessage
+      });
     } catch (error) {
       results.push({
         symbol: asset.symbol,
@@ -830,13 +885,13 @@ export async function refreshHeldAssetPrices() {
         continue;
       }
       const asset = await resolveInvestmentAsset(symbol);
-      const price = await getLatestClosePrice(symbol, asset ?? undefined, { allowReferenceFallback: false });
+      const price = await getLatestClosePrice(symbol, asset ?? undefined, { allowReferenceFallback: false, refresh: true });
       results.push({
         symbol,
         ok: price.priceAvailable,
         message:
           price.priceMessage ??
-          (price.priceAvailable ? "Updated." : "No saved price yet. Use Refresh featured prices or wait for the next daily market update.")
+          (price.priceAvailable ? "Updated." : "Latest close not saved yet. Click Refresh featured prices.")
       });
     } catch (error) {
       results.push({
@@ -1155,18 +1210,24 @@ export async function executeInvestmentTrade(input: {
   if (input.side === "buy") {
     const totalCost = gross + fee;
     if (totalCost > cash + 0.00001) {
-      return rejectTrade(account, asset.symbol, "buy", quantity, "Insufficient cash for this trade.");
+      return rejectTrade(
+        account,
+        asset.symbol,
+        "buy",
+        quantity,
+        `Insufficient virtual cash. Total cost including commission is ${formatTradeUsd(totalCost)}.`
+      );
     }
 
     const previousAvg = holding ? rowNumber(holding, "average_buy_price") : 0;
     const newQuantity = currentQuantity + quantity;
-    const newAverage = newQuantity > 0 ? (previousAvg * currentQuantity + gross) / newQuantity : 0;
-    await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, -(gross + fee));
+    const newAverage = newQuantity > 0 ? (previousAvg * currentQuantity + totalCost) / newQuantity : 0;
+    await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newAverage, holding ? rowNumber(holding, "realized_gain_loss") : 0);
     await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash - totalCost, updated_at: new Date().toISOString() });
   } else {
     if (currentQuantity < quantity) {
-      return rejectTrade(account, asset.symbol, "sell", quantity, "Insufficient shares for this sale.");
+      return rejectTrade(account, asset.symbol, "sell", quantity, "You cannot sell more shares than you own.");
     }
 
     const avg = holding ? rowNumber(holding, "average_buy_price") : 0;
@@ -1174,14 +1235,14 @@ export async function executeInvestmentTrade(input: {
     const previousRealized = holding ? rowNumber(holding, "realized_gain_loss") : 0;
     const realized = previousRealized + (price - avg) * quantity - fee;
     const newQuantity = currentQuantity - quantity;
-    await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds);
+    await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newQuantity > 0 ? avg : 0, realized);
     await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash + proceeds, updated_at: new Date().toISOString() });
   }
 
   await recalculatePortfolios();
   const view = await buildInvestmentAccountView(rowString(account, "id"));
-  return { ok: true as const, account: view, price, fee };
+  return { ok: true as const, account: view, price, fee, gross, net: input.side === "buy" ? gross + fee : gross - fee };
 }
 
 export async function saveInvestmentThesis(input: {
@@ -1282,7 +1343,7 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       priceSource: stored ? ("cache" as const) : ("reference" as const),
       priceMessage: storedDate
         ? `Using latest saved close price from ${storedDate}.`
-        : "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+        : "Latest close not saved yet. Click Refresh featured prices."
     };
   });
 }
@@ -1452,20 +1513,26 @@ async function upsertInvestmentDailyPrice(price: {
   raw: unknown;
 }) {
   if (!supabaseConfigured()) return null;
-  return upsertRow(
-    "investment_daily_prices",
-    {
-      symbol: price.symbol,
-      price_date: price.priceDate,
-      close_price: price.closePrice,
-      adjusted_close_price: price.adjustedClosePrice,
-      volume: price.volume,
-      provider: price.provider,
-      raw: price.raw,
-      fetched_at: new Date().toISOString()
-    },
-    "symbol,price_date"
-  );
+  const payload = {
+    symbol: price.symbol,
+    price_date: price.priceDate,
+    trading_day: price.priceDate,
+    close_price: price.closePrice,
+    adjusted_close_price: price.adjustedClosePrice,
+    volume: price.volume,
+    provider: price.provider,
+    raw: price.raw,
+    raw_source: price.raw,
+    fetched_at: new Date().toISOString()
+  };
+  try {
+    return await upsertRow("investment_daily_prices", payload, "symbol,price_date");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/trading_day|raw_source|schema cache|column/i.test(message)) throw error;
+    const { trading_day: _tradingDay, raw_source: _rawSource, ...legacyPayload } = payload;
+    return upsertRow("investment_daily_prices", legacyPayload, "symbol,price_date");
+  }
 }
 
 async function getStoredLatestPrice(symbol: string) {
@@ -1534,7 +1601,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     priceSource: priceMapInput?.has(asset.symbol) ? ("cache" as const) : ("reference" as const),
     priceMessage: priceMapInput?.has(asset.symbol)
       ? "Using latest saved close price."
-      : "No saved price yet. Use Refresh featured prices or wait for the next daily market update."
+      : "Latest close not saved yet. Click Refresh featured prices."
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)
@@ -1628,10 +1695,17 @@ function mapTradeRow(row: Payload): InvestmentTradeView {
   return {
     id: rowString(row, "id"),
     createdAt: rowString(row, "created_at"),
+    executedAt: rowNullableString(row, "executed_at"),
     symbol: rowString(row, "symbol"),
     side: rowString(row, "side"),
     quantity: rowNumber(row, "quantity"),
     price: rowNumber(row, "price"),
+    grossValue: rowNumber(row, "gross_value", rowNumber(row, "gross_amount")),
+    feeRate: rowNumber(row, "fee_rate", INVESTMENT_TRANSACTION_FEE_RATE),
+    feeAmount: rowNumber(row, "fee_amount"),
+    netValue: rowNumber(row, "net_value", Math.abs(rowNumber(row, "net_amount"))),
+    priceDate: rowNullableString(row, "price_date"),
+    priceSource: rowNullableString(row, "price_source"),
     rejected: Boolean(row.rejected),
     rejectReason: rowNullableString(row, "reject_reason")
   };
@@ -1667,9 +1741,12 @@ async function saveTrade(
   price: number,
   gross: number,
   fee: number,
-  net: number
+  net: number,
+  priceDate: string | null,
+  priceSource: string | undefined
 ) {
-  return insertRow("investment_trades", {
+  const executedAt = new Date().toISOString();
+  return insertInvestmentTrade({
     account_id: rowString(account, "id"),
     competition_id: rowString(account, "competition_id"),
     symbol,
@@ -1677,18 +1754,25 @@ async function saveTrade(
     quantity,
     price,
     gross_amount: gross,
+    gross_value: gross,
+    fee_rate: INVESTMENT_TRANSACTION_FEE_RATE,
     fee_amount: fee,
     net_amount: net,
+    net_value: net,
+    price_date: priceDate,
+    price_source: priceSource ?? null,
+    executed_at: executedAt,
     rejected: false,
     reject_reason: null,
     trade_date: todayIsoInEt(),
-    created_at: new Date().toISOString()
+    created_at: executedAt
   });
 }
 
 async function rejectTrade(account: Payload, symbol: string, side: string, quantity: number, reason: string) {
   if (account && rowString(account, "id")) {
-    await insertRow("investment_trades", {
+    const executedAt = new Date().toISOString();
+    await insertInvestmentTrade({
       account_id: rowString(account, "id"),
       competition_id: rowString(account, "competition_id"),
       symbol: symbol || "UNKNOWN",
@@ -1696,15 +1780,40 @@ async function rejectTrade(account: Payload, symbol: string, side: string, quant
       quantity: Number.isFinite(quantity) ? quantity : 0,
       price: null,
       gross_amount: null,
+      gross_value: null,
+      fee_rate: INVESTMENT_TRANSACTION_FEE_RATE,
       fee_amount: null,
       net_amount: null,
+      net_value: null,
+      price_date: null,
+      price_source: null,
+      executed_at: executedAt,
       rejected: true,
       reject_reason: reason,
       trade_date: todayIsoInEt(),
-      created_at: new Date().toISOString()
+      created_at: executedAt
     });
   }
   return { ok: false as const, reason };
+}
+
+async function insertInvestmentTrade(payload: Payload) {
+  try {
+    return await insertRow("investment_trades", payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/gross_value|fee_rate|net_value|price_date|price_source|executed_at|schema cache|column/i.test(message)) {
+      throw error;
+    }
+    const legacyPayload = { ...payload };
+    delete legacyPayload.gross_value;
+    delete legacyPayload.fee_rate;
+    delete legacyPayload.net_value;
+    delete legacyPayload.price_date;
+    delete legacyPayload.price_source;
+    delete legacyPayload.executed_at;
+    return insertRow("investment_trades", legacyPayload);
+  }
 }
 
 async function upsertPortfolioSnapshot(view: InvestmentAccountView) {

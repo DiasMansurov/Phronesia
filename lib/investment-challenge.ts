@@ -1,5 +1,7 @@
 export const INVESTMENT_STARTING_CASH = 100_000;
-export const INVESTMENT_TRANSACTION_FEE_RATE = 0.001;
+const configuredTransactionFee = Number(process.env.NEXT_PUBLIC_INVESTMENT_TRANSACTION_FEE ?? "0.001");
+export const INVESTMENT_TRANSACTION_FEE_RATE =
+  Number.isFinite(configuredTransactionFee) && configuredTransactionFee >= 0 ? configuredTransactionFee : 0.001;
 export const DEFAULT_INVESTMENT_COMPETITION_SLUG = "phronesia-investment-challenge";
 
 export type InvestmentAssetType = "ETF" | "Stock";
