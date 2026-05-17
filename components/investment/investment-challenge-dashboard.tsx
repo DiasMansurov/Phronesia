@@ -16,7 +16,7 @@ import {
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
-import type { InvestmentAccountView, InvestmentLeaderboardRow } from "@/lib/server-investments";
+import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentLeaderboardRow } from "@/lib/server-investments";
 
 type MarketPayload = {
   marketStatus: InvestmentMarketStatus;
@@ -27,6 +27,7 @@ type MarketPayload = {
 type LeaderboardPayload = {
   rows: InvestmentLeaderboardRow[];
   persisted: boolean;
+  competition?: InvestmentCompetitionView | null;
 };
 
 type RefreshPricesPayload = {
@@ -107,6 +108,8 @@ export function InvestmentChallengeDashboard() {
   const [account, setAccount] = useState<InvestmentAccountView | null>(null);
   const [teamName, setTeamName] = useState("");
   const [participantLogin, setParticipantLogin] = useState("");
+  const [competitionCode, setCompetitionCode] = useState("");
+  const [resolvedCompetition, setResolvedCompetition] = useState<InvestmentCompetitionView | null>(null);
   const [symbol, setSymbol] = useState("SPY");
   const [selectedQuote, setSelectedQuote] = useState<InvestmentAssetQuote>(featuredQuotes()[0]);
   const [assetQuery, setAssetQuery] = useState("SPY");
@@ -175,6 +178,7 @@ export function InvestmentChallengeDashboard() {
 
   const quotes = account?.quotes ?? market.quotes;
   const marketStatus = account?.marketStatus ?? market.marketStatus;
+  const activeCompetition = account?.competition ?? resolvedCompetition ?? leaderboard.competition ?? null;
   const portfolio = account?.portfolio;
   const holdingsCount = account?.holdings.length ?? 0;
   const estimatedGross = selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
@@ -185,6 +189,10 @@ export function InvestmentChallengeDashboard() {
   const clientTradeWarning =
     !selectedQuote.priceAvailable
       ? selectedQuote.priceMessage ?? "No saved market price yet for this asset."
+      : activeCompetition?.runtimeStatus === "not_started"
+        ? "Competition has not started yet. You can register and prepare your thesis, but trading is disabled."
+      : activeCompetition?.runtimeStatus === "closed"
+        ? "Competition closed. Rankings are final and buy/sell orders are disabled."
       : !marketStatus.isOpen
         ? "US market is closed. Latest close prices are shown, but buy/sell orders are disabled."
         : side === "buy" && account && estimatedNet > cashBalance + 0.00001
@@ -195,6 +203,7 @@ export function InvestmentChallengeDashboard() {
   const canTrade = Boolean(
     account &&
       marketStatus.isOpen &&
+      (!activeCompetition || activeCompetition.runtimeStatus === "active") &&
       !busy &&
       !priceLoading &&
       selectedQuote.priceAvailable &&
@@ -219,11 +228,13 @@ export function InvestmentChallengeDashboard() {
     if (current) setSelectedQuote(current);
   }
 
-  async function loadLeaderboard() {
-    const response = await fetch("/api/investment/leaderboard", { cache: "no-store" });
+  async function loadLeaderboard(code = competitionCode) {
+    const suffix = code.trim() ? `?competitionCode=${encodeURIComponent(code.trim())}` : "";
+    const response = await fetch(`/api/investment/leaderboard${suffix}`, { cache: "no-store" });
     if (!response.ok) return;
     const data = (await response.json()) as LeaderboardPayload;
     setLeaderboard(data);
+    if (data.competition) setResolvedCompetition(data.competition);
   }
 
   async function loadAccount(accountId: string) {
@@ -239,6 +250,32 @@ export function InvestmentChallengeDashboard() {
       setAccount(data.account);
       const current = data.account.quotes.find((quote) => quote.symbol === symbol) ?? data.account.quotes[0];
       if (current) setSelectedQuote(current);
+      setResolvedCompetition(data.account.competition);
+      setCompetitionCode(data.account.competition.code);
+      void loadLeaderboard(data.account.competition.code);
+    }
+  }
+
+  async function resolveCompetitionCode() {
+    const code = competitionCode.trim();
+    if (!code) {
+      setResolvedCompetition(null);
+      setStatus("Using the public Phronesia Investment Challenge.");
+      return;
+    }
+    setStatus("Checking competition code...");
+    try {
+      const response = await fetch(`/api/investment/competitions/resolve?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const data = (await response.json()) as { ok?: boolean; competition?: InvestmentCompetitionView; reason?: string };
+      if (!response.ok || !data.competition) {
+        setStatus(data.reason ?? "Competition code was not found.");
+        return;
+      }
+      setResolvedCompetition(data.competition);
+      setStatus(data.competition.welcomeMessage ?? `Competition loaded: ${data.competition.name}.`);
+      void loadLeaderboard(data.competition.code);
+    } catch {
+      setStatus("Competition code lookup is temporarily unavailable.");
     }
   }
 
@@ -250,7 +287,7 @@ export function InvestmentChallengeDashboard() {
       const response = await fetch("/api/investment/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamName, participantLogin })
+        body: JSON.stringify({ teamName, participantLogin, competitionCode: competitionCode.trim() || undefined })
       });
       const data = (await response.json()) as { account?: InvestmentAccountView | null; reason?: string; error?: string };
       if (!response.ok || !data.account) {
@@ -259,8 +296,10 @@ export function InvestmentChallengeDashboard() {
       }
       window.localStorage.setItem(accountStorageKey, data.account.account.id);
       setAccount(data.account);
+      setResolvedCompetition(data.account.competition);
+      setCompetitionCode(data.account.competition.code);
       setStatus(`Portfolio ready for ${data.account.account.teamName}.`);
-      void loadLeaderboard();
+      void loadLeaderboard(data.account.competition.code);
     } finally {
       setBusy(false);
     }
@@ -354,7 +393,7 @@ export function InvestmentChallengeDashboard() {
       const detail = `Featured price refresh complete: ${successes} updated or cached, ${failures} failed.${apiLimit}`;
       setStatus(detail);
       setPriceRefreshDetails(detail);
-      void loadLeaderboard();
+      void loadLeaderboard(account?.competition.code ?? competitionCode);
       if (account) void loadAccount(account.account.id);
     } finally {
       setRefreshingPrices(false);
@@ -421,7 +460,7 @@ export function InvestmentChallengeDashboard() {
           data.fee ?? 0
         )}. ${side === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`
       );
-      void loadLeaderboard();
+      void loadLeaderboard(account.competition.code);
     } finally {
       setBusy(false);
     }
@@ -452,6 +491,8 @@ export function InvestmentChallengeDashboard() {
   }
 
   const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
+  const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
+  const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
   const featuredPriceQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 25), [quotes]);
   const recentTrades = account?.trades.slice(0, 5) ?? [];
   const educationCards = market.educationalCards.filter((card) =>
@@ -513,6 +554,31 @@ export function InvestmentChallengeDashboard() {
         </aside>
       </section>
 
+      {activeCompetition ? (
+        <section className={`panel stack-md competition-banner ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Competition code: {activeCompetition.code}</p>
+              <h2>{activeCompetition.welcomeMessage ?? activeCompetition.name}</h2>
+              <p className="muted">{activeCompetition.description ?? "Educational portfolio competition with virtual cash only."}</p>
+            </div>
+            <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
+              {activeCompetition.runtimeStatus === "not_started"
+                ? "Not started"
+                : activeCompetition.runtimeStatus === "closed"
+                  ? "Competition closed"
+                  : "Competition active"}
+            </span>
+          </div>
+          <div className="competition-facts-grid">
+            <div><span>Starting capital</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
+            <div><span>Start date</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
+            <div><span>End date</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
+            <div><span>Ranking</span><strong>{activeCompetition.runtimeStatus === "closed" ? "Final" : "Live"}</strong></div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="investment-summary-section" id="team-portfolio">
         <article className="panel stack-md portfolio-panel">
           <div className="section-header">
@@ -533,6 +599,18 @@ export function InvestmentChallengeDashboard() {
                 <span>Competition login or class code</span>
                 <input value={participantLogin} onChange={(event) => setParticipantLogin(event.target.value)} />
               </label>
+              <label className="form-field">
+                <span>Investment competition code</span>
+                <input
+                  value={competitionCode}
+                  onChange={(event) => setCompetitionCode(event.target.value)}
+                  onBlur={resolveCompetitionCode}
+                  placeholder="Teenvestor.school"
+                />
+              </label>
+              <button className="button secondary" type="button" onClick={resolveCompetitionCode}>
+                Check Competition Code
+              </button>
               <button className="button primary" type="submit" disabled={busy}>
                 Create $100,000 Portfolio
               </button>
@@ -545,6 +623,8 @@ export function InvestmentChallengeDashboard() {
             <MetricCard label="Portfolio value" value={formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH)} />
             <MetricCard label="Daily change" value={formatPercent(portfolio?.dailyChange ?? 0)} tone={(portfolio?.dailyChange ?? 0) >= 0 ? "positive" : "negative"} />
             <MetricCard label="Total return" value={formatPercent(portfolio?.totalReturn ?? 0)} tone={(portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"} />
+            <MetricCard label="Profit / loss" value={formatUsd(profitLoss)} tone={profitLoss >= 0 ? "positive" : "negative"} />
+            <MetricCard label="Current rank" value={currentRankText} />
             <MetricCard label="Holdings" value={String(holdingsCount)} />
             <MetricCard label="Diversification" value={`${portfolio?.diversificationScore ?? 0}/100`} />
             <MetricCard label="Risk score" value={`${portfolio?.riskScore ?? 0}/100`} />
@@ -906,6 +986,19 @@ function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.provider === "yahoo_finance") return "Yahoo Finance";
   if (quote.priceSource === "reference") return "Educational reference";
   return quote.provider || "Market data";
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "Organizer controlled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Organizer controlled";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
+  }).format(date);
 }
 
 function MetricCard({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {

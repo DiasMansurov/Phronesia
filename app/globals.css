@@ -6476,6 +6476,49 @@ li,
   white-space: pre-wrap;
 }
 
+.competition-banner {
+  border-color: rgba(15, 107, 122, 0.18);
+  background:
+    linear-gradient(135deg, rgba(230, 247, 241, 0.9), rgba(255, 255, 255, 0.95)),
+    #fff;
+}
+
+.competition-banner.teenvestor {
+  border-color: rgba(21, 184, 137, 0.32);
+  background:
+    linear-gradient(135deg, rgba(21, 184, 137, 0.18), rgba(255, 255, 255, 0.96)),
+    #fff;
+}
+
+.competition-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.competition-facts-grid div {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(8, 79, 92, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.competition-facts-grid span {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.competition-facts-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
 .activity-list {
   display: grid;
   gap: 0.55rem;
@@ -6757,6 +6800,7 @@ li,
   .portfolio-metric-grid,
   .investment-education-grid-v2,
   .featured-price-grid,
+  .competition-facts-grid,
   .options-input-grid,
   .options-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6777,6 +6821,7 @@ li,
   }
 
   .market-status-grid,
+  .competition-facts-grid,
   .portfolio-metric-grid,
   .trade-estimate-grid,
   .selected-asset-card,

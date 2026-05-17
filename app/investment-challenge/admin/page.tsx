@@ -57,7 +57,10 @@ export default async function InvestmentChallengeAdminPage() {
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/api/investment/admin?format=csv">
-              Export CSV
+              Export leaderboard CSV
+            </Link>
+            <Link className="button secondary" href="/api/investment/admin?format=trades">
+              Export trades CSV
             </Link>
             <form action="/api/investment/admin/refresh-prices" method="post">
               <button className="button secondary" type="submit">
@@ -80,10 +83,51 @@ export default async function InvestmentChallengeAdminPage() {
       ) : null}
 
       <section className="grid four investment-admin-stats">
-        <div className="stat-card"><span>Accounts</span><strong>{bundle.accounts.length}</strong></div>
-        <div className="stat-card"><span>Trades</span><strong>{bundle.trades.length}</strong></div>
-        <div className="stat-card"><span>Theses</span><strong>{bundle.theses.length}</strong></div>
-        <div className="stat-card"><span>Snapshots</span><strong>{bundle.snapshots.length}</strong></div>
+        <div className="stat-card"><span>Total teams</span><strong>{bundle.stats?.totalTeams ?? bundle.accounts.length}</strong></div>
+        <div className="stat-card"><span>Active teams</span><strong>{bundle.stats?.activeTeams ?? 0}</strong></div>
+        <div className="stat-card"><span>Total trades</span><strong>{bundle.stats?.totalTrades ?? bundle.trades.length}</strong></div>
+        <div className="stat-card"><span>Best team</span><strong>{bundle.stats?.bestTeam ?? "n/a"}</strong></div>
+      </section>
+
+      <section className="grid two">
+        <article className="panel stack-md">
+          <p className="eyebrow">Create or edit competition</p>
+          <h2>Competition code, dates, and starting cash.</h2>
+          <form className="stack-sm" action="/api/investment/admin/competitions" method="post">
+            <label className="form-field"><span>Code</span><input name="code" defaultValue="Teenvestor.school" required /></label>
+            <label className="form-field"><span>Name</span><input name="name" defaultValue="Teenvestor.school Investment Competition" /></label>
+            <label className="form-field"><span>Description</span><input name="description" placeholder="Private educational portfolio competition" /></label>
+            <label className="form-field"><span>Starting cash</span><input name="startingCash" type="number" defaultValue={100000} min={1} /></label>
+            <label className="form-field"><span>Allowed assets</span><input name="allowedAssets" placeholder="Blank = all searchable US stocks/ETFs" /></label>
+            <label className="form-field"><span>Trading rules</span><input name="tradingRules" placeholder="No margin, no short selling, 0.1% fee" /></label>
+            <label className="form-field"><span>Start date/time</span><input name="startAt" type="datetime-local" /></label>
+            <label className="form-field"><span>End date/time</span><input name="endAt" type="datetime-local" /></label>
+            <label className="form-field"><span>Ranking method</span><select name="rankingMethod" defaultValue="portfolio_value"><option value="portfolio_value">Portfolio value</option><option value="total_return">Total return</option><option value="balanced_score">Balanced score</option></select></label>
+            <label className="form-field"><span>Status</span><select name="status" defaultValue="active"><option value="draft">Draft</option><option value="active">Active</option><option value="closed">Closed</option></select></label>
+            <button className="button primary" type="submit">Save competition</button>
+          </form>
+        </article>
+
+        <article className="panel stack-md">
+          <p className="eyebrow">Competitions</p>
+          <h2>Close and monitor competitions.</h2>
+          <div className="investment-admin-list">
+            {bundle.competitions.map((competition) => (
+              <div className="goal-item" key={competition.id}>
+                <strong>{competition.name}</strong>
+                <p className="muted small">{competition.code} · {competition.runtimeStatus} · ends {competition.endAt ? competition.endAt.slice(0, 10) : "organizer controlled"}</p>
+                <div className="cta-row">
+                  <Link className="text-link" href={`/investment-challenge/leaderboard/${competition.slug}`}>Leaderboard</Link>
+                  <Link className="text-link" href={`/investment-challenge/results/${competition.slug}`}>Results</Link>
+                  <form action="/api/investment/admin/finalize" method="post">
+                    <input type="hidden" name="code" value={competition.code} />
+                    <button className="text-link" type="submit">Finalize</button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
       </section>
 
       <section className="panel stack-md">
@@ -99,6 +143,7 @@ export default async function InvestmentChallengeAdminPage() {
               <tr>
                 <th>Rank</th>
                 <th>Team</th>
+                <th>Profit</th>
                 <th>Total value</th>
                 <th>Overall</th>
                 <th>Return</th>
@@ -110,6 +155,7 @@ export default async function InvestmentChallengeAdminPage() {
                 <tr key={value(row, "account_id")}>
                   <td>#{value(row, "rank_position")}</td>
                   <td>{value(row, "team_name")}</td>
+                  <td className={numberValue(row, "profit_loss") >= 0 ? "positive-text" : "negative-text"}>{formatUsd(numberValue(row, "profit_loss"))}</td>
                   <td>{formatUsd(numberValue(row, "total_value"))}</td>
                   <td>{value(row, "overall_score")}/100</td>
                   <td>{Number(numberValue(row, "total_return")).toFixed(2)}%</td>

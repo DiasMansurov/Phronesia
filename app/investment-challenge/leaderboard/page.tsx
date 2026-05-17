@@ -32,8 +32,8 @@ export default async function InvestmentChallengeLeaderboardPage() {
           <p className="eyebrow">Investment Leaderboard</p>
           <h1 className="display compact">Rankings based on return, risk, thesis, and discipline.</h1>
           <p className="lede compact-lede">
-            Phronesia ranks teams by more than profit: the score also rewards diversification, risk control, thesis quality,
-            and drawdown management.
+            Teams are primarily ranked by portfolio value and total return. Phronesia also shows diversification, risk,
+            thesis quality, and trade count so the ranking teaches more than profit chasing.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/investment-challenge">
@@ -57,10 +57,10 @@ export default async function InvestmentChallengeLeaderboardPage() {
       <section className="panel stack-md">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Public ranking</p>
-            <h2>Teams by overall investment score.</h2>
+            <p className="eyebrow">{leaderboard.competition?.name ?? "Public ranking"}</p>
+            <h2>Teams by portfolio value and profit.</h2>
           </div>
-          <span className="pill">{leaderboard.rows.length} teams</span>
+          <span className="pill">{leaderboard.competition?.runtimeStatus === "closed" ? "Final ranking" : `${leaderboard.rows.length} teams`}</span>
         </div>
         <div className="table-wrap">
           <table className="record-table investment-table">
@@ -68,13 +68,15 @@ export default async function InvestmentChallengeLeaderboardPage() {
               <tr>
                 <th>Rank</th>
                 <th>Team</th>
+                <th>Starting cash</th>
                 <th>Total value</th>
+                <th>Profit/Loss</th>
                 <th>Total return</th>
-                <th>Overall</th>
-                <th>Risk-adjusted</th>
+                <th>Trades</th>
                 <th>Diversification</th>
-                <th>Thesis</th>
-                <th>Drawdown</th>
+                <th>Risk</th>
+                <th>Final score</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -83,18 +85,20 @@ export default async function InvestmentChallengeLeaderboardPage() {
                   <tr key={row.accountId}>
                     <td>#{row.rank}</td>
                     <td>{row.teamName}</td>
+                    <td>{formatUsd(row.startingCash)}</td>
                     <td>{formatUsd(row.totalValue)}</td>
+                    <td className={row.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(row.profitLoss)}</td>
                     <td className={row.totalReturn >= 0 ? "positive-text" : "negative-text"}>{formatPercent(row.totalReturn)}</td>
-                    <td>{row.overallScore}/100</td>
-                    <td>{row.riskAdjustedScore}/100</td>
+                    <td>{row.tradeCount}</td>
                     <td>{row.diversificationScore}/100</td>
-                    <td>{row.thesisScore}/100</td>
-                    <td>{row.drawdownScore}/100</td>
+                    <td>{row.riskScore}/100</td>
+                    <td>{row.overallScore}/100</td>
+                    <td>{row.status}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9}>No teams have submitted investment portfolios yet.</td>
+                  <td colSpan={10}>No teams have submitted investment portfolios yet.</td>
                 </tr>
               )}
             </tbody>

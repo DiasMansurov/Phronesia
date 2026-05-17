@@ -5,14 +5,14 @@ import Link from "next/link";
 import { InvestmentChallengeDashboard } from "@/components/investment/investment-challenge-dashboard";
 
 export const metadata: Metadata = {
-  title: "Phronesia Investment Challenge — Virtual Stock Market & Options Simulation",
+  title: "Phronesia Investment Challenge — Virtual Stock Market Competition",
   description:
-    "Build a $100,000 virtual portfolio using daily market data. Learn stocks, ETFs, options, diversification, risk, and financial decision-making through simulation.",
+    "Join a virtual investment competition, build a $100,000 portfolio, trade simulated stocks and ETFs, and learn finance through real market data.",
   alternates: {
     canonical: "https://phronesia.org/investment-challenge"
   },
   openGraph: {
-    title: "Phronesia Investment Challenge — Virtual Stock Market & Options Simulation",
+    title: "Phronesia Investment Challenge — Virtual Stock Market Competition",
     description:
       "Manage a $100,000 virtual portfolio using daily market data and learn stocks, ETFs, options, diversification, risk, and financial decision-making.",
     url: "https://phronesia.org/investment-challenge",

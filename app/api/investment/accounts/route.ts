@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     teamName?: string;
     participantLogin?: string;
     competitionSlug?: string;
+    competitionCode?: string;
   };
 
   if (!body.teamName?.trim()) {
@@ -43,7 +44,8 @@ export async function POST(request: Request) {
   const account = await createOrGetInvestmentAccount({
     teamName: body.teamName,
     participantLogin: body.participantLogin,
-    competitionSlug: body.competitionSlug
+    competitionSlug: body.competitionSlug,
+    competitionCode: body.competitionCode
   });
 
   return NextResponse.json({ ok: true, persisted: true, account });

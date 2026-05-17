@@ -12,7 +12,14 @@ export async function GET(request: Request) {
 
   try {
     const result = await debugInvestmentPrice(symbol);
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      provider: process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage",
+      cacheFound: result.cachedPriceFound,
+      apiStatus: result.alphaVantageStatus,
+      finalPrice: result.finalPrice,
+      source: result.source
+    });
   } catch (error) {
     return NextResponse.json(
       {

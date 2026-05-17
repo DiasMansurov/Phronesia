@@ -24,12 +24,33 @@ export type InvestmentAccountView = {
     startingCash: number;
     cash: number;
   };
+  competition: InvestmentCompetitionView;
   holdings: InvestmentHoldingView[];
   trades: InvestmentTradeView[];
   thesis: InvestmentThesisView | null;
   quotes: InvestmentAssetQuote[];
   portfolio: InvestmentPortfolioSummary;
   marketStatus: InvestmentMarketStatus;
+  currentRank: InvestmentLeaderboardRow | null;
+};
+
+export type InvestmentCompetitionRuntimeStatus = "not_started" | "active" | "closed";
+
+export type InvestmentCompetitionView = {
+  id: string;
+  slug: string;
+  code: string;
+  name: string;
+  description: string | null;
+  startingCash: number;
+  startAt: string | null;
+  endAt: string | null;
+  status: string;
+  runtimeStatus: InvestmentCompetitionRuntimeStatus;
+  transactionFee: number;
+  rankingMethod: string;
+  isTeenvestor: boolean;
+  welcomeMessage: string | null;
 };
 
 export type InvestmentHoldingView = {
@@ -68,14 +89,20 @@ export type InvestmentLeaderboardRow = {
   rank: number;
   accountId: string;
   competitionId: string;
+  competitionCode?: string;
   teamName: string;
+  startingCash: number;
   totalValue: number;
+  profitLoss: number;
   totalReturn: number;
+  tradeCount: number;
   riskAdjustedScore: number;
   diversificationScore: number;
+  riskScore: number;
   thesisScore: number;
   drawdownScore: number;
   overallScore: number;
+  status: string;
   updatedAt: string;
 };
 
@@ -101,6 +128,8 @@ const MARKET_CLOSED_MESSAGE =
   "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
 
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
+const TEENVESTOR_CODE = "Teenvestor.school";
+const TEENVESTOR_SLUG = "teenvestor-school";
 type PriceSource = "live" | "cache" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
 type MarketPriceResult =
@@ -173,6 +202,48 @@ function formatTradeUsd(value: number) {
 
 function normalizeSymbol(symbol: string) {
   return symbol.trim().toUpperCase();
+}
+
+function competitionCodeToSlug(code: string) {
+  const trimmed = code.trim();
+  if (!trimmed) return DEFAULT_INVESTMENT_COMPETITION_SLUG;
+  return trimmed
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96) || DEFAULT_INVESTMENT_COMPETITION_SLUG;
+}
+
+function displayCompetitionCode(input?: string | null) {
+  const value = input?.trim();
+  if (!value) return DEFAULT_INVESTMENT_COMPETITION_SLUG;
+  return competitionCodeToSlug(value) === TEENVESTOR_SLUG ? TEENVESTOR_CODE : value.slice(0, 96);
+}
+
+function competitionDisplayName(code: string) {
+  return competitionCodeToSlug(code) === TEENVESTOR_SLUG
+    ? "Teenvestor.school Investment Competition"
+    : code === DEFAULT_INVESTMENT_COMPETITION_SLUG
+      ? "Phronesia Investment Challenge"
+      : `${code} Investment Competition`;
+}
+
+function nullableIso(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value;
+  return null;
+}
+
+function runtimeStatusForCompetition(row: Payload | InvestmentCompetitionView): InvestmentCompetitionRuntimeStatus {
+  const rawStatus = "runtimeStatus" in row ? row.runtimeStatus : String(row.status ?? "active");
+  if (rawStatus === "closed" || rawStatus === "archived") return "closed";
+  if (rawStatus === "draft") return "not_started";
+  const startAt = ("startAt" in row ? row.startAt : nullableIso(row.start_at) ?? nullableIso(row.starts_at)) as string | null;
+  const endAt = ("endAt" in row ? row.endAt : nullableIso(row.end_at) ?? nullableIso(row.ends_at)) as string | null;
+  const now = Date.now();
+  if (startAt && now < Date.parse(startAt)) return "not_started";
+  if (endAt && now > Date.parse(endAt)) return "closed";
+  return "active";
 }
 
 function isSupportedSymbol(symbol: string) {
@@ -498,6 +569,7 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
 
   const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
   const apiKey = process.env.MARKET_DATA_API_KEY;
+  let alphaResults: InvestmentAssetSearchResult[] = [];
 
   if (provider === "alpha_vantage" && apiKey) {
     try {
@@ -516,6 +588,7 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
           .filter((asset) => asset.region === "United States" && asset.currency === "USD")
           .filter((asset) => asset.type === "Stock" || asset.type === "ETF")
           .slice(0, 12);
+        alphaResults = normalized;
         if (normalized.length) return attachCachedPricesToSearchResults(normalized);
       }
     } catch {
@@ -523,10 +596,37 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
     }
   }
 
+  const yahooResults = await searchYahooAssets(keyword);
+  if (yahooResults.length) return attachCachedPricesToSearchResults(yahooResults);
+
   const lower = keyword.toLowerCase();
-  return attachCachedPricesToSearchResults(featuredAssetSearchResults().filter(
+  const featured = featuredAssetSearchResults().filter(
     (asset) => asset.symbol.toLowerCase().includes(lower) || asset.name.toLowerCase().includes(lower)
-  ));
+  );
+  if (featured.length) return attachCachedPricesToSearchResults(featured);
+
+  const direct = normalizeSymbol(keyword);
+  if (isSupportedSymbol(direct) && !alphaResults.length) {
+    return attachCachedPricesToSearchResults([
+      {
+        symbol: direct,
+        name: direct,
+        type: "Stock",
+        theme: "US-listed asset",
+        referencePrice: 0,
+        region: "United States",
+        currency: "USD",
+        exchange: null,
+        featured: false,
+        matchScore: 0.25,
+        priceAvailable: false,
+        latestClose: null,
+        priceDate: null
+      }
+    ]);
+  }
+
+  return [];
 }
 
 export async function getAssetQuote(symbol: string) {
@@ -1325,90 +1425,205 @@ export async function recalculatePortfolios() {
   return { updated, persisted: true };
 }
 
-export async function updateInvestmentLeaderboard() {
+export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string | null) {
   if (!supabaseConfigured()) return { rows: [], persisted: false };
   await ensureInvestmentSeedData();
 
-  const competition = await ensureDefaultCompetition();
-  if (!competition) return { rows: [], persisted: false };
+  const competitions = competitionCodeOrSlug
+    ? [await resolveInvestmentCompetition(competitionCodeOrSlug)]
+    : await listInvestmentCompetitions();
+  const validCompetitions = competitions.filter((competition): competition is InvestmentCompetitionView => Boolean(competition));
+  if (!validCompetitions.length) return { rows: [], persisted: false };
 
-  const accounts = await selectRows("investment_accounts", {
-    select: "*",
-    competition_id: `eq.${competition.id}`,
-    order: "created_at.asc",
-    limit: "1000"
-  });
-  if (!Array.isArray(accounts)) return { rows: [], persisted: false };
+  const allScored: InvestmentLeaderboardRow[] = [];
 
-  const quotes = await listInvestmentAssetQuotes();
-  const priceMap = new Map(quotes.map((quote) => [quote.symbol, quote.latestClose]));
-  const scored: InvestmentLeaderboardRow[] = [];
-
-  for (const account of accounts) {
-    const view = await buildInvestmentAccountView(rowString(account, "id"), priceMap);
-    if (!view) continue;
-    const snapshots = await listSnapshots(view.account.id);
-    const drawdown = calculateMaxDrawdown(snapshots, view.portfolio.totalValue);
-    const thesisScore = view.thesis?.thesisScore ?? 0;
-    const returnScore = clampScore(50 + view.portfolio.totalReturn);
-    const riskAdjustedScore = clampScore(50 + view.portfolio.totalReturn - Math.abs(drawdown) * 0.65);
-    const drawdownScore = clampScore(100 - Math.abs(drawdown) * 2);
-    const overallScore = Math.round(
-      returnScore * 0.4 +
-        riskAdjustedScore * 0.2 +
-        view.portfolio.diversificationScore * 0.15 +
-        thesisScore * 0.15 +
-        drawdownScore * 0.1
-    );
-
-    scored.push({
-      rank: 0,
-      accountId: view.account.id,
-      competitionId: competition.id,
-      teamName: view.account.teamName,
-      totalValue: view.portfolio.totalValue,
-      totalReturn: view.portfolio.totalReturn,
-      riskAdjustedScore,
-      diversificationScore: view.portfolio.diversificationScore,
-      thesisScore,
-      drawdownScore,
-      overallScore,
-      updatedAt: new Date().toISOString()
+  for (const competition of validCompetitions) {
+    if (competition.runtimeStatus === "closed") {
+      const lockedRows = await listLockedCompetitionResultRows(competition);
+      if (lockedRows.length) {
+        allScored.push(...lockedRows);
+        continue;
+      }
+    }
+    const accounts = await selectRows("investment_accounts", {
+      select: "*",
+      competition_id: `eq.${competition.id}`,
+      order: "created_at.asc",
+      limit: "1000"
     });
+    if (!Array.isArray(accounts)) continue;
+
+    const quotes = await listInvestmentAssetQuotes();
+    const priceMap = new Map(quotes.map((quote) => [quote.symbol, quote.latestClose]));
+    const scored: InvestmentLeaderboardRow[] = [];
+
+    for (const account of accounts) {
+      const view = await buildInvestmentAccountView(rowString(account, "id"), priceMap);
+      if (!view) continue;
+      const snapshots = await listSnapshots(view.account.id);
+      const drawdown = calculateMaxDrawdown(snapshots, view.portfolio.totalValue);
+      const thesisScore = view.thesis?.thesisScore ?? 0;
+      const tradeCount = await getTradeCount(view.account.id);
+      const returnScore = clampScore(50 + view.portfolio.totalReturn);
+      const riskAdjustedScore = clampScore(50 + view.portfolio.totalReturn - Math.abs(drawdown) * 0.65);
+      const drawdownScore = clampScore(100 - Math.abs(drawdown) * 2);
+      const overallScore = Math.round(
+        returnScore * 0.4 +
+          riskAdjustedScore * 0.2 +
+          view.portfolio.diversificationScore * 0.15 +
+          thesisScore * 0.15 +
+          drawdownScore * 0.1
+      );
+      const profitLoss = view.portfolio.totalValue - view.portfolio.startingCash;
+
+      scored.push({
+        rank: 0,
+        accountId: view.account.id,
+        competitionId: competition.id,
+        competitionCode: competition.code,
+        teamName: view.account.teamName,
+        startingCash: view.portfolio.startingCash,
+        totalValue: view.portfolio.totalValue,
+        profitLoss,
+        totalReturn: view.portfolio.totalReturn,
+        tradeCount,
+        riskAdjustedScore,
+        diversificationScore: view.portfolio.diversificationScore,
+        riskScore: view.portfolio.riskScore,
+        thesisScore,
+        drawdownScore,
+        overallScore,
+        status: competition.runtimeStatus === "closed" ? "closed" : "active",
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    scored.sort((a, b) => b.totalValue - a.totalValue || b.totalReturn - a.totalReturn || b.overallScore - a.overallScore);
+    scored.forEach((row, index) => {
+      row.rank = index + 1;
+    });
+
+    for (const row of scored) {
+      await upsertLeaderboardRow(row);
+      if (competition.runtimeStatus === "closed") await upsertCompetitionResult(row);
+    }
+
+    allScored.push(...scored);
   }
 
-  scored.sort((a, b) => b.overallScore - a.overallScore || b.totalValue - a.totalValue);
-  scored.forEach((row, index) => {
-    row.rank = index + 1;
-  });
-
-  for (const row of scored) {
-    await upsertRow(
-      "investment_leaderboard",
-      {
-        competition_id: row.competitionId,
-        account_id: row.accountId,
-        team_name: row.teamName,
-        total_value: row.totalValue,
-        total_return: row.totalReturn,
-        risk_adjusted_score: row.riskAdjustedScore,
-        diversification_score: row.diversificationScore,
-        thesis_score: row.thesisScore,
-        drawdown_score: row.drawdownScore,
-        overall_score: row.overallScore,
-        rank_position: row.rank,
-        updated_at: row.updatedAt
-      },
-      "competition_id,account_id"
-    );
-  }
-
-  return { rows: scored, persisted: true };
+  return { rows: allScored, persisted: true };
 }
 
-export async function ensureInvestmentSeedData() {
+async function listLockedCompetitionResultRows(competition: InvestmentCompetitionView) {
+  try {
+    const rows = await selectRows("investment_competition_results", {
+      select: "*",
+      competition_id: `eq.${competition.id}`,
+      order: "final_rank.asc,final_value.desc",
+      limit: "500"
+    });
+    if (!Array.isArray(rows) || !rows.length) return [];
+    return rows.map((row) => ({
+      rank: rowNumber(row, "final_rank"),
+      accountId: rowString(row, "account_id"),
+      competitionId: competition.id,
+      competitionCode: competition.code,
+      teamName: rowString(row, "team_name"),
+      startingCash: rowNumber(row, "starting_cash"),
+      totalValue: rowNumber(row, "final_value"),
+      profitLoss: rowNumber(row, "profit_loss"),
+      totalReturn: rowNumber(row, "total_return"),
+      tradeCount: rowNumber(row, "trade_count"),
+      riskAdjustedScore: 0,
+      diversificationScore: rowNumber(row, "diversification_score"),
+      riskScore: rowNumber(row, "risk_score"),
+      thesisScore: rowNumber(row, "thesis_score"),
+      drawdownScore: 0,
+      overallScore: 0,
+      status: "closed",
+      updatedAt: rowString(row, "finalized_at")
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function upsertLeaderboardRow(row: InvestmentLeaderboardRow) {
+  const payload = {
+    competition_id: row.competitionId,
+    account_id: row.accountId,
+    team_name: row.teamName,
+    starting_cash: row.startingCash,
+    total_value: row.totalValue,
+    profit_loss: row.profitLoss,
+    total_return: row.totalReturn,
+    trade_count: row.tradeCount,
+    risk_adjusted_score: row.riskAdjustedScore,
+    diversification_score: row.diversificationScore,
+    risk_score: row.riskScore,
+    thesis_score: row.thesisScore,
+    drawdown_score: row.drawdownScore,
+    overall_score: row.overallScore,
+    status: row.status,
+    rank_position: row.rank,
+    updated_at: row.updatedAt
+  };
+  try {
+    return await upsertRow("investment_leaderboard", payload, "competition_id,account_id");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/starting_cash|profit_loss|trade_count|risk_score|status|schema cache|column/i.test(message)) throw error;
+    const legacyPayload: Payload = { ...payload };
+    delete legacyPayload.starting_cash;
+    delete legacyPayload.profit_loss;
+    delete legacyPayload.trade_count;
+    delete legacyPayload.risk_score;
+    delete legacyPayload.status;
+    return upsertRow("investment_leaderboard", legacyPayload, "competition_id,account_id");
+  }
+}
+
+async function upsertCompetitionResult(row: InvestmentLeaderboardRow) {
+  const payload = {
+    competition_id: row.competitionId,
+    account_id: row.accountId,
+    team_name: row.teamName,
+    final_rank: row.rank,
+    starting_cash: row.startingCash,
+    final_value: row.totalValue,
+    profit_loss: row.profitLoss,
+    total_return: row.totalReturn,
+    trade_count: row.tradeCount,
+    diversification_score: row.diversificationScore,
+    risk_score: row.riskScore,
+    thesis_score: row.thesisScore,
+    finalized_at: new Date().toISOString()
+  };
+  try {
+    return await upsertRow("investment_competition_results", payload, "competition_id,account_id");
+  } catch {
+    return null;
+  }
+}
+
+async function getTradeCount(accountId: string) {
+  try {
+    const rows = await selectRows("investment_trades", {
+      select: "id,rejected",
+      account_id: `eq.${accountId}`,
+      rejected: "eq.false",
+      limit: "1000"
+    });
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function ensureInvestmentSeedData(includeCompetitions = true) {
   if (!supabaseConfigured()) return null;
-  const competition = await ensureDefaultCompetition();
+  const competition = includeCompetitions ? await ensureDefaultCompetition() : null;
+  if (includeCompetitions) await ensureDefaultCompetition(TEENVESTOR_CODE);
   for (const [index, asset] of INVESTMENT_ASSETS.entries()) {
     await upsertRow(
       "investment_assets",
@@ -1435,9 +1650,10 @@ export async function createOrGetInvestmentAccount(input: {
   teamName: string;
   participantLogin?: string;
   competitionSlug?: string;
+  competitionCode?: string;
 }) {
   if (!supabaseConfigured()) return null;
-  const competition = await ensureDefaultCompetition(input.competitionSlug);
+  const competition = await ensureDefaultCompetition(input.competitionCode || input.competitionSlug);
   if (!competition) return null;
 
   const teamName = input.teamName.trim().slice(0, 96);
@@ -1459,8 +1675,8 @@ export async function createOrGetInvestmentAccount(input: {
       competition_id: competition.id,
       team_name: teamName,
       participant_login: input.participantLogin?.trim().slice(0, 96) || null,
-      starting_cash: INVESTMENT_STARTING_CASH,
-      cash: INVESTMENT_STARTING_CASH,
+      starting_cash: competition.startingCash,
+      cash: competition.startingCash,
       updated_at: new Date().toISOString()
     },
     "competition_id,team_name"
@@ -1489,12 +1705,26 @@ export async function executeInvestmentTrade(input: {
   const status = getMarketStatus();
   const account = await getAccountRow(input.accountId);
   if (!account) return { ok: false as const, reason: "Investment account was not found." };
+  const competition = await getCompetitionById(rowString(account, "competition_id"));
+  if (!competition) return rejectTrade(account, normalizeSymbol(input.symbol), input.side, Number(input.quantity), "Competition was not found.");
 
   const quantity = Number(input.quantity);
   const normalizedSymbol = normalizeSymbol(input.symbol);
   if (input.side !== "buy" && input.side !== "sell") return rejectTrade(account, normalizedSymbol, input.side, quantity, "Invalid trade side.");
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return rejectTrade(account, normalizedSymbol, input.side, quantity, "Quantity must be a positive whole number of shares.");
+  }
+  if (competition.runtimeStatus === "not_started") {
+    return rejectTrade(
+      account,
+      normalizedSymbol,
+      input.side,
+      quantity,
+      `Competition has not started yet. Trading opens ${competition.startAt ? new Date(competition.startAt).toLocaleString("en-US", { timeZone: "America/New_York" }) : "when the organizer starts it"}.`
+    );
+  }
+  if (competition.runtimeStatus === "closed") {
+    return rejectTrade(account, normalizedSymbol, input.side, quantity, "Competition closed. Rankings are now final.");
   }
   if (!status.isOpen) {
     return rejectTrade(account, normalizedSymbol, input.side, quantity, status.message);
@@ -1583,30 +1813,148 @@ export async function saveInvestmentThesis(input: {
   return buildInvestmentAccountView(input.accountId);
 }
 
-export async function listInvestmentLeaderboard() {
-  if (!supabaseConfigured()) return { rows: [], persisted: false };
-  await updateInvestmentLeaderboard();
-  const rows = await selectRows("investment_leaderboard", {
-    select: "*",
-    order: "rank_position.asc,overall_score.desc",
-    limit: "100"
+export async function createOrUpdateInvestmentCompetition(input: {
+  code: string;
+  name?: string;
+  description?: string;
+  startingCash?: number;
+  startAt?: string;
+  endAt?: string;
+  status?: string;
+  rankingMethod?: string;
+  allowedAssets?: string;
+  tradingRules?: string;
+}) {
+  if (!supabaseConfigured()) return null;
+  const code = displayCompetitionCode(input.code);
+  const slug = competitionCodeToSlug(code);
+  const name = input.name?.trim() || competitionDisplayName(code);
+  const startingCash = Number.isFinite(input.startingCash) && Number(input.startingCash) > 0 ? Number(input.startingCash) : INVESTMENT_STARTING_CASH;
+  const startAt = input.startAt?.trim() || new Date().toISOString();
+  const endAt = input.endAt?.trim() || null;
+  const rows = await upsertCompetitionWithFallback({
+    slug,
+    code,
+    title: name,
+    name,
+    description: input.description?.trim() || null,
+    status: input.status === "draft" || input.status === "closed" ? input.status : "active",
+    starting_cash: startingCash,
+    starts_at: startAt,
+    start_at: startAt,
+    ends_at: endAt,
+    end_at: endAt,
+    allowed_assets: input.allowedAssets?.trim()
+      ? input.allowedAssets
+          .split(",")
+          .map((item) => normalizeSymbol(item))
+          .filter(Boolean)
+      : null,
+    trading_rules: input.tradingRules?.trim() ? { note: input.tradingRules.trim().slice(0, 1000) } : null,
+    transaction_fee: INVESTMENT_TRANSACTION_FEE_RATE,
+    ranking_method: input.rankingMethod?.trim() || "portfolio_value",
+    updated_at: new Date().toISOString()
   });
+  return Array.isArray(rows) && rows[0] ? mapCompetitionRow(rows[0]) : null;
+}
+
+export async function finalizeInvestmentCompetition(codeOrSlug: string) {
+  if (!supabaseConfigured()) return { ok: false as const, reason: "Supabase is not configured." };
+  const competition = await resolveInvestmentCompetition(codeOrSlug);
+  if (!competition) return { ok: false as const, reason: "Competition was not found." };
+  const payload = {
+    status: "closed",
+    finalized_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  try {
+    await updateRows("investment_competitions", { id: `eq.${competition.id}` }, payload);
+  } catch {
+    await updateRows("investment_competitions", { id: `eq.${competition.id}` }, { status: "archived", updated_at: new Date().toISOString() });
+  }
+  const leaderboard = await updateInvestmentLeaderboard(competition.code);
+  return { ok: true as const, competition: { ...competition, status: "closed", runtimeStatus: "closed" as const }, leaderboard };
+}
+
+export async function listInvestmentLeaderboard(competitionCodeOrSlug?: string | null) {
+  if (!supabaseConfigured()) return { rows: [], persisted: false, competition: null };
+  const competition = competitionCodeOrSlug ? await resolveInvestmentCompetition(competitionCodeOrSlug) : await ensureDefaultCompetition();
+  await updateInvestmentLeaderboard(competition?.code ?? competitionCodeOrSlug);
+  const query: Record<string, string> = {
+    select: "*",
+    order: "rank_position.asc,total_value.desc",
+    limit: "100"
+  };
+  if (competition?.id) query.competition_id = `eq.${competition.id}`;
+  const rows = await selectRows("investment_leaderboard", query);
   if (!Array.isArray(rows)) return { rows: [], persisted: false };
-  return { rows: rows.map(mapLeaderboardRow), persisted: true };
+  return { rows: rows.map((row) => mapLeaderboardRow(row, competition ?? undefined)), persisted: true, competition };
+}
+
+export async function listInvestmentFinalResults(competitionCodeOrSlug?: string | null) {
+  if (!supabaseConfigured()) return { rows: [], persisted: false, competition: null };
+  const competition = await resolveInvestmentCompetition(competitionCodeOrSlug);
+  if (!competition) return { rows: [], persisted: false, competition: null };
+  await updateInvestmentLeaderboard(competition.code);
+  let resultRows: Payload[] = [];
+  try {
+    const rows = await selectRows("investment_competition_results", {
+      select: "*",
+      competition_id: `eq.${competition.id}`,
+      order: "final_rank.asc,final_value.desc",
+      limit: "250"
+    });
+    resultRows = Array.isArray(rows) ? rows : [];
+  } catch {
+    resultRows = [];
+  }
+  if (!resultRows.length) {
+    const leaderboard = await listInvestmentLeaderboard(competition.code);
+    return { rows: leaderboard.rows, persisted: leaderboard.persisted, competition };
+  }
+  return {
+    rows: resultRows.map((row) => ({
+      rank: rowNumber(row, "final_rank"),
+      accountId: rowString(row, "account_id"),
+      competitionId: rowString(row, "competition_id"),
+      competitionCode: competition.code,
+      teamName: rowString(row, "team_name"),
+      startingCash: rowNumber(row, "starting_cash"),
+      totalValue: rowNumber(row, "final_value"),
+      profitLoss: rowNumber(row, "profit_loss"),
+      totalReturn: rowNumber(row, "total_return"),
+      tradeCount: rowNumber(row, "trade_count"),
+      riskAdjustedScore: 0,
+      diversificationScore: rowNumber(row, "diversification_score"),
+      riskScore: rowNumber(row, "risk_score"),
+      thesisScore: rowNumber(row, "thesis_score"),
+      drawdownScore: 0,
+      overallScore: 0,
+      status: "closed",
+      updatedAt: rowString(row, "finalized_at")
+    })),
+    persisted: true,
+    competition
+  };
 }
 
 export async function listInvestmentAdminBundle() {
   if (!supabaseConfigured()) {
-    return { accounts: [], holdings: [], trades: [], theses: [], snapshots: [], leaderboard: [], persisted: false };
+    return { accounts: [], holdings: [], trades: [], theses: [], snapshots: [], leaderboard: [], competitions: [], stats: null, persisted: false };
   }
-  const [accounts, holdings, trades, theses, snapshots, leaderboard] = await Promise.all([
+  const [accounts, holdings, trades, theses, snapshots, leaderboard, competitionRows] = await Promise.all([
     selectRows("investment_accounts", { select: "*", order: "created_at.desc", limit: "500" }),
     selectRows("investment_holdings", { select: "*", order: "updated_at.desc", limit: "1000" }),
     selectRows("investment_trades", { select: "*", order: "created_at.desc", limit: "1000" }),
     selectRows("investment_theses", { select: "*", order: "updated_at.desc", limit: "500" }),
     selectRows("investment_portfolio_snapshots", { select: "*", order: "snapshot_date.desc", limit: "1000" }),
-    selectRows("investment_leaderboard", { select: "*", order: "rank_position.asc", limit: "500" })
+    selectRows("investment_leaderboard", { select: "*", order: "rank_position.asc", limit: "500" }),
+    selectRows("investment_competitions", { select: "*", order: "created_at.desc", limit: "200" })
   ]);
+  const leaderboardRows = Array.isArray(leaderboard) ? leaderboard : [];
+  const returns = leaderboardRows.map((row) => rowNumber(row, "total_return")).filter((value) => Number.isFinite(value));
+  const best = leaderboardRows.slice().sort((a, b) => rowNumber(b, "total_value") - rowNumber(a, "total_value"))[0] ?? null;
+  const activeTeams = Array.isArray(accounts) ? accounts.filter((row) => rowNumber(row, "cash") !== rowNumber(row, "starting_cash")).length : 0;
 
   return {
     accounts: Array.isArray(accounts) ? accounts : [],
@@ -1614,7 +1962,16 @@ export async function listInvestmentAdminBundle() {
     trades: Array.isArray(trades) ? trades : [],
     theses: Array.isArray(theses) ? theses : [],
     snapshots: Array.isArray(snapshots) ? snapshots : [],
-    leaderboard: Array.isArray(leaderboard) ? leaderboard : [],
+    leaderboard: leaderboardRows,
+    competitions: Array.isArray(competitionRows) ? competitionRows.map(mapCompetitionRow) : [],
+    stats: {
+      totalTeams: Array.isArray(accounts) ? accounts.length : 0,
+      activeTeams,
+      totalTrades: Array.isArray(trades) ? trades.filter((row) => !row.rejected).length : 0,
+      averageReturn: returns.length ? returns.reduce((sum, value) => sum + value, 0) / returns.length : 0,
+      bestTeam: best ? rowString(best, "team_name") : "n/a",
+      bestValue: best ? rowNumber(best, "total_value") : 0
+    },
     persisted: true
   };
 }
@@ -1753,6 +2110,47 @@ function featuredAssetSearchResults(): InvestmentAssetSearchResult[] {
   }));
 }
 
+async function searchYahooAssets(query: string): Promise<InvestmentAssetSearchResult[]> {
+  try {
+    const YahooFinance = (await import("yahoo-finance2")).default;
+    const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+    const result = (await yahooFinance.search(query, { quotesCount: 12, newsCount: 0 })) as Payload;
+    const quotes = Array.isArray(result.quotes) ? (result.quotes as Payload[]) : [];
+    return quotes
+      .map((quote, index) => mapYahooSearchMatch(quote, index))
+      .filter((asset): asset is InvestmentAssetSearchResult => Boolean(asset))
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function mapYahooSearchMatch(match: Payload, index: number): InvestmentAssetSearchResult | null {
+  const symbol = normalizeSymbol(String(match.symbol ?? ""));
+  if (!isSupportedSymbol(symbol)) return null;
+  const quoteType = String(match.quoteType ?? match.typeDisp ?? "").toLowerCase();
+  const type = quoteType.includes("etf") || quoteType.includes("fund") ? "ETF" : "Stock";
+  if (!quoteType.includes("equity") && !quoteType.includes("etf") && !quoteType.includes("fund") && quoteType) {
+    return null;
+  }
+  const exchange = String(match.exchDisp ?? match.exchange ?? "").trim() || null;
+  return {
+    symbol,
+    name: sanitizeAssetName(match.longname ?? match.shortname ?? match.name, symbol),
+    type,
+    theme: type === "ETF" ? "Exchange-traded fund" : "US-listed company",
+    referencePrice: getInvestmentAsset(symbol)?.referencePrice ?? 0,
+    region: "United States",
+    currency: "USD",
+    exchange,
+    featured: Boolean(getInvestmentAsset(symbol)?.featured),
+    matchScore: Math.max(0.1, 1 - index / 20),
+    priceAvailable: false,
+    latestClose: null,
+    priceDate: null
+  };
+}
+
 async function attachCachedPricesToSearchResults(results: InvestmentAssetSearchResult[]) {
   if (!results.length || !supabaseConfigured()) return results;
 
@@ -1796,20 +2194,141 @@ function mapAlphaSearchMatch(match: Payload): InvestmentAssetSearchResult | null
   };
 }
 
-async function ensureDefaultCompetition(slug = DEFAULT_INVESTMENT_COMPETITION_SLUG) {
-  const rows = await upsertRow(
-    "investment_competitions",
-    {
-      slug,
-      title: "Phronesia Investment Challenge",
-      status: "active",
-      starting_cash: INVESTMENT_STARTING_CASH,
-      updated_at: new Date().toISOString()
-    },
-    "slug"
-  );
+function mapCompetitionRow(row: Payload): InvestmentCompetitionView {
+  const slug = rowString(row, "slug") || competitionCodeToSlug(rowString(row, "code"));
+  const code = rowString(row, "code") || slug || DEFAULT_INVESTMENT_COMPETITION_SLUG;
+  const name = rowString(row, "name") || rowString(row, "title") || competitionDisplayName(code);
+  const startAt = rowNullableString(row, "start_at") ?? rowNullableString(row, "starts_at");
+  const endAt = rowNullableString(row, "end_at") ?? rowNullableString(row, "ends_at");
+  const status = rowString(row, "status") || "active";
+  const competition: InvestmentCompetitionView = {
+    id: rowString(row, "id"),
+    slug,
+    code,
+    name,
+    description: rowNullableString(row, "description"),
+    startingCash: rowNumber(row, "starting_cash", INVESTMENT_STARTING_CASH),
+    startAt,
+    endAt,
+    status,
+    runtimeStatus: "active",
+    transactionFee: rowNumber(row, "transaction_fee", INVESTMENT_TRANSACTION_FEE_RATE),
+    rankingMethod: rowString(row, "ranking_method") || "portfolio_value",
+    isTeenvestor: slug === TEENVESTOR_SLUG || competitionCodeToSlug(code) === TEENVESTOR_SLUG,
+    welcomeMessage: null
+  };
+  competition.runtimeStatus = runtimeStatusForCompetition(competition);
+  competition.welcomeMessage = competition.isTeenvestor ? "Welcome to the Teenvestor.school Investment Competition." : null;
+  return competition;
+}
+
+async function upsertCompetitionWithFallback(payload: Payload) {
+  try {
+    return await upsertRow("investment_competitions", payload, "slug");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/code|name|description|start_at|end_at|allowed_assets|trading_rules|transaction_fee|ranking_method|finalized_at|schema cache|column/i.test(message)) {
+      throw error;
+    }
+    const legacyPayload = { ...payload };
+    delete legacyPayload.code;
+    delete legacyPayload.name;
+    delete legacyPayload.description;
+    delete legacyPayload.start_at;
+    delete legacyPayload.end_at;
+    delete legacyPayload.allowed_assets;
+    delete legacyPayload.trading_rules;
+    delete legacyPayload.transaction_fee;
+    delete legacyPayload.ranking_method;
+    delete legacyPayload.finalized_at;
+    if (legacyPayload.status === "closed") legacyPayload.status = "archived";
+    return upsertRow("investment_competitions", legacyPayload, "slug");
+  }
+}
+
+async function getCompetitionById(competitionId: string): Promise<InvestmentCompetitionView | null> {
+  if (!supabaseConfigured()) return null;
+  try {
+    const rows = await selectRows("investment_competitions", {
+      select: "*",
+      id: `eq.${competitionId}`,
+      limit: "1"
+    });
+    return Array.isArray(rows) && rows[0] ? mapCompetitionRow(rows[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveInvestmentCompetition(codeOrSlug?: string | null): Promise<InvestmentCompetitionView | null> {
+  if (!supabaseConfigured()) return null;
+  await ensureInvestmentSeedData(false);
+  const code = displayCompetitionCode(codeOrSlug);
+  const slug = competitionCodeToSlug(code);
+
+  try {
+    const bySlug = await selectRows("investment_competitions", {
+      select: "*",
+      slug: `eq.${slug}`,
+      limit: "1"
+    });
+    if (Array.isArray(bySlug) && bySlug[0]) return mapCompetitionRow(bySlug[0]);
+  } catch {
+    // Fall back to creation below.
+  }
+
+  return ensureDefaultCompetition(code);
+}
+
+async function ensureDefaultCompetition(codeInput = DEFAULT_INVESTMENT_COMPETITION_SLUG) {
+  const code = displayCompetitionCode(codeInput);
+  const slug = competitionCodeToSlug(code);
+  const isTeenvestor = slug === TEENVESTOR_SLUG;
+  const now = new Date();
+  const defaultEnd = new Date(now);
+  defaultEnd.setUTCDate(defaultEnd.getUTCDate() + (isTeenvestor ? 30 : 365));
+  const name = competitionDisplayName(code);
+  const description = isTeenvestor
+    ? "A private educational virtual portfolio competition for Teenvestor.school teams."
+    : "A public educational virtual portfolio competition on Phronesia.";
+  const rows = await upsertCompetitionWithFallback({
+    slug,
+    code,
+    title: name,
+    name,
+    description,
+    status: "active",
+    starting_cash: INVESTMENT_STARTING_CASH,
+    starts_at: now.toISOString(),
+    start_at: now.toISOString(),
+    ends_at: defaultEnd.toISOString(),
+    end_at: defaultEnd.toISOString(),
+    transaction_fee: INVESTMENT_TRANSACTION_FEE_RATE,
+    ranking_method: "portfolio_value",
+    updated_at: now.toISOString()
+  });
   if (!Array.isArray(rows) || !rows[0]) return null;
-  return { id: rowString(rows[0], "id"), slug: rowString(rows[0], "slug") };
+  return mapCompetitionRow(rows[0]);
+}
+
+export async function listInvestmentCompetitions(): Promise<InvestmentCompetitionView[]> {
+  if (!supabaseConfigured()) return [];
+  await ensureInvestmentSeedData(false);
+  try {
+    const rows = await selectRows("investment_competitions", {
+      select: "*",
+      order: "created_at.desc",
+      limit: "200"
+    });
+    return Array.isArray(rows) ? rows.map(mapCompetitionRow) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getCompetitionStatus(competitionId: string) {
+  const competition = await getCompetitionById(competitionId);
+  return competition?.runtimeStatus ?? "closed";
 }
 
 async function upsertInvestmentDailyPrice(price: {
@@ -1887,13 +2406,32 @@ async function getHoldingRow(accountId: string, symbol: string) {
 async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
   const account = await getAccountRow(accountId);
   if (!account) return null;
-  const [holdingsRows, quotes, thesisRows, previousSnapshotValue, assets] = await Promise.all([
+  const [holdingsRows, quotes, thesisRows, previousSnapshotValue, assets, competition] = await Promise.all([
     selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "symbol.asc" }),
     priceMapInput ? Promise.resolve(null) : listInvestmentAssetQuotes(),
     selectRows("investment_theses", { select: "*", account_id: `eq.${accountId}`, limit: "1" }),
     getPreviousSnapshotTotal(accountId),
-    listInvestmentAssets()
+    listInvestmentAssets(),
+    getCompetitionById(rowString(account, "competition_id"))
   ]);
+  const competitionView =
+    competition ??
+    ({
+      id: rowString(account, "competition_id"),
+      slug: DEFAULT_INVESTMENT_COMPETITION_SLUG,
+      code: DEFAULT_INVESTMENT_COMPETITION_SLUG,
+      name: "Phronesia Investment Challenge",
+      description: null,
+      startingCash: rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH),
+      startAt: null,
+      endAt: null,
+      status: "active",
+      runtimeStatus: "active",
+      transactionFee: INVESTMENT_TRANSACTION_FEE_RATE,
+      rankingMethod: "portfolio_value",
+      isTeenvestor: false,
+      welcomeMessage: null
+    } satisfies InvestmentCompetitionView);
   const tradesRows = await selectRows("investment_trades", {
     select: "*",
     account_id: `eq.${accountId}`,
@@ -1948,6 +2486,17 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
   });
 
   const thesisRow = Array.isArray(thesisRows) && thesisRows[0] ? thesisRows[0] : null;
+  const portfolio = {
+    startingCash,
+    cash,
+    holdingsValue,
+    totalValue,
+    dailyChange,
+    totalReturn: startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0,
+    diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
+    riskScore: calculateRiskScore(holdingViews, totalValue)
+  };
+  const currentRank = await getLeaderboardRowForAccount(accountId, competitionView);
   return {
     account: {
       id: rowString(account, "id"),
@@ -1957,6 +2506,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       startingCash,
       cash
     },
+    competition: competitionView,
     holdings: holdingViews,
     trades: Array.isArray(tradesRows) ? tradesRows.map(mapTradeRow) : [],
     thesis: thesisRow
@@ -1969,17 +2519,9 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
         }
       : null,
     quotes: quoteList,
-    portfolio: {
-      startingCash,
-      cash,
-      holdingsValue,
-      totalValue,
-      dailyChange,
-      totalReturn: startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0,
-      diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
-      riskScore: calculateRiskScore(holdingViews, totalValue)
-    },
-    marketStatus: getMarketStatus()
+    portfolio,
+    marketStatus: getMarketStatus(),
+    currentRank
   };
 }
 
@@ -2168,6 +2710,20 @@ async function getPreviousSnapshotTotal(accountId: string) {
   return previous ? rowNumber(previous, "total_value") : 0;
 }
 
+async function getLeaderboardRowForAccount(accountId: string, competition: InvestmentCompetitionView) {
+  try {
+    const rows = await selectRows("investment_leaderboard", {
+      select: "*",
+      account_id: `eq.${accountId}`,
+      competition_id: `eq.${competition.id}`,
+      limit: "1"
+    });
+    return Array.isArray(rows) && rows[0] ? mapLeaderboardRow(rows[0], competition) : null;
+  } catch {
+    return null;
+  }
+}
+
 function calculateMaxDrawdown(snapshots: Payload[], currentValue: number) {
   const values = snapshots.map((row) => rowNumber(row, "total_value")).filter((value) => value > 0);
   if (currentValue > 0) values.push(currentValue);
@@ -2182,19 +2738,27 @@ function calculateMaxDrawdown(snapshots: Payload[], currentValue: number) {
   return maxDrawdown;
 }
 
-function mapLeaderboardRow(row: Payload): InvestmentLeaderboardRow {
+function mapLeaderboardRow(row: Payload, competition?: InvestmentCompetitionView): InvestmentLeaderboardRow {
+  const startingCash = rowNumber(row, "starting_cash", INVESTMENT_STARTING_CASH);
+  const totalValue = rowNumber(row, "total_value");
   return {
     rank: rowNumber(row, "rank_position"),
     accountId: rowString(row, "account_id"),
     competitionId: rowString(row, "competition_id"),
+    competitionCode: competition?.code,
     teamName: rowString(row, "team_name"),
-    totalValue: rowNumber(row, "total_value"),
+    startingCash,
+    totalValue,
+    profitLoss: rowNumber(row, "profit_loss", totalValue - startingCash),
     totalReturn: rowNumber(row, "total_return"),
+    tradeCount: rowNumber(row, "trade_count"),
     riskAdjustedScore: rowNumber(row, "risk_adjusted_score"),
     diversificationScore: rowNumber(row, "diversification_score"),
+    riskScore: rowNumber(row, "risk_score"),
     thesisScore: rowNumber(row, "thesis_score"),
     drawdownScore: rowNumber(row, "drawdown_score"),
     overallScore: rowNumber(row, "overall_score"),
+    status: rowString(row, "status") || competition?.runtimeStatus || "active",
     updatedAt: rowString(row, "updated_at")
   };
 }
