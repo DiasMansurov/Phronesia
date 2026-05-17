@@ -34,15 +34,32 @@ type RefreshPricesPayload = {
   apiLimitReached?: boolean;
   results?: Array<{
     symbol: string;
-    ok: boolean;
+    ok?: boolean;
+    success?: boolean;
     price?: number;
     priceDate?: string | null;
+    tradingDay?: string | null;
     source?: string;
     apiLimitReached?: boolean;
+    error?: string;
     message?: string;
   }>;
   quotes?: InvestmentAssetQuote[];
   error?: string;
+};
+
+type DebugPricePayload = {
+  symbol: string;
+  hasAlphaVantageKey: boolean;
+  cachedPriceFound: boolean;
+  cachedPrice: number | null;
+  cachedTradingDay: string | null;
+  alphaVantageStatus: string;
+  yahooFinanceStatus: string;
+  finalPrice: number | null;
+  tradingDay: string | null;
+  source: string | null;
+  error: string | null;
 };
 
 const accountStorageKey = "phronesia.investmentChallenge.accountId";
@@ -71,7 +88,7 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     provider: "educational_reference",
     priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "Latest close not saved yet. Click Refresh featured prices."
+    priceMessage: "No saved market price yet. Use Refresh featured prices or select the asset to check providers."
   }));
 }
 
@@ -98,6 +115,7 @@ export function InvestmentChallengeDashboard() {
   const [priceLoading, setPriceLoading] = useState(false);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [priceRefreshDetails, setPriceRefreshDetails] = useState("");
+  const [debugPriceDetails, setDebugPriceDetails] = useState("");
   const [side, setSide] = useState<TradeSide>("buy");
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
@@ -166,7 +184,7 @@ export function InvestmentChallengeDashboard() {
   const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
   const clientTradeWarning =
     !selectedQuote.priceAvailable
-      ? selectedQuote.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."
+      ? selectedQuote.priceMessage ?? "No saved market price yet for this asset."
       : !marketStatus.isOpen
         ? "US market is closed. Latest close prices are shown, but buy/sell orders are disabled."
         : side === "buy" && account && estimatedNet > cashBalance + 0.00001
@@ -189,7 +207,7 @@ export function InvestmentChallengeDashboard() {
     ? "Checking..."
     : selectedHasDisplayPrice
       ? formatUsd(selectedQuote.latestClose)
-      : "Latest close not saved yet";
+      : "No saved price yet";
   const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 
   async function loadMarket() {
@@ -257,7 +275,9 @@ export function InvestmentChallengeDashboard() {
       provider: "search",
       priceAvailable: Boolean(asset.priceAvailable),
       priceSource: hasOptimisticPrice ? "reference" : "unavailable",
-      priceMessage: hasOptimisticPrice ? "Checking Alpha Vantage for the latest close price..." : "Checking latest close price..."
+      priceMessage: hasOptimisticPrice
+        ? "Checking saved cache, Alpha Vantage, and Yahoo Finance for the latest close price..."
+        : "Checking latest close price..."
     };
     setSymbol(asset.symbol);
     setAssetQuery(asset.symbol);
@@ -305,7 +325,7 @@ export function InvestmentChallengeDashboard() {
 
   async function refreshFeaturedPrices() {
     setRefreshingPrices(true);
-    setStatus("Refreshing featured prices from Alpha Vantage...");
+    setStatus("Refreshing featured prices from server-side market providers...");
     setPriceRefreshDetails("");
     try {
       const response = await fetch("/api/investment/refresh-featured-prices", {
@@ -328,8 +348,8 @@ export function InvestmentChallengeDashboard() {
         await loadMarket();
       }
 
-      const successes = data.results?.filter((result) => result.ok).length ?? 0;
-      const failures = data.results?.filter((result) => !result.ok).length ?? 0;
+      const successes = data.results?.filter((result) => result.success ?? result.ok).length ?? 0;
+      const failures = data.results?.filter((result) => !(result.success ?? result.ok)).length ?? 0;
       const apiLimit = data.apiLimitReached ? " API rate limit reached for some tickers; saved prices are still used when available." : "";
       const detail = `Featured price refresh complete: ${successes} updated or cached, ${failures} failed.${apiLimit}`;
       setStatus(detail);
@@ -338,6 +358,35 @@ export function InvestmentChallengeDashboard() {
       if (account) void loadAccount(account.account.id);
     } finally {
       setRefreshingPrices(false);
+    }
+  }
+
+  async function testSpyPrice() {
+    setDebugPriceDetails("Testing SPY through cache, Alpha Vantage, and Yahoo Finance...");
+    try {
+      const response = await fetch("/api/investment/debug-price?symbol=SPY", { cache: "no-store" });
+      const data = (await response.json()) as DebugPricePayload;
+      setDebugPriceDetails(JSON.stringify(data, null, 2));
+      if (data.finalPrice) {
+        setStatus(`SPY debug succeeded: ${formatUsd(data.finalPrice)} from ${data.source ?? "market data"}.`);
+        await selectAsset({
+          symbol: "SPY",
+          name: "SPDR S&P 500 ETF",
+          type: "ETF",
+          theme: "Broad US stocks",
+          referencePrice: data.finalPrice,
+          region: "United States",
+          currency: "USD",
+          exchange: "NYSE Arca",
+          featured: true
+        });
+      } else {
+        setStatus(data.error ?? "SPY debug did not return a final price.");
+      }
+    } catch {
+      const message = "SPY debug endpoint is temporarily unavailable.";
+      setDebugPriceDetails(message);
+      setStatus(message);
     }
   }
 
@@ -432,6 +481,9 @@ export function InvestmentChallengeDashboard() {
             </a>
             <button className="button secondary" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
               {refreshingPrices ? "Refreshing prices..." : "Refresh featured prices"}
+            </button>
+            <button className="button secondary" type="button" onClick={testSpyPrice}>
+              Test SPY price
             </button>
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               View Leaderboard
@@ -570,7 +622,7 @@ export function InvestmentChallengeDashboard() {
               <p>
                 {selectedQuote.priceAvailable
                   ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)}`
-                  : selectedQuote.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."}
+                  : selectedQuote.priceMessage ?? "No saved market price yet for this asset."}
               </p>
             </div>
           </div>
@@ -703,6 +755,7 @@ export function InvestmentChallengeDashboard() {
               </button>
             </div>
             {priceRefreshDetails ? <p className="asset-search-status">{priceRefreshDetails}</p> : null}
+            {debugPriceDetails ? <pre className="investment-debug-output">{debugPriceDetails}</pre> : null}
             <div className="featured-price-grid">
               {featuredPriceQuotes.map((quote) => (
                 <button
@@ -712,9 +765,9 @@ export function InvestmentChallengeDashboard() {
                   onClick={() => selectAsset(quote)}
                 >
                   <span>{quote.symbol}</span>
-                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Not refreshed"}</strong>
+                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Check price"}</strong>
                   <small>
-                    {quote.priceDate ? `${quote.priceDate} · ${sourceLabel(quote)}` : "Admin can refresh featured prices"}
+                    {quote.priceDate ? `${quote.priceDate} · ${sourceLabel(quote)}` : quote.priceMessage ?? "Refresh featured prices or select asset"}
                   </small>
                 </button>
               ))}
@@ -814,7 +867,7 @@ export function InvestmentChallengeDashboard() {
           <p className="eyebrow">Rules and risk</p>
           <h2>Market closed means orders pause, not prices.</h2>
           <p className="muted">
-            Latest closing prices remain visible whenever they are saved or available from Alpha Vantage. Buy and sell
+            Latest closing prices remain visible whenever they are saved or available from Alpha Vantage or Yahoo Finance. Buy and sell
             orders are disabled outside regular US market hours so every team competes under the same rules.
           </p>
           <div className="score-formula-note">
@@ -847,7 +900,10 @@ export function InvestmentChallengeDashboard() {
 function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.priceSource === "cache") return "Saved cache";
   if (quote.priceSource === "live") return "Alpha Vantage";
+  if (quote.priceSource === "alpha_vantage") return "Alpha Vantage";
+  if (quote.priceSource === "yahoo_finance") return "Yahoo Finance";
   if (quote.provider === "alpha_vantage") return "Alpha Vantage";
+  if (quote.provider === "yahoo_finance") return "Yahoo Finance";
   if (quote.priceSource === "reference") return "Educational reference";
   return quote.provider || "Market data";
 }

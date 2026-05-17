@@ -101,7 +101,7 @@ const MARKET_CLOSED_MESSAGE =
   "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
 
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
-type PriceSource = "live" | "cache" | "reference" | "unavailable";
+type PriceSource = "live" | "cache" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
 type MarketPriceResult =
   | {
@@ -124,6 +124,29 @@ type MarketPriceResult =
       message: string;
       raw?: unknown;
     };
+
+export type LatestClosePriceResult = {
+  symbol: string;
+  price: number | null;
+  tradingDay: string | null;
+  source: "cache" | "alpha_vantage" | "yahoo_finance" | null;
+  cached: boolean;
+  error: string | null;
+};
+
+export type InvestmentPriceDebugResult = {
+  symbol: string;
+  hasAlphaVantageKey: boolean;
+  cachedPriceFound: boolean;
+  cachedPrice: number | null;
+  cachedTradingDay: string | null;
+  alphaVantageStatus: string;
+  yahooFinanceStatus: string;
+  finalPrice: number | null;
+  tradingDay: string | null;
+  source: "cache" | "alpha_vantage" | "yahoo_finance" | null;
+  error: string | null;
+};
 
 function rowString(row: Payload, key: string) {
   return String(row[key] ?? "");
@@ -202,6 +225,130 @@ function choosePriceFailure(failures: MarketPriceResult[]) {
   const symbolNotFound = failed.find((failure) => failure.code === "symbol_not_found");
   if (symbolNotFound) return symbolNotFound;
   return failed.find((failure) => failure.code === "price_unavailable") ?? failed[0] ?? fallback;
+}
+
+function providerStatus(result: MarketPriceResult | null) {
+  if (!result) return "not_used";
+  if (result.ok) return `success:${result.closePrice}:${result.priceDate}`;
+  return `${result.code}:${result.message}`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Market data temporarily unavailable.";
+}
+
+function dateFromYahooValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return todayIsoInEt(value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value > 10_000_000_000 ? value : value * 1000;
+    return todayIsoInEt(new Date(milliseconds));
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return todayIsoInEt(parsed);
+  }
+  return todayIsoInEt();
+}
+
+async function fetchAlphaVantageLatestClose(symbol: string): Promise<{ result: MarketPriceResult; globalQuote: MarketPriceResult; dailyClose?: MarketPriceResult }> {
+  const globalQuote = await getGlobalQuotePrice(symbol);
+  if (globalQuote.ok) return { result: globalQuote, globalQuote };
+
+  const dailyClose = await getDailyClosePrice(symbol);
+  if (dailyClose.ok) return { result: dailyClose, globalQuote, dailyClose };
+
+  return {
+    result: choosePriceFailure([globalQuote, dailyClose]),
+    globalQuote,
+    dailyClose
+  };
+}
+
+export async function getYahooFinanceClosePrice(symbol: string): Promise<MarketPriceResult> {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "yahoo_finance",
+      code: "symbol_not_found",
+      message: "Symbol not found."
+    };
+  }
+
+  try {
+    const YahooFinance = (await import("yahoo-finance2")).default;
+    const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+    const quote = (await yahooFinance.quote(normalized)) as Payload;
+    const marketStatus = getMarketStatus();
+    const previousClose = parsePositiveNumber(quote.regularMarketPreviousClose);
+    const marketPrice = parsePositiveNumber(quote.regularMarketPrice);
+    const price = marketStatus.isOpen ? marketPrice ?? previousClose : previousClose ?? marketPrice;
+
+    if (price) {
+      const tradingDay = dateFromYahooValue(quote.regularMarketTime ?? quote.postMarketTime ?? quote.preMarketTime);
+      return {
+        ok: true,
+        symbol: normalized,
+        priceDate: tradingDay,
+        closePrice: price,
+        adjustedClosePrice: price,
+        volume: Number(quote.regularMarketVolume ?? 0),
+        provider: "yahoo_finance",
+        source: "yahoo_finance",
+        message: `Latest Yahoo Finance price from ${tradingDay}.`,
+        raw: quote
+      };
+    }
+
+    const period2 = new Date();
+    const period1 = new Date(period2);
+    period1.setUTCDate(period1.getUTCDate() - 14);
+    const history = (await yahooFinance.historical(normalized, {
+      period1,
+      period2,
+      interval: "1d"
+    })) as Payload[];
+    const latest = Array.isArray(history)
+      ? history
+          .filter((row) => parsePositiveNumber(row.close))
+          .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))[0]
+      : null;
+    const historicalClose = parsePositiveNumber(latest?.close);
+    if (latest && historicalClose) {
+      const tradingDay = dateFromYahooValue(latest.date);
+      return {
+        ok: true,
+        symbol: normalized,
+        priceDate: tradingDay,
+        closePrice: historicalClose,
+        adjustedClosePrice: parsePositiveNumber(latest.adjClose) ?? historicalClose,
+        volume: Number(latest.volume ?? 0),
+        provider: "yahoo_finance",
+        source: "yahoo_finance",
+        message: `Latest Yahoo Finance historical close from ${tradingDay}.`,
+        raw: latest
+      };
+    }
+
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "yahoo_finance",
+      code: "price_unavailable",
+      message: "Daily close price unavailable for this asset.",
+      raw: quote
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      symbol: normalized,
+      provider: "yahoo_finance",
+      code: /not found|invalid|quote not found/i.test(errorMessage(error)) ? "symbol_not_found" : "temporary_unavailable",
+      message: /not found|invalid|quote not found/i.test(errorMessage(error)) ? "Symbol not found." : "Market data temporarily unavailable.",
+      raw: { error: errorMessage(error) }
+    };
+  }
 }
 
 function todayIsoInEt(date = new Date()) {
@@ -391,7 +538,7 @@ export async function getAssetQuote(symbol: string) {
   const existing = await resolveInvestmentAsset(normalized);
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? getInvestmentAsset(normalized) ?? null;
-  const latest = await getLatestClosePrice(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
+  const latest = await getLatestCloseQuote(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
 
   if (!candidate && !latest.priceAvailable) {
     return { ok: false as const, reason: latest.priceMessage ?? "Symbol not found." };
@@ -427,7 +574,7 @@ export async function validateAsset(symbol: string) {
   const existing = await resolveInvestmentAsset(normalized);
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? undefined;
-  const latest = await getLatestClosePrice(normalized, candidate, { allowReferenceFallback: false });
+  const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
     return { ok: false as const, reason: latest.priceMessage ?? "Daily close price unavailable." };
   }
@@ -644,87 +791,233 @@ export async function fetchDailyClose(symbol: string) {
 }
 
 export async function getDailyMarketPrice(symbol: string) {
-  const price = await getDailyClosePrice(symbol);
-  return price.ok ? price : null;
+  const latest = await getLatestClosePrice(symbol);
+  if (!latest.price || !latest.tradingDay || !latest.source) return null;
+  return {
+    ok: true as const,
+    symbol: normalizeSymbol(symbol),
+    priceDate: latest.tradingDay,
+    closePrice: latest.price,
+    adjustedClosePrice: latest.price,
+    volume: 0,
+    provider: latest.source,
+    source: latest.source,
+    message: latest.cached ? `Using latest saved close from ${latest.tradingDay}.` : `Latest close from ${latest.source}.`,
+    raw: { cached: latest.cached }
+  };
 }
 
-export async function getLatestClosePrice(
+async function resolveLatestClosePrice(
   symbol: string,
   assetInput?: InvestmentAsset,
   options: { allowReferenceFallback?: boolean; refresh?: boolean } = {}
 ) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
-  const allowReferenceFallback = options.allowReferenceFallback ?? true;
   const refresh = options.refresh ?? false;
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
-  const failures: MarketPriceResult[] = [];
+  let alphaVantageStatus = "not_used";
+  let yahooFinanceStatus = "not_used";
 
   const stored = await getCachedPrice(normalized);
   if (stored && !refresh) {
-    return stored;
-  }
-
-  const globalQuote = await getGlobalQuotePrice(normalized);
-  if (globalQuote.ok) {
-    await savePriceToCache(normalized, globalQuote.closePrice, globalQuote.priceDate, asset, globalQuote);
     return {
-      latestClose: globalQuote.closePrice,
-      priceDate: globalQuote.priceDate,
-      provider: globalQuote.provider,
-      priceAvailable: true,
-      priceSource: "live" as const,
-      priceMessage: globalQuote.message
+      result: {
+        symbol: normalized,
+        price: stored.latestClose,
+        tradingDay: stored.priceDate,
+        source: "cache" as const,
+        cached: true,
+        error: null
+      },
+      quote: stored,
+      debug: {
+        symbol: normalized,
+        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        cachedPriceFound: true,
+        cachedPrice: stored.latestClose,
+        cachedTradingDay: stored.priceDate,
+        alphaVantageStatus: "skipped_cache_hit",
+        yahooFinanceStatus: "skipped_cache_hit",
+        finalPrice: stored.latestClose,
+        tradingDay: stored.priceDate,
+        source: "cache" as const,
+        error: null
+      } satisfies InvestmentPriceDebugResult
     };
   }
-  failures.push(globalQuote);
 
-  const dailyClose = await getDailyClosePrice(normalized);
-  if (dailyClose.ok) {
-    await savePriceToCache(normalized, dailyClose.closePrice, dailyClose.priceDate, asset, dailyClose);
-    return {
-      latestClose: dailyClose.closePrice,
-      priceDate: dailyClose.priceDate,
-      provider: dailyClose.provider,
+  const alpha = await fetchAlphaVantageLatestClose(normalized);
+  alphaVantageStatus = providerStatus(alpha.result);
+  if (alpha.result.ok) {
+    await savePriceToCache(normalized, alpha.result.closePrice, alpha.result.priceDate, asset, alpha.result);
+    const quote = {
+      latestClose: alpha.result.closePrice,
+      priceDate: alpha.result.priceDate,
+      provider: alpha.result.provider,
       priceAvailable: true,
-      priceSource: "live" as const,
-      priceMessage: dailyClose.message
+      priceSource: "alpha_vantage" as const,
+      priceMessage: alpha.result.message
+    };
+    return {
+      result: {
+        symbol: normalized,
+        price: alpha.result.closePrice,
+        tradingDay: alpha.result.priceDate,
+        source: "alpha_vantage" as const,
+        cached: false,
+        error: null
+      },
+      quote,
+      debug: {
+        symbol: normalized,
+        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        cachedPriceFound: Boolean(stored),
+        cachedPrice: stored?.latestClose ?? null,
+        cachedTradingDay: stored?.priceDate ?? null,
+        alphaVantageStatus,
+        yahooFinanceStatus,
+        finalPrice: alpha.result.closePrice,
+        tradingDay: alpha.result.priceDate,
+        source: "alpha_vantage" as const,
+        error: null
+      } satisfies InvestmentPriceDebugResult
     };
   }
-  failures.push(dailyClose);
+
+  const yahoo = await getYahooFinanceClosePrice(normalized);
+  yahooFinanceStatus = providerStatus(yahoo);
+  if (yahoo.ok) {
+    await savePriceToCache(normalized, yahoo.closePrice, yahoo.priceDate, asset, yahoo);
+    const quote = {
+      latestClose: yahoo.closePrice,
+      priceDate: yahoo.priceDate,
+      provider: yahoo.provider,
+      priceAvailable: true,
+      priceSource: "yahoo_finance" as const,
+      priceMessage: yahoo.message
+    };
+    return {
+      result: {
+        symbol: normalized,
+        price: yahoo.closePrice,
+        tradingDay: yahoo.priceDate,
+        source: "yahoo_finance" as const,
+        cached: false,
+        error: null
+      },
+      quote,
+      debug: {
+        symbol: normalized,
+        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        cachedPriceFound: Boolean(stored),
+        cachedPrice: stored?.latestClose ?? null,
+        cachedTradingDay: stored?.priceDate ?? null,
+        alphaVantageStatus,
+        yahooFinanceStatus,
+        finalPrice: yahoo.closePrice,
+        tradingDay: yahoo.priceDate,
+        source: "yahoo_finance" as const,
+        error: null
+      } satisfies InvestmentPriceDebugResult
+    };
+  }
 
   if (stored) {
-    const failure = choosePriceFailure(failures);
-    const prefix =
-      failure.code === "rate_limit"
-        ? "API rate limit reached."
-        : failure.code === "temporary_unavailable"
-          ? "Market data refresh failed."
-          : failure.message;
-    return {
+    const failed = choosePriceFailure([alpha.result, yahoo]);
+    const prefix = failed.code === "rate_limit" ? "API rate limit reached." : failed.message;
+    const quote = {
       ...stored,
       priceMessage: `${prefix} Using latest saved close from ${stored.priceDate}.`
     };
+    return {
+      result: {
+        symbol: normalized,
+        price: stored.latestClose,
+        tradingDay: stored.priceDate,
+        source: "cache" as const,
+        cached: true,
+        error: quote.priceMessage
+      },
+      quote,
+      debug: {
+        symbol: normalized,
+        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        cachedPriceFound: true,
+        cachedPrice: stored.latestClose,
+        cachedTradingDay: stored.priceDate,
+        alphaVantageStatus,
+        yahooFinanceStatus,
+        finalPrice: stored.latestClose,
+        tradingDay: stored.priceDate,
+        source: "cache" as const,
+        error: quote.priceMessage
+      } satisfies InvestmentPriceDebugResult
+    };
   }
 
-  if (!allowReferenceFallback) {
-    const failure = choosePriceFailure(failures);
-    return {
+  const failure = choosePriceFailure([alpha.result, yahoo]);
+  const error =
+    failure.code === "symbol_not_found"
+      ? "Symbol not found."
+      : failure.code === "price_unavailable"
+        ? "Daily close price unavailable for this asset."
+        : failure.code === "rate_limit"
+          ? "API rate limit reached. Saved prices will still be used if available."
+          : "No saved market price yet for this asset.";
+
+  return {
+    result: {
+      symbol: normalized,
+      price: null,
+      tradingDay: null,
+      source: null,
+      cached: false,
+      error
+    },
+    quote: {
       latestClose: 0,
       priceDate: null,
       provider: failure.provider,
       priceAvailable: false,
       priceSource: "unavailable" as const,
-      priceMessage:
-        failure.code === "symbol_not_found"
-          ? "Symbol not found."
-          : failure.code === "price_unavailable"
-            ? "Daily close price unavailable for this asset."
-            : failure.code === "rate_limit"
-              ? "API rate limit reached. Saved prices will still be used if available."
-              : "No saved market price yet for this asset."
-    };
-  }
+      priceMessage: error
+    },
+    debug: {
+      symbol: normalized,
+      hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+      cachedPriceFound: false,
+      cachedPrice: null,
+      cachedTradingDay: null,
+      alphaVantageStatus,
+      yahooFinanceStatus,
+      finalPrice: null,
+      tradingDay: null,
+      source: null,
+      error
+    } satisfies InvestmentPriceDebugResult
+  };
+}
+
+export async function getLatestClosePrice(
+  symbol: string,
+  assetInput?: InvestmentAsset,
+  options: { refresh?: boolean } = {}
+): Promise<LatestClosePriceResult> {
+  const resolved = await resolveLatestClosePrice(symbol, assetInput, { refresh: options.refresh, allowReferenceFallback: false });
+  return resolved.result;
+}
+
+async function getLatestCloseQuote(
+  symbol: string,
+  assetInput?: InvestmentAsset,
+  options: { allowReferenceFallback?: boolean; refresh?: boolean } = {}
+) {
+  const normalized = normalizeSymbol(symbol);
+  const allowReferenceFallback = options.allowReferenceFallback ?? true;
+  const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
+  const resolved = await resolveLatestClosePrice(normalized, asset ?? undefined, options);
+  if (resolved.quote.priceAvailable || !allowReferenceFallback) return resolved.quote;
 
   return {
     latestClose: asset?.referencePrice ?? 0,
@@ -733,9 +1026,14 @@ export async function getLatestClosePrice(
     priceAvailable: false,
     priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
     priceMessage: asset?.referencePrice
-      ? "Latest close not saved yet. Click Refresh featured prices."
+      ? resolved.result.error ?? "Latest close not saved yet. Click Refresh featured prices."
       : "No saved market price yet for this asset."
   };
+}
+
+export async function debugInvestmentPrice(symbol: string): Promise<InvestmentPriceDebugResult> {
+  const resolved = await resolveLatestClosePrice(symbol, undefined, { refresh: true, allowReferenceFallback: false });
+  return resolved.debug;
 }
 
 export async function getCachedPrice(symbol: string) {
@@ -792,11 +1090,14 @@ export async function updateDailyPrices() {
 
 export type InvestmentPriceRefreshResult = {
   symbol: string;
+  success: boolean;
   ok: boolean;
   price?: number;
   priceDate?: string | null;
+  tradingDay?: string | null;
   source?: string;
   apiLimitReached?: boolean;
+  error?: string;
   message?: string;
 };
 
@@ -812,30 +1113,36 @@ export async function refreshFeaturedAssetPrices() {
       if (cached?.priceDate === today) {
         results.push({
           symbol: asset.symbol,
+          success: true,
           ok: true,
           price: cached.latestClose,
           priceDate: cached.priceDate,
+          tradingDay: cached.priceDate,
           source: "cache",
           message: `Already updated for ${today}.`
         });
         continue;
       }
-      const price = await getLatestClosePrice(asset.symbol, asset, { allowReferenceFallback: false, refresh: true });
+      const price = await getLatestCloseQuote(asset.symbol, asset, { allowReferenceFallback: false, refresh: true });
       const apiLimitReached = Boolean(price.priceMessage?.toLowerCase().includes("api rate limit"));
       if (!price.priceAvailable) {
         results.push({
           symbol: asset.symbol,
+          success: false,
           ok: false,
           apiLimitReached,
+          error: price.priceMessage ?? "No saved market price yet for this asset.",
           message: price.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."
         });
         continue;
       }
       results.push({
         symbol: asset.symbol,
+        success: true,
         ok: true,
         price: price.latestClose,
         priceDate: price.priceDate,
+        tradingDay: price.priceDate,
         source: price.priceSource,
         apiLimitReached,
         message: price.priceMessage
@@ -843,7 +1150,9 @@ export async function refreshFeaturedAssetPrices() {
     } catch (error) {
       results.push({
         symbol: asset.symbol,
+        success: false,
         ok: false,
+        error: error instanceof Error ? error.message : "Unknown market data error.",
         message: error instanceof Error ? error.message : "Unknown market data error."
       });
     }
@@ -885,7 +1194,7 @@ export async function refreshHeldAssetPrices() {
         continue;
       }
       const asset = await resolveInvestmentAsset(symbol);
-      const price = await getLatestClosePrice(symbol, asset ?? undefined, { allowReferenceFallback: false, refresh: true });
+      const price = await getLatestCloseQuote(symbol, asset ?? undefined, { allowReferenceFallback: false, refresh: true });
       results.push({
         symbol,
         ok: price.priceAvailable,

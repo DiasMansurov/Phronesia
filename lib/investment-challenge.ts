@@ -42,7 +42,7 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   priceDate: string | null;
   provider: string;
   priceAvailable: boolean;
-  priceSource?: "live" | "cache" | "reference" | "unavailable";
+  priceSource?: "live" | "cache" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
   priceMessage?: string;
 };
 
