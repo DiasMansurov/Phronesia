@@ -14,75 +14,81 @@ export const metadata: Metadata = {
 
 export default function LearnPage() {
   return (
-    <section className="shell section stack-lg">
-      <div className="hero-band compact">
-        <div className="stack-sm">
-          <p className="eyebrow">Learn</p>
-          <h1 className="display compact">Finance explained through consequences.</h1>
-          <p className="lede compact-lede">
-            Phronesia teaches during play: each financial or policy decision changes households, markets, and the economy,
-            then a short theory card explains why.
-          </p>
-          <div className="cta-row">
-            <Link className="button primary" href="/play/setup" prefetch={false}>
-              Start Learning Mode
-            </Link>
-            <Link className="button secondary" href="/finance-lab">
-              Open Finance Lab
-            </Link>
-            <Link className="button secondary" href="/investment-challenge">
-              Try Investment Challenge
-            </Link>
+    <section className="shell section stack-lg learn-page">
+      <div className="learn-intro-flow">
+        <div className="hero-band compact learn-hero">
+          <div className="learn-hero-copy stack-sm">
+            <p className="eyebrow">Learn</p>
+            <h1 className="display compact">Finance explained through consequences.</h1>
+            <p className="lede compact-lede">
+              Phronesia teaches during play: each financial or policy decision changes households, markets, and the economy,
+              then a short theory card explains why.
+            </p>
+            <div className="cta-row">
+              <Link className="button primary" href="/play/setup" prefetch={false}>
+                Start Learning Mode
+              </Link>
+              <Link className="button secondary" href="/finance-lab">
+                Open Finance Lab
+              </Link>
+              <Link className="button secondary" href="/investment-challenge">
+                Try Investment Challenge
+              </Link>
+            </div>
+          </div>
+          <div className="panel compact-panel stack-sm learn-mode-panel">
+            <p className="eyebrow">How Learning Mode Works</p>
+            <div className="goal-list compact-list learn-mode-list">
+              <div className="goal-item">Make a policy decision.</div>
+              <div className="goal-item">Watch indicators change.</div>
+              <div className="goal-item">Read the theory card.</div>
+              <div className="goal-item">Apply the concept next round.</div>
+            </div>
           </div>
         </div>
-        <div className="panel compact-panel stack-sm">
-          <p className="eyebrow">How Learning Mode Works</p>
-          <div className="goal-list compact-list">
-            <div className="goal-item">Make a policy decision.</div>
-            <div className="goal-item">Watch indicators change.</div>
-            <div className="goal-item">Read the theory card.</div>
-            <div className="goal-item">Apply the concept next round.</div>
+
+        <section className="panel stack-md learn-path-panel">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Learning Path</p>
+              <h2>Start with financial basics, then grow into markets, policy, and crisis strategy.</h2>
+            </div>
           </div>
-        </div>
+          <div className="level-path-grid expanded">
+            {LEARNING_LEVELS.map((level) => (
+              <article key={level.id} className="level-path-card active">
+                <span>{level.label}</span>
+                <strong>{level.title}</strong>
+                <small>{level.summary}</small>
+              </article>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <section className="panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Learning Path</p>
-            <h2>Start with financial basics, then grow into markets, policy, and crisis strategy.</h2>
+      <div className="learn-support-grid">
+        <div className="learn-saved-slot">
+          <SavedGlossary />
+        </div>
+
+        <section className="panel stack-md investment-learn-panel learn-investment-panel">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Applied investing</p>
+              <h2>Practice the concepts with a virtual portfolio.</h2>
+              <p className="muted">
+                The Investment Challenge connects glossary terms like stocks, ETFs, bonds, diversification, market hours,
+                closing price, interest rates, and risk vs return to a $100,000 educational simulation.
+              </p>
+            </div>
+            <Link className="button primary" href="/investment-challenge">
+              Open Challenge
+            </Link>
           </div>
-        </div>
-        <div className="level-path-grid expanded">
-          {LEARNING_LEVELS.map((level) => (
-            <article key={level.id} className="level-path-card active">
-              <span>{level.label}</span>
-              <strong>{level.title}</strong>
-              <small>{level.summary}</small>
-            </article>
-          ))}
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <SavedGlossary />
-
-      <section className="panel stack-md investment-learn-panel">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Applied investing</p>
-            <h2>Practice the concepts with a virtual portfolio.</h2>
-            <p className="muted">
-              The Investment Challenge connects glossary terms like stocks, ETFs, bonds, diversification, market hours,
-              closing price, interest rates, and risk vs return to a $100,000 educational simulation.
-            </p>
-          </div>
-          <Link className="button primary" href="/investment-challenge">
-            Open Challenge
-          </Link>
-        </div>
-      </section>
-
-      <section className="panel stack-md">
+      <section className="panel stack-md learn-foundations-panel">
         <div className="section-header">
           <div>
             <p className="eyebrow">Textbook-Inspired Foundations</p>
@@ -103,7 +109,7 @@ export default function LearnPage() {
         </div>
       </section>
 
-      <section className="panel stack-md">
+      <section className="panel stack-md learn-case-panel">
         <div className="section-header">
           <div>
             <p className="eyebrow">Case Studies</p>
@@ -125,7 +131,7 @@ export default function LearnPage() {
         </div>
       </section>
 
-      <section className="panel stack-md">
+      <section className="panel stack-md learn-glossary-panel">
         <div className="section-header">
           <div>
             <p className="eyebrow">Glossary</p>
