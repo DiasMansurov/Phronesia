@@ -120,6 +120,7 @@ export type InvestmentTradeView = {
   netValue: number;
   priceDate: string | null;
   priceSource: string | null;
+  priceTimestamp: string | null;
   rejected: boolean;
   rejectReason: string | null;
 };
@@ -130,7 +131,10 @@ const MARKET_CLOSED_MESSAGE =
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
 const TEENVESTOR_CODE = "Teenvestor.school";
 const TEENVESTOR_SLUG = "teenvestor-school";
-type PriceSource = "live" | "cache" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
+const MARKETDATA_APP_PROVIDER = "marketdata_app";
+const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
+const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
+type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
 type MarketPriceResult =
   | {
@@ -158,22 +162,25 @@ export type LatestClosePriceResult = {
   symbol: string;
   price: number | null;
   tradingDay: string | null;
-  source: "cache" | "alpha_vantage" | "yahoo_finance" | null;
+  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
   cached: boolean;
   error: string | null;
+  fetchedAt?: string | null;
 };
 
 export type InvestmentPriceDebugResult = {
   symbol: string;
-  hasAlphaVantageKey: boolean;
-  cachedPriceFound: boolean;
+  provider: string;
+  hasMarketDataApiKey: boolean;
+  cacheFound: boolean;
   cachedPrice: number | null;
-  cachedTradingDay: string | null;
-  alphaVantageStatus: string;
-  yahooFinanceStatus: string;
+  cachedFetchedAt: string | null;
+  cacheFresh: boolean;
+  calledMarketDataApp: boolean;
+  marketDataAppStatus: string;
   finalPrice: number | null;
   tradingDay: string | null;
-  source: "cache" | "alpha_vantage" | "yahoo_finance" | null;
+  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
   error: string | null;
 };
 
@@ -263,6 +270,192 @@ function sanitizeAssetName(name: unknown, fallback: string) {
 function parsePositiveNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function firstValue(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getMarketDataApiKey() {
+  return process.env.MARKET_DATA_API_KEY?.trim() ?? "";
+}
+
+function preferredMarketDataProvider() {
+  return (process.env.MARKET_DATA_PROVIDER ?? MARKETDATA_APP_PROVIDER).trim().toLowerCase();
+}
+
+function marketDataAppUrl(path: string, params: Record<string, string> = {}) {
+  const apiKey = getMarketDataApiKey();
+  const search = new URLSearchParams(params);
+  if (apiKey) search.set("token", apiKey);
+  return `https://api.marketdata.app/v1/${path}${search.size ? `?${search.toString()}` : ""}`;
+}
+
+function parseMarketDataTimestamp(value: unknown) {
+  const raw = firstValue(value);
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const milliseconds = raw > 10_000_000_000 ? raw : raw * 1000;
+    return new Date(milliseconds);
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+function marketDataFailure(symbol: string, message: string, code: PriceFailureCode = "temporary_unavailable", raw?: unknown): MarketPriceResult {
+  return {
+    ok: false,
+    symbol: normalizeSymbol(symbol),
+    provider: MARKETDATA_APP_PROVIDER,
+    code,
+    message,
+    raw
+  };
+}
+
+function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, index = 0): MarketPriceResult {
+  const status = String(firstValue(data.s) ?? firstValue(data.status) ?? "").toLowerCase();
+  const providerMessage = String(firstValue(data.errmsg) ?? firstValue(data.error) ?? firstValue(data.message) ?? "").trim();
+  if (status && status !== "ok" && status !== "success") {
+    const rateLimited = /limit|quota|credit|unauthorized|payment|required/i.test(providerMessage);
+    return marketDataFailure(
+      requestedSymbol,
+      rateLimited ? "API credit limit reached. Using saved prices when available." : providerMessage || "Market data temporarily unavailable.",
+      rateLimited ? "rate_limit" : "temporary_unavailable",
+      data
+    );
+  }
+
+  const pick = (key: string) => {
+    const value = data[key];
+    return Array.isArray(value) ? value[index] : value;
+  };
+  const symbol = normalizeSymbol(String(pick("symbol") ?? requestedSymbol));
+  const price =
+    parsePositiveNumber(pick("last")) ??
+    parsePositiveNumber(pick("regularMarketPrice")) ??
+    parsePositiveNumber(pick("price")) ??
+    parsePositiveNumber(pick("close")) ??
+    parsePositiveNumber(pick("prevClose")) ??
+    parsePositiveNumber(pick("previousClose")) ??
+    parsePositiveNumber(pick("mid")) ??
+    parsePositiveNumber(pick("ask")) ??
+    parsePositiveNumber(pick("bid"));
+
+  if (!price) {
+    return marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data);
+  }
+
+  const timestamp = parseMarketDataTimestamp(pick("updated") ?? pick("date") ?? pick("time") ?? pick("timestamp"));
+  const tradingDay = todayIsoInEt(timestamp);
+  return {
+    ok: true,
+    symbol,
+    priceDate: tradingDay,
+    closePrice: price,
+    adjustedClosePrice: price,
+    volume: Number(pick("volume") ?? 0),
+    provider: MARKETDATA_APP_PROVIDER,
+    source: MARKETDATA_APP_PROVIDER,
+    message: `Latest MarketData.app price from ${tradingDay}.`,
+    raw: data
+  };
+}
+
+export async function getMarketDataAppQuote(symbol: string): Promise<MarketPriceResult> {
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) return marketDataFailure(normalized, "Symbol not found.", "symbol_not_found");
+  const apiKey = getMarketDataApiKey();
+  if (!apiKey) return marketDataFailure(normalized, "MarketData.app API key is not configured.");
+
+  try {
+    const response = await fetch(marketDataAppUrl(`stocks/quotes/${encodeURIComponent(normalized)}/`), {
+      cache: "no-store"
+    });
+    const data = (await response.json().catch(() => ({}))) as Payload;
+    if (!response.ok) {
+      return marketDataFailure(
+        normalized,
+        response.status === 404 ? "Symbol not found." : "Market data temporarily unavailable.",
+        response.status === 404 ? "symbol_not_found" : response.status === 402 || response.status === 429 ? "rate_limit" : "temporary_unavailable",
+        data
+      );
+    }
+    return parseMarketDataAppQuotePayload(data, normalized);
+  } catch (error) {
+    return marketDataFailure(normalized, errorMessage(error));
+  }
+}
+
+export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Record<string, MarketPriceResult>> {
+  const uniqueSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(isSupportedSymbol)));
+  if (!uniqueSymbols.length) return {};
+  const apiKey = getMarketDataApiKey();
+  if (!apiKey) {
+    return Object.fromEntries(uniqueSymbols.map((symbol) => [symbol, marketDataFailure(symbol, "MarketData.app API key is not configured.")]));
+  }
+
+  try {
+    const response = await fetch(marketDataAppUrl("stocks/quotes/", { symbols: uniqueSymbols.join(",") }), {
+      cache: "no-store"
+    });
+    const data = (await response.json().catch(() => ({}))) as Payload;
+    if (!response.ok) {
+      const reason = response.status === 402 || response.status === 429 ? "API credit limit reached. Using saved prices when available." : "Market data temporarily unavailable.";
+      return Object.fromEntries(
+        uniqueSymbols.map((symbol) => [
+          symbol,
+          marketDataFailure(symbol, reason, response.status === 402 || response.status === 429 ? "rate_limit" : "temporary_unavailable", data)
+        ])
+      );
+    }
+
+    const symbolsPayload = data.symbol;
+    const result: Record<string, MarketPriceResult> = {};
+    if (Array.isArray(symbolsPayload)) {
+      symbolsPayload.forEach((rawSymbol, index) => {
+        const parsed = parseMarketDataAppQuotePayload(data, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index);
+        result[parsed.symbol] = parsed;
+      });
+    } else {
+      const parsed = parseMarketDataAppQuotePayload(data, uniqueSymbols[0]);
+      result[parsed.symbol] = parsed;
+    }
+
+    for (const symbol of uniqueSymbols) {
+      if (!result[symbol]) result[symbol] = marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data);
+    }
+    return result;
+  } catch (error) {
+    return Object.fromEntries(uniqueSymbols.map((symbol) => [symbol, marketDataFailure(symbol, errorMessage(error))]));
+  }
+}
+
+export async function searchMarketDataAppAsset(query: string): Promise<InvestmentAssetSearchResult[]> {
+  const normalized = normalizeSymbol(query);
+  if (!isSupportedSymbol(normalized)) return [];
+  const quote = await getMarketDataAppQuote(normalized);
+  if (!quote.ok) return [];
+  const featured = getInvestmentAsset(normalized);
+  return [
+    {
+      symbol: normalized,
+      name: featured?.name ?? normalized,
+      type: featured?.type ?? "Stock",
+      theme: featured?.theme ?? "US-listed asset",
+      referencePrice: quote.closePrice,
+      region: "United States",
+      currency: "USD",
+      exchange: featured?.exchange ?? null,
+      featured: Boolean(featured?.featured),
+      matchScore: 0.85,
+      priceAvailable: true,
+      latestClose: quote.closePrice,
+      priceDate: quote.priceDate
+    }
+  ];
 }
 
 function classifyAlphaResponse(data: Payload): { code: PriceFailureCode; message: string } | null {
@@ -567,46 +760,30 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
   const keyword = query.trim();
   if (keyword.length < 1) return featuredAssetSearchResults();
 
-  const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
-  const apiKey = process.env.MARKET_DATA_API_KEY;
-  let alphaResults: InvestmentAssetSearchResult[] = [];
-
-  if (provider === "alpha_vantage" && apiKey) {
-    try {
-      const params = new URLSearchParams({
-        function: "SYMBOL_SEARCH",
-        keywords: keyword,
-        apikey: apiKey
-      });
-      const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, { cache: "no-store" });
-      if (response.ok) {
-        const data = (await response.json()) as Payload;
-        const matches = (data.bestMatches as Payload[] | undefined) ?? [];
-        const normalized = matches
-          .map(mapAlphaSearchMatch)
-          .filter((asset): asset is InvestmentAssetSearchResult => Boolean(asset))
-          .filter((asset) => asset.region === "United States" && asset.currency === "USD")
-          .filter((asset) => asset.type === "Stock" || asset.type === "ETF")
-          .slice(0, 12);
-        alphaResults = normalized;
-        if (normalized.length) return attachCachedPricesToSearchResults(normalized);
-      }
-    } catch {
-      // Fall through to local featured search when the provider is rate-limited.
-    }
-  }
-
-  const yahooResults = await searchYahooAssets(keyword);
-  if (yahooResults.length) return attachCachedPricesToSearchResults(yahooResults);
-
   const lower = keyword.toLowerCase();
-  const featured = featuredAssetSearchResults().filter(
+  const localAssets = (await listInvestmentAssets()).map((asset, index) => ({
+    ...asset,
+    matchScore: asset.symbol.toLowerCase() === lower ? 1 : Math.max(0.1, 0.9 - index / 300),
+    latestClose: null,
+    priceAvailable: false,
+    priceDate: null
+  }));
+  const localMatches = localAssets.filter(
     (asset) => asset.symbol.toLowerCase().includes(lower) || asset.name.toLowerCase().includes(lower)
   );
-  if (featured.length) return attachCachedPricesToSearchResults(featured);
+  if (localMatches.length) {
+    await Promise.all(localMatches.slice(0, 12).map((asset) => recordInvestmentAssetEvent(asset.symbol, "search")));
+    return attachCachedPricesToSearchResults(localMatches.slice(0, 12));
+  }
 
   const direct = normalizeSymbol(keyword);
-  if (isSupportedSymbol(direct) && !alphaResults.length) {
+  if (isSupportedSymbol(direct)) {
+    await recordInvestmentAssetEvent(direct, "search");
+    const providerResults = preferredMarketDataProvider() === MARKETDATA_APP_PROVIDER ? await searchMarketDataAppAsset(direct) : [];
+    if (providerResults.length) {
+      await upsertInvestmentAsset({ ...providerResults[0], referencePrice: providerResults[0].latestClose ?? providerResults[0].referencePrice });
+      return attachCachedPricesToSearchResults(providerResults);
+    }
     return attachCachedPricesToSearchResults([
       {
         symbol: direct,
@@ -638,6 +815,7 @@ export async function getAssetQuote(symbol: string) {
   const existing = await resolveInvestmentAsset(normalized);
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? getInvestmentAsset(normalized) ?? null;
+  await recordInvestmentAssetEvent(normalized, "select");
   const latest = await getLatestCloseQuote(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
 
   if (!candidate && !latest.priceAvailable) {
@@ -674,6 +852,7 @@ export async function validateAsset(symbol: string) {
   const existing = await resolveInvestmentAsset(normalized);
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? undefined;
+  await recordInvestmentAssetEvent(normalized, "trade");
   const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
     return { ok: false as const, reason: latest.priceMessage ?? "Daily close price unavailable." };
@@ -916,11 +1095,13 @@ async function resolveLatestClosePrice(
   if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
   const refresh = options.refresh ?? false;
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
-  let alphaVantageStatus = "not_used";
-  let yahooFinanceStatus = "not_used";
+  let marketDataAppStatus = "not_used";
+  let calledMarketDataApp = false;
 
   const stored = await getCachedPrice(normalized);
-  if (stored && !refresh) {
+  const marketStatus = getMarketStatus();
+  const cacheFresh = stored ? isCachedQuoteFresh(stored, marketStatus) : false;
+  if (stored && !refresh && cacheFresh) {
     return {
       result: {
         symbol: normalized,
@@ -928,17 +1109,20 @@ async function resolveLatestClosePrice(
         tradingDay: stored.priceDate,
         source: "cache" as const,
         cached: true,
-        error: null
+        error: null,
+        fetchedAt: stored.fetchedAt ?? null
       },
       quote: stored,
       debug: {
         symbol: normalized,
-        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
-        cachedPriceFound: true,
+        provider: preferredMarketDataProvider(),
+        hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
+        cacheFound: true,
         cachedPrice: stored.latestClose,
-        cachedTradingDay: stored.priceDate,
-        alphaVantageStatus: "skipped_cache_hit",
-        yahooFinanceStatus: "skipped_cache_hit",
+        cachedFetchedAt: stored.fetchedAt ?? null,
+        cacheFresh: true,
+        calledMarketDataApp: false,
+        marketDataAppStatus: "skipped_cache_hit",
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
         source: "cache" as const,
@@ -947,88 +1131,57 @@ async function resolveLatestClosePrice(
     };
   }
 
-  const alpha = await fetchAlphaVantageLatestClose(normalized);
-  alphaVantageStatus = providerStatus(alpha.result);
-  if (alpha.result.ok) {
-    await savePriceToCache(normalized, alpha.result.closePrice, alpha.result.priceDate, asset, alpha.result);
+  const marketData = await getMarketDataAppQuote(normalized);
+  calledMarketDataApp = true;
+  marketDataAppStatus = providerStatus(marketData);
+  if (marketData.ok) {
+    await savePriceToCache(normalized, marketData.closePrice, marketData.priceDate, asset, marketData);
     const quote = {
-      latestClose: alpha.result.closePrice,
-      priceDate: alpha.result.priceDate,
-      provider: alpha.result.provider,
+      latestClose: marketData.closePrice,
+      priceDate: marketData.priceDate,
+      provider: marketData.provider,
       priceAvailable: true,
-      priceSource: "alpha_vantage" as const,
-      priceMessage: alpha.result.message
+      priceSource: "marketdata_app" as const,
+      priceMessage: marketData.message,
+      fetchedAt: new Date().toISOString(),
+      currency: asset?.currency ?? "USD",
+      cacheStatus: "fresh" as const
     };
     return {
       result: {
         symbol: normalized,
-        price: alpha.result.closePrice,
-        tradingDay: alpha.result.priceDate,
-        source: "alpha_vantage" as const,
+        price: marketData.closePrice,
+        tradingDay: marketData.priceDate,
+        source: "marketdata_app" as const,
         cached: false,
-        error: null
+        error: null,
+        fetchedAt: quote.fetchedAt
       },
       quote,
       debug: {
         symbol: normalized,
-        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
-        cachedPriceFound: Boolean(stored),
+        provider: preferredMarketDataProvider(),
+        hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
+        cacheFound: Boolean(stored),
         cachedPrice: stored?.latestClose ?? null,
-        cachedTradingDay: stored?.priceDate ?? null,
-        alphaVantageStatus,
-        yahooFinanceStatus,
-        finalPrice: alpha.result.closePrice,
-        tradingDay: alpha.result.priceDate,
-        source: "alpha_vantage" as const,
-        error: null
-      } satisfies InvestmentPriceDebugResult
-    };
-  }
-
-  const yahoo = await getYahooFinanceClosePrice(normalized);
-  yahooFinanceStatus = providerStatus(yahoo);
-  if (yahoo.ok) {
-    await savePriceToCache(normalized, yahoo.closePrice, yahoo.priceDate, asset, yahoo);
-    const quote = {
-      latestClose: yahoo.closePrice,
-      priceDate: yahoo.priceDate,
-      provider: yahoo.provider,
-      priceAvailable: true,
-      priceSource: "yahoo_finance" as const,
-      priceMessage: yahoo.message
-    };
-    return {
-      result: {
-        symbol: normalized,
-        price: yahoo.closePrice,
-        tradingDay: yahoo.priceDate,
-        source: "yahoo_finance" as const,
-        cached: false,
-        error: null
-      },
-      quote,
-      debug: {
-        symbol: normalized,
-        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
-        cachedPriceFound: Boolean(stored),
-        cachedPrice: stored?.latestClose ?? null,
-        cachedTradingDay: stored?.priceDate ?? null,
-        alphaVantageStatus,
-        yahooFinanceStatus,
-        finalPrice: yahoo.closePrice,
-        tradingDay: yahoo.priceDate,
-        source: "yahoo_finance" as const,
+        cachedFetchedAt: stored?.fetchedAt ?? null,
+        cacheFresh,
+        calledMarketDataApp,
+        marketDataAppStatus,
+        finalPrice: marketData.closePrice,
+        tradingDay: marketData.priceDate,
+        source: "marketdata_app" as const,
         error: null
       } satisfies InvestmentPriceDebugResult
     };
   }
 
   if (stored) {
-    const failed = choosePriceFailure([alpha.result, yahoo]);
-    const prefix = failed.code === "rate_limit" ? "API rate limit reached." : failed.message;
+    const prefix = marketData.ok ? "Using saved price." : marketData.message;
     const quote = {
       ...stored,
-      priceMessage: `${prefix} Using latest saved close from ${stored.priceDate}.`
+      priceMessage: `${prefix} Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
+      cacheStatus: stored.cacheStatus ?? (cacheFresh ? "fresh" : "stale")
     };
     return {
       result: {
@@ -1037,17 +1190,20 @@ async function resolveLatestClosePrice(
         tradingDay: stored.priceDate,
         source: "cache" as const,
         cached: true,
-        error: quote.priceMessage
+        error: quote.priceMessage,
+        fetchedAt: stored.fetchedAt ?? null
       },
       quote,
       debug: {
         symbol: normalized,
-        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
-        cachedPriceFound: true,
+        provider: preferredMarketDataProvider(),
+        hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
+        cacheFound: true,
         cachedPrice: stored.latestClose,
-        cachedTradingDay: stored.priceDate,
-        alphaVantageStatus,
-        yahooFinanceStatus,
+        cachedFetchedAt: stored.fetchedAt ?? null,
+        cacheFresh,
+        calledMarketDataApp,
+        marketDataAppStatus,
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
         source: "cache" as const,
@@ -1056,15 +1212,15 @@ async function resolveLatestClosePrice(
     };
   }
 
-  const failure = choosePriceFailure([alpha.result, yahoo]);
+  const failure = marketData;
   const error =
     failure.code === "symbol_not_found"
       ? "Symbol not found."
       : failure.code === "price_unavailable"
         ? "Daily close price unavailable for this asset."
         : failure.code === "rate_limit"
-          ? "API rate limit reached. Saved prices will still be used if available."
-          : "No saved market price yet for this asset.";
+          ? "API credit limit reached. Using saved prices when available."
+          : "No saved price yet. Select the asset to fetch the latest price.";
 
   return {
     result: {
@@ -1073,7 +1229,8 @@ async function resolveLatestClosePrice(
       tradingDay: null,
       source: null,
       cached: false,
-      error
+      error,
+      fetchedAt: null
     },
     quote: {
       latestClose: 0,
@@ -1081,16 +1238,21 @@ async function resolveLatestClosePrice(
       provider: failure.provider,
       priceAvailable: false,
       priceSource: "unavailable" as const,
-      priceMessage: error
+      priceMessage: error,
+      fetchedAt: null,
+      currency: asset?.currency ?? "USD",
+      cacheStatus: "missing" as const
     },
     debug: {
       symbol: normalized,
-      hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
-      cachedPriceFound: false,
+      provider: preferredMarketDataProvider(),
+      hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
+      cacheFound: false,
       cachedPrice: null,
-      cachedTradingDay: null,
-      alphaVantageStatus,
-      yahooFinanceStatus,
+      cachedFetchedAt: null,
+      cacheFresh: false,
+      calledMarketDataApp,
+      marketDataAppStatus,
       finalPrice: null,
       tradingDay: null,
       source: null,
@@ -1126,8 +1288,11 @@ async function getLatestCloseQuote(
     priceAvailable: false,
     priceSource: asset?.referencePrice ? ("reference" as const) : ("unavailable" as const),
     priceMessage: asset?.referencePrice
-      ? resolved.result.error ?? "Latest close not saved yet. Click Refresh featured prices."
-      : "No saved market price yet for this asset."
+      ? resolved.result.error ?? "No saved price yet. Select the asset to fetch the latest price."
+      : "No saved price yet. Select the asset to fetch the latest price.",
+    fetchedAt: null,
+    currency: asset?.currency ?? "USD",
+    cacheStatus: "missing" as const
   };
 }
 
@@ -1139,12 +1304,27 @@ export async function debugInvestmentPrice(symbol: string): Promise<InvestmentPr
 export async function getCachedPrice(symbol: string) {
   const stored = await getStoredLatestPrice(normalizeSymbol(symbol));
   if (!stored) return null;
+  const marketStatus = getMarketStatus();
+  const cacheFresh = isCachedQuoteFresh(stored, marketStatus);
   return {
     ...stored,
-    provider: stored.provider || "alpha_vantage",
+    provider: stored.provider || MARKETDATA_APP_PROVIDER,
     priceSource: "cache" as const,
-    priceMessage: `Using latest saved close from ${stored.priceDate}.`
+    cacheStatus: cacheFresh ? ("fresh" as const) : marketStatus.isOpen ? ("stale" as const) : ("cached" as const),
+    priceMessage: `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`
   };
+}
+
+function isCachedQuoteFresh(
+  stored: { fetchedAt?: string | null; priceDate?: string | null },
+  marketStatus = getMarketStatus()
+) {
+  if (!stored.fetchedAt && !stored.priceDate) return false;
+  if (!marketStatus.isOpen) return Boolean(stored.priceDate || stored.fetchedAt);
+  if (!stored.fetchedAt) return false;
+  const fetchedAt = Date.parse(stored.fetchedAt);
+  if (!Number.isFinite(fetchedAt)) return false;
+  return Date.now() - fetchedAt < MARKETDATA_CACHE_FRESH_MS;
 }
 
 export async function savePriceToCache(
@@ -1176,16 +1356,14 @@ export async function savePriceToCache(
     closePrice: price,
     adjustedClosePrice: marketPrice?.adjustedClosePrice ?? price,
     volume: marketPrice?.volume ?? 0,
-    provider: marketPrice?.provider ?? "alpha_vantage",
+    provider: marketPrice?.provider ?? MARKETDATA_APP_PROVIDER,
     raw: marketPrice?.raw ?? { cached: true }
   });
 }
 
 export async function updateDailyPrices() {
   await ensureInvestmentSeedData();
-  const featured = await refreshFeaturedAssetPrices();
-  const held = await refreshHeldAssetPrices();
-  return [...featured, ...held];
+  return refreshUsedAssetPrices(MAX_MARKETDATA_SYMBOLS_PER_CRON);
 }
 
 export type InvestmentPriceRefreshResult = {
@@ -1203,57 +1381,96 @@ export type InvestmentPriceRefreshResult = {
 
 export async function refreshFeaturedAssetPrices() {
   await ensureInvestmentSeedData();
-  const results: InvestmentPriceRefreshResult[] = [];
   const assets = (await listInvestmentAssets()).filter((asset) => asset.featured);
-  const today = todayIsoInEt();
+  return refreshPriceCache(assets.map((asset) => asset.symbol), { force: true, maxSymbols: assets.length });
+}
 
-  for (const asset of assets) {
-    try {
-      const cached = await getCachedPrice(asset.symbol);
-      if (cached?.priceDate === today) {
-        results.push({
-          symbol: asset.symbol,
-          success: true,
-          ok: true,
-          price: cached.latestClose,
-          priceDate: cached.priceDate,
-          tradingDay: cached.priceDate,
-          source: "cache",
-          message: `Already updated for ${today}.`
-        });
-        continue;
-      }
-      const price = await getLatestCloseQuote(asset.symbol, asset, { allowReferenceFallback: false, refresh: true });
-      const apiLimitReached = Boolean(price.priceMessage?.toLowerCase().includes("api rate limit"));
-      if (!price.priceAvailable) {
-        results.push({
-          symbol: asset.symbol,
-          success: false,
-          ok: false,
-          apiLimitReached,
-          error: price.priceMessage ?? "No saved market price yet for this asset.",
-          message: price.priceMessage ?? "Latest close not saved yet. Click Refresh featured prices."
-        });
-        continue;
-      }
+export async function refreshFeaturedPrices() {
+  return refreshFeaturedAssetPrices();
+}
+
+export async function refreshPriceForSymbol(symbol: string) {
+  const [result] = await refreshPriceCache([symbol], { force: true });
+  return result;
+}
+
+export async function refreshPriceCache(
+  symbols: string[],
+  options: { force?: boolean; maxSymbols?: number } = {}
+): Promise<InvestmentPriceRefreshResult[]> {
+  await ensureInvestmentSeedData();
+  const uniqueSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(isSupportedSymbol))).slice(0, options.maxSymbols ?? MAX_MARKETDATA_SYMBOLS_PER_CRON);
+  if (!uniqueSymbols.length) return [];
+
+  const results: InvestmentPriceRefreshResult[] = [];
+  const symbolsToFetch: string[] = [];
+  const marketStatus = getMarketStatus();
+
+  for (const symbol of uniqueSymbols) {
+    const cached = await getCachedPrice(symbol);
+    if (cached && !options.force && isCachedQuoteFresh(cached, marketStatus)) {
       results.push({
-        symbol: asset.symbol,
+        symbol,
         success: true,
         ok: true,
-        price: price.latestClose,
-        priceDate: price.priceDate,
-        tradingDay: price.priceDate,
-        source: price.priceSource,
-        apiLimitReached,
-        message: price.priceMessage
+        price: cached.latestClose,
+        priceDate: cached.priceDate,
+        tradingDay: cached.priceDate,
+        source: "cache",
+        message: `Using saved price from ${cached.fetchedAt ? new Date(cached.fetchedAt).toLocaleString("en-US") : cached.priceDate}.`
       });
-    } catch (error) {
+      continue;
+    }
+    symbolsToFetch.push(symbol);
+  }
+
+  if (!symbolsToFetch.length) return results;
+
+  const providerResults = preferredMarketDataProvider() === MARKETDATA_APP_PROVIDER
+    ? await getMarketDataAppBatchQuotes(symbolsToFetch)
+    : Object.fromEntries(symbolsToFetch.map((symbol) => [symbol, marketDataFailure(symbol, "MarketData.app provider is not enabled.")]));
+
+  for (const symbol of symbolsToFetch) {
+    const providerResult = providerResults[symbol] ?? marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable");
+    const asset = await resolveInvestmentAsset(symbol);
+    if (providerResult.ok) {
+      await savePriceToCache(symbol, providerResult.closePrice, providerResult.priceDate, asset, providerResult);
       results.push({
-        symbol: asset.symbol,
+        symbol,
+        success: true,
+        ok: true,
+        price: providerResult.closePrice,
+        priceDate: providerResult.priceDate,
+        tradingDay: providerResult.priceDate,
+        source: providerResult.provider,
+        apiLimitReached: false,
+        message: providerResult.message
+      });
+      continue;
+    }
+
+    const cached = await getCachedPrice(symbol);
+    if (cached) {
+      results.push({
+        symbol,
+        success: true,
+        ok: true,
+        price: cached.latestClose,
+        priceDate: cached.priceDate,
+        tradingDay: cached.priceDate,
+        source: "cache",
+        apiLimitReached: providerResult.code === "rate_limit",
+        error: providerResult.message,
+        message: `${providerResult.message} Using saved price from ${cached.fetchedAt ? new Date(cached.fetchedAt).toLocaleString("en-US") : cached.priceDate}.`
+      });
+    } else {
+      results.push({
+        symbol,
         success: false,
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown market data error.",
-        message: error instanceof Error ? error.message : "Unknown market data error."
+        apiLimitReached: providerResult.code === "rate_limit",
+        error: providerResult.message,
+        message: providerResult.message
       });
     }
   }
@@ -1261,14 +1478,23 @@ export async function refreshFeaturedAssetPrices() {
   return results;
 }
 
-export async function refreshFeaturedPrices() {
-  return refreshFeaturedAssetPrices();
+export async function refreshUsedAssetPrices(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_CRON) {
+  const symbols = await getUsedInvestmentSymbols(maxSymbols);
+  return refreshPriceCache(symbols, { maxSymbols });
+}
+
+export async function refreshFeaturedPricesIfNeeded() {
+  return refreshPriceCache(INVESTMENT_ASSETS.map((asset) => asset.symbol), { force: false, maxSymbols: INVESTMENT_ASSETS.length });
 }
 
 export async function refreshHeldAssetPrices() {
-  await ensureInvestmentSeedData();
-  const results: Array<{ symbol: string; ok: boolean; message?: string }> = [];
-  if (!supabaseConfigured()) return results;
+  const symbols = await getHeldInvestmentSymbols();
+  const results = await refreshPriceCache(symbols, { maxSymbols: MAX_MARKETDATA_SYMBOLS_PER_CRON });
+  return results.map((result) => ({ symbol: result.symbol, ok: result.ok, message: result.message ?? result.error }));
+}
+
+async function getHeldInvestmentSymbols() {
+  if (!supabaseConfigured()) return [];
 
   let symbols: string[] = [];
   try {
@@ -1281,37 +1507,56 @@ export async function refreshHeldAssetPrices() {
       symbols = Array.from(new Set(rows.map((row) => normalizeSymbol(rowString(row, "symbol"))).filter(Boolean)));
     }
   } catch {
-    return results;
+    return [];
   }
 
-  const featuredSymbols = new Set(INVESTMENT_ASSETS.map((asset) => asset.symbol));
-  const today = todayIsoInEt();
-  for (const symbol of symbols.filter((item) => !featuredSymbols.has(item))) {
-    try {
-      const cached = await getCachedPrice(symbol);
-      if (cached?.priceDate === today) {
-        results.push({ symbol, ok: true, message: `Already updated for ${today}.` });
-        continue;
-      }
-      const asset = await resolveInvestmentAsset(symbol);
-      const price = await getLatestCloseQuote(symbol, asset ?? undefined, { allowReferenceFallback: false, refresh: true });
-      results.push({
-        symbol,
-        ok: price.priceAvailable,
-        message:
-          price.priceMessage ??
-          (price.priceAvailable ? "Updated." : "Latest close not saved yet. Click Refresh featured prices.")
-      });
-    } catch (error) {
-      results.push({
-        symbol,
-        ok: false,
-        message: error instanceof Error ? error.message : "Unknown market data error."
-      });
-    }
+  return symbols;
+}
+
+async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_CRON) {
+  if (!supabaseConfigured()) {
+    return INVESTMENT_ASSETS.slice(0, Math.min(maxSymbols, 5)).map((asset) => asset.symbol);
   }
 
-  return results;
+  const prioritized: string[] = [];
+  const add = (symbol: string) => {
+    const normalized = normalizeSymbol(symbol);
+    if (isSupportedSymbol(normalized) && !prioritized.includes(normalized)) prioritized.push(normalized);
+  };
+
+  for (const symbol of await getHeldInvestmentSymbols()) add(symbol);
+
+  try {
+    const trades = await selectRows("investment_trades", {
+      select: "symbol,created_at,rejected",
+      rejected: "eq.false",
+      order: "created_at.desc",
+      limit: "200"
+    });
+    if (Array.isArray(trades)) trades.forEach((row) => add(rowString(row, "symbol")));
+  } catch {
+    // Watchlist fallback below.
+  }
+
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const events = await selectRows("investment_asset_watchlist_events", {
+      select: "symbol,event_type,created_at",
+      created_at: `gte.${since}`,
+      order: "created_at.desc",
+      limit: "500"
+    });
+    if (Array.isArray(events)) events.forEach((row) => add(rowString(row, "symbol")));
+  } catch {
+    // Migration may not exist yet on older deployments.
+  }
+
+  for (const asset of INVESTMENT_ASSETS) {
+    if (prioritized.length >= Math.min(maxSymbols, 8)) break;
+    add(asset.symbol);
+  }
+
+  return prioritized.slice(0, maxSymbols);
 }
 
 export async function searchOptionChain(symbol: string) {
@@ -1761,7 +2006,7 @@ export async function executeInvestmentTrade(input: {
     const previousAvg = holding ? rowNumber(holding, "average_buy_price") : 0;
     const newQuantity = currentQuantity + quantity;
     const newAverage = newQuantity > 0 ? (previousAvg * currentQuantity + totalCost) / newQuantity : 0;
-    await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource);
+    await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource, latest.fetchedAt);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newAverage, holding ? rowNumber(holding, "realized_gain_loss") : 0);
     await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash - totalCost, updated_at: new Date().toISOString() });
   } else {
@@ -1774,7 +2019,7 @@ export async function executeInvestmentTrade(input: {
     const previousRealized = holding ? rowNumber(holding, "realized_gain_loss") : 0;
     const realized = previousRealized + (price - avg) * quantity - fee;
     const newQuantity = currentQuantity - quantity;
-    await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource);
+    await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource, latest.fetchedAt);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newQuantity > 0 ? avg : 0, realized);
     await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash + proceeds, updated_at: new Date().toISOString() });
   }
@@ -1982,8 +2227,8 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
   if (supabaseConfigured()) {
     try {
       const rows = await selectRows("investment_daily_prices", {
-        select: "symbol,price_date,close_price,provider",
-        order: "price_date.desc",
+        select: "symbol,price_date,trading_day,close_price,price,currency,provider,fetched_at,updated_at",
+        order: "fetched_at.desc,price_date.desc",
         limit: "400"
       });
       storedRows = Array.isArray(rows) ? rows : [];
@@ -1999,17 +2244,22 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
 
   return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
-    const storedDate = stored ? rowString(stored, "price_date") : null;
+    const storedDate = stored ? rowString(stored, "trading_day") || rowString(stored, "price_date") : null;
+    const fetchedAt = stored ? rowNullableString(stored, "fetched_at") ?? rowNullableString(stored, "updated_at") : null;
+    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt, priceDate: storedDate }) : false;
     return {
       ...asset,
-      latestClose: stored ? rowNumber(stored, "close_price", asset.referencePrice) : asset.referencePrice,
+      latestClose: stored ? rowNumber(stored, "price", rowNumber(stored, "close_price", asset.referencePrice)) : asset.referencePrice,
       priceDate: storedDate,
       provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
       priceAvailable: Boolean(stored),
       priceSource: stored ? ("cache" as const) : ("reference" as const),
+      fetchedAt,
+      currency: stored ? rowString(stored, "currency") || "USD" : asset.currency ?? "USD",
+      cacheStatus: stored ? (cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
       priceMessage: storedDate
-        ? `Using latest saved close price from ${storedDate}.`
-        : "Latest close not saved yet. Click Refresh featured prices."
+        ? `Using saved price from ${fetchedAt ? new Date(fetchedAt).toLocaleString("en-US") : storedDate}.`
+        : "No saved price yet. Select the asset to fetch the latest price."
     };
   });
 }
@@ -2098,6 +2348,21 @@ async function upsertInvestmentAsset(asset: InvestmentAsset) {
     },
     "symbol"
   );
+}
+
+async function recordInvestmentAssetEvent(symbol: string, eventType: "search" | "select" | "trade" | "hold") {
+  if (!supabaseConfigured()) return null;
+  const normalized = normalizeSymbol(symbol);
+  if (!isSupportedSymbol(normalized)) return null;
+  try {
+    return await insertRow("investment_asset_watchlist_events", {
+      symbol: normalized,
+      event_type: eventType,
+      created_at: new Date().toISOString()
+    });
+  } catch {
+    return null;
+  }
 }
 
 function featuredAssetSearchResults(): InvestmentAssetSearchResult[] {
@@ -2341,24 +2606,28 @@ async function upsertInvestmentDailyPrice(price: {
   raw: unknown;
 }) {
   if (!supabaseConfigured()) return null;
+  const fetchedAt = new Date().toISOString();
   const payload = {
     symbol: price.symbol,
     price_date: price.priceDate,
     trading_day: price.priceDate,
+    price: price.closePrice,
     close_price: price.closePrice,
     adjusted_close_price: price.adjustedClosePrice,
     volume: price.volume,
+    currency: "USD",
     provider: price.provider,
     raw: price.raw,
     raw_source: price.raw,
-    fetched_at: new Date().toISOString()
+    fetched_at: fetchedAt,
+    updated_at: fetchedAt
   };
   try {
     return await upsertRow("investment_daily_prices", payload, "symbol,price_date");
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!/trading_day|raw_source|schema cache|column/i.test(message)) throw error;
-    const { trading_day: _tradingDay, raw_source: _rawSource, ...legacyPayload } = payload;
+    if (!/trading_day|raw_source|price|currency|updated_at|schema cache|column/i.test(message)) throw error;
+    const { trading_day: _tradingDay, raw_source: _rawSource, price: _price, currency: _currency, updated_at: _updatedAt, ...legacyPayload } = payload;
     return upsertRow("investment_daily_prices", legacyPayload, "symbol,price_date");
   }
 }
@@ -2367,17 +2636,19 @@ async function getStoredLatestPrice(symbol: string) {
   if (!supabaseConfigured()) return null;
   try {
     const rows = await selectRows("investment_daily_prices", {
-      select: "symbol,price_date,close_price,provider",
+      select: "symbol,price_date,trading_day,close_price,price,currency,provider,fetched_at,updated_at",
       symbol: `eq.${symbol}`,
-      order: "price_date.desc",
+      order: "fetched_at.desc,price_date.desc",
       limit: "1"
     });
     if (!Array.isArray(rows) || !rows[0]) return null;
     return {
-      latestClose: rowNumber(rows[0], "close_price"),
-      priceDate: rowString(rows[0], "price_date"),
+      latestClose: rowNumber(rows[0], "price", rowNumber(rows[0], "close_price")),
+      priceDate: rowString(rows[0], "trading_day") || rowString(rows[0], "price_date"),
       provider: rowString(rows[0], "provider") || "stored",
-      priceAvailable: true
+      priceAvailable: true,
+      fetchedAt: rowNullableString(rows[0], "fetched_at") ?? rowNullableString(rows[0], "updated_at"),
+      currency: rowString(rows[0], "currency") || "USD"
     };
   } catch {
     return null;
@@ -2448,7 +2719,10 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     priceSource: priceMapInput?.has(asset.symbol) ? ("cache" as const) : ("reference" as const),
     priceMessage: priceMapInput?.has(asset.symbol)
       ? "Using latest saved close price."
-      : "Latest close not saved yet. Click Refresh featured prices."
+      : "No saved price yet. Select the asset to fetch the latest price.",
+    fetchedAt: null,
+    currency: asset.currency ?? "USD",
+    cacheStatus: priceMapInput?.has(asset.symbol) ? ("cached" as const) : ("missing" as const)
   }));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)
@@ -2557,6 +2831,7 @@ function mapTradeRow(row: Payload): InvestmentTradeView {
     netValue: rowNumber(row, "net_value", Math.abs(rowNumber(row, "net_amount"))),
     priceDate: rowNullableString(row, "price_date"),
     priceSource: rowNullableString(row, "price_source"),
+    priceTimestamp: rowNullableString(row, "price_timestamp"),
     rejected: Boolean(row.rejected),
     rejectReason: rowNullableString(row, "reject_reason")
   };
@@ -2570,6 +2845,7 @@ function scoreThesis(input: { thesis: string; risks: string; diversificationLogi
 }
 
 async function upsertHolding(accountId: string, symbol: string, quantity: number, averageBuyPrice: number, realizedGainLoss: number) {
+  if (quantity > 0) await recordInvestmentAssetEvent(symbol, "hold");
   return upsertRow(
     "investment_holdings",
     {
@@ -2594,7 +2870,8 @@ async function saveTrade(
   fee: number,
   net: number,
   priceDate: string | null,
-  priceSource: string | undefined
+  priceSource: string | undefined,
+  priceTimestamp?: string | null
 ) {
   const executedAt = new Date().toISOString();
   return insertInvestmentTrade({
@@ -2612,6 +2889,7 @@ async function saveTrade(
     net_value: net,
     price_date: priceDate,
     price_source: priceSource ?? null,
+    price_timestamp: priceTimestamp ?? executedAt,
     executed_at: executedAt,
     rejected: false,
     reject_reason: null,
@@ -2638,6 +2916,7 @@ async function rejectTrade(account: Payload, symbol: string, side: string, quant
       net_value: null,
       price_date: null,
       price_source: null,
+      price_timestamp: null,
       executed_at: executedAt,
       rejected: true,
       reject_reason: reason,
@@ -2653,7 +2932,7 @@ async function insertInvestmentTrade(payload: Payload) {
     return await insertRow("investment_trades", payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!/gross_value|fee_rate|net_value|price_date|price_source|executed_at|schema cache|column/i.test(message)) {
+    if (!/gross_value|fee_rate|net_value|price_date|price_source|price_timestamp|executed_at|schema cache|column/i.test(message)) {
       throw error;
     }
     const legacyPayload = { ...payload };
@@ -2662,6 +2941,7 @@ async function insertInvestmentTrade(payload: Payload) {
     delete legacyPayload.net_value;
     delete legacyPayload.price_date;
     delete legacyPayload.price_source;
+    delete legacyPayload.price_timestamp;
     delete legacyPayload.executed_at;
     return insertRow("investment_trades", legacyPayload);
   }

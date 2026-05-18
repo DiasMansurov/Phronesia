@@ -53,14 +53,20 @@ type RefreshPricesPayload = {
   error?: string;
 };
 
+type RefreshSymbolPayload = RefreshPricesPayload & {
+  result?: NonNullable<RefreshPricesPayload["results"]>[number];
+};
+
 type DebugPricePayload = {
   symbol: string;
-  hasAlphaVantageKey: boolean;
-  cachedPriceFound: boolean;
+  provider: string;
+  hasMarketDataApiKey: boolean;
+  cacheFound: boolean;
   cachedPrice: number | null;
-  cachedTradingDay: string | null;
-  alphaVantageStatus: string;
-  yahooFinanceStatus: string;
+  cachedFetchedAt: string | null;
+  cacheFresh: boolean;
+  calledMarketDataApp: boolean;
+  marketDataAppStatus: string;
   finalPrice: number | null;
   tradingDay: string | null;
   source: string | null;
@@ -92,7 +98,9 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     provider: "educational_reference",
     priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "No saved market price yet. Use Refresh featured prices or select the asset to check providers."
+    priceMessage: "No saved price yet. Select the asset to fetch the latest price.",
+    fetchedAt: null,
+    cacheStatus: "missing"
   }));
 }
 
@@ -177,8 +185,8 @@ export function InvestmentChallengeDashboard() {
   const clientTradeWarning =
     !hasSelectedAsset
       ? ""
-      : !selectedQuote.priceAvailable
-      ? selectedQuote.priceMessage ?? "No saved market price yet for this asset."
+    : !selectedQuote.priceAvailable
+      ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
       : activeCompetition?.runtimeStatus === "not_started"
         ? "Competition has not started yet. You can register and prepare your thesis, but trading is disabled."
       : activeCompetition?.runtimeStatus === "closed"
@@ -311,7 +319,7 @@ export function InvestmentChallengeDashboard() {
       priceAvailable: Boolean(asset.priceAvailable),
       priceSource: hasOptimisticPrice ? "reference" : "unavailable",
       priceMessage: hasOptimisticPrice
-        ? "Checking saved cache, Alpha Vantage, and Yahoo Finance for the latest close price..."
+        ? "Checking saved cache and MarketData.app for the latest price..."
         : "Checking latest close price..."
     };
     setSymbol(asset.symbol);
@@ -341,10 +349,10 @@ export function InvestmentChallengeDashboard() {
           priceSource: "unavailable",
           priceMessage: reason
         });
-        setAssetSearchStatus(data.reason ?? "No saved market price yet for this asset.");
+        setAssetSearchStatus(data.reason ?? "No saved price yet. Select the asset to fetch the latest price.");
       }
     } catch {
-      const reason = "No saved market price yet for this asset.";
+      const reason = "No saved price yet. Select the asset to fetch the latest price.";
       setSelectedQuote({
         ...optimistic,
         latestClose: 0,
@@ -361,7 +369,7 @@ export function InvestmentChallengeDashboard() {
 
   async function refreshFeaturedPrices() {
     setRefreshingPrices(true);
-    setStatus("Refreshing featured prices from server-side market providers...");
+    setStatus("Refreshing featured prices server-side from MarketData.app...");
     setPriceRefreshDetails("");
     try {
       const response = await fetch("/api/investment/refresh-featured-prices", {
@@ -386,7 +394,7 @@ export function InvestmentChallengeDashboard() {
 
       const successes = data.results?.filter((result) => result.success ?? result.ok).length ?? 0;
       const failures = data.results?.filter((result) => !(result.success ?? result.ok)).length ?? 0;
-      const apiLimit = data.apiLimitReached ? " API rate limit reached for some tickers; saved prices are still used when available." : "";
+      const apiLimit = data.apiLimitReached ? " API credit limit reached for some tickers; saved prices are still used when available." : "";
       const detail = `Featured price refresh complete: ${successes} updated or cached, ${failures} failed.${apiLimit}`;
       setStatus(detail);
       setPriceRefreshDetails(detail);
@@ -397,8 +405,45 @@ export function InvestmentChallengeDashboard() {
     }
   }
 
+  async function refreshSelectedSymbol() {
+    if (!symbol) return;
+    setPriceLoading(true);
+    setStatus(`Refreshing ${symbol} server-side from MarketData.app...`);
+    try {
+      const response = await fetch("/api/investment/refresh-symbol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol }),
+        cache: "no-store"
+      });
+      const data = (await response.json()) as RefreshSymbolPayload;
+      if (!response.ok || !data.ok) {
+        const message = data.error ?? data.result?.error ?? `Could not refresh ${symbol}.`;
+        setStatus(message);
+        setAssetSearchStatus(message);
+        return;
+      }
+      if (data.quotes?.length) {
+        setMarket((current) => ({ ...current, quotes: data.quotes as InvestmentAssetQuote[] }));
+        const refreshedSelected = data.quotes.find((quote) => quote.symbol === symbol);
+        if (refreshedSelected) setSelectedQuote(refreshedSelected);
+      }
+      const resultMessage = data.result?.message ?? `${symbol} refreshed.`;
+      setStatus(resultMessage);
+      setAssetSearchStatus("");
+      if (account) void loadAccount(account.account.id);
+      void loadLeaderboard(account?.competition.code ?? competitionCode);
+    } catch {
+      const message = `Could not refresh ${symbol}.`;
+      setStatus(message);
+      setAssetSearchStatus(message);
+    } finally {
+      setPriceLoading(false);
+    }
+  }
+
   async function testSpyPrice() {
-    setDebugPriceDetails("Testing SPY through cache, Alpha Vantage, and Yahoo Finance...");
+    setDebugPriceDetails("Testing SPY through cache and MarketData.app...");
     try {
       const response = await fetch("/api/investment/debug-price?symbol=SPY", { cache: "no-store" });
       const data = (await response.json()) as DebugPricePayload;
@@ -727,6 +772,16 @@ export function InvestmentChallengeDashboard() {
           <button className="button secondary compact-button" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
             {refreshingPrices ? "Refreshing prices..." : "Refresh saved prices"}
           </button>
+          {hasSelectedAsset ? (
+            <div className="selected-asset-actions">
+              <button className="button secondary compact-button" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
+                Fetch price
+              </button>
+              <button className="button secondary compact-button" type="button" onClick={refreshSelectedSymbol} disabled={priceLoading}>
+                Refresh this symbol
+              </button>
+            </div>
+          ) : null}
         </aside>
 
         <form className="panel stack-md trade-ticket-v2 investment-trade-dashboard" onSubmit={submitTrade}>
@@ -774,8 +829,10 @@ export function InvestmentChallengeDashboard() {
                   <strong>{selectedPriceText}</strong>
                   <p>
                     {selectedQuote.priceAvailable
-                      ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)}`
-                      : selectedQuote.priceMessage ?? "No saved market price yet for this asset."}
+                      ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)} · Status: ${selectedQuote.cacheStatus ?? "cached"}${
+                          selectedQuote.fetchedAt ? ` · Updated: ${new Date(selectedQuote.fetchedAt).toLocaleString("en-US")}` : ""
+                        }`
+                      : selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."}
                   </p>
                 </div>
                 <span className={selectedQuote.priceAvailable ? "positive-text" : "negative-text"}>{priceStatusLabel}</span>
@@ -968,6 +1025,19 @@ export function InvestmentChallengeDashboard() {
         </aside>
       </section>
 
+      <section className="investment-dashboard-grid">
+        <aside className="panel stack-md investment-risk-panel">
+          <p className="eyebrow">Rules and risk</p>
+          <h2>Market closed means orders pause, not prices.</h2>
+          <p className="muted">
+            Latest saved prices remain visible from the Supabase cache. MarketData.app is called only by server actions, admin refreshes,
+            selected tickers, held assets, or cron jobs so the challenge saves API credits.
+          </p>
+          <div className="score-formula-note">
+            40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
+          </div>
+        </aside>
+      </section>
       <section className="panel stack-md">
         <div className="section-header">
           <div>
@@ -991,9 +1061,11 @@ export function InvestmentChallengeDashboard() {
 
 function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.priceSource === "cache") return "Saved cache";
+  if (quote.priceSource === "marketdata_app") return "MarketData.app";
   if (quote.priceSource === "live") return "Alpha Vantage";
   if (quote.priceSource === "alpha_vantage") return "Alpha Vantage";
   if (quote.priceSource === "yahoo_finance") return "Yahoo Finance";
+  if (quote.provider === "marketdata_app") return "MarketData.app";
   if (quote.provider === "alpha_vantage") return "Alpha Vantage";
   if (quote.provider === "yahoo_finance") return "Yahoo Finance";
   if (quote.priceSource === "reference") return "Educational reference";

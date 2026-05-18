@@ -44,8 +44,11 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   priceDate: string | null;
   provider: string;
   priceAvailable: boolean;
-  priceSource?: "live" | "cache" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
+  priceSource?: "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
   priceMessage?: string;
+  fetchedAt?: string | null;
+  currency?: string;
+  cacheStatus?: "fresh" | "cached" | "stale" | "missing";
 };
 
 export type InvestmentAssetSearchResult = InvestmentAsset & {

@@ -6834,7 +6834,7 @@ li,
 }
 
 .selected-asset-card {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr);
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.42fr) auto;
   gap: 0.85rem;
   padding: 1rem;
   border: 1px solid rgba(8, 79, 92, 0.12);
@@ -6842,6 +6842,15 @@ li,
   background:
     linear-gradient(145deg, rgba(15, 107, 122, 0.1), rgba(255, 255, 255, 0.9)),
     #fff;
+}
+
+.selected-asset-actions {
+  align-content: start;
+}
+
+.selected-asset-actions .button {
+  width: 100%;
+  min-width: 8.5rem;
 }
 
 .selected-asset-card div {

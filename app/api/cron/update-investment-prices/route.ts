@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 
 import {
   getMarketStatus,
-  isValidUsMarketDay,
   recalculatePortfolios,
-  updateDailyPrices,
+  refreshUsedAssetPrices,
   updateInvestmentLeaderboard
 } from "@/lib/server-investments";
 
@@ -18,16 +17,20 @@ export async function GET(request: Request) {
   }
 
   const marketStatus = getMarketStatus();
-  if (!isValidUsMarketDay()) {
+  if (!marketStatus.isMarketDay || !marketStatus.isOpen) {
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: marketStatus.holidayName ? `US market holiday: ${marketStatus.holidayName}` : "Not a US market day.",
+      reason: marketStatus.holidayName
+        ? `US market holiday: ${marketStatus.holidayName}`
+        : marketStatus.isMarketDay
+          ? "Outside US regular market hours."
+          : "Not a US market day.",
       marketStatus
     });
   }
 
-  const prices = await updateDailyPrices();
+  const prices = await refreshUsedAssetPrices();
   const portfolios = await recalculatePortfolios();
   const leaderboard = await updateInvestmentLeaderboard();
 

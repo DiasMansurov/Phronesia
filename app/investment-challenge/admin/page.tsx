@@ -55,6 +55,9 @@ export default async function InvestmentChallengeAdminPage() {
           <p className="lede compact-lede">
             Organizer view for monitoring team portfolios and exporting the current leaderboard.
           </p>
+          <p className="muted small">
+            Prices are fetched only for selected, held, traded, or manually refreshed assets to save MarketData.app API credits.
+          </p>
           <div className="cta-row">
             <Link className="button primary" href="/api/investment/admin?format=csv">
               Export leaderboard CSV

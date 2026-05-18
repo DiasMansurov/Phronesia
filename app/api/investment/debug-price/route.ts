@@ -14,9 +14,10 @@ export async function GET(request: Request) {
     const result = await debugInvestmentPrice(symbol);
     return NextResponse.json({
       ...result,
-      provider: process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage",
-      cacheFound: result.cachedPriceFound,
-      apiStatus: result.alphaVantageStatus,
+      provider: process.env.MARKET_DATA_PROVIDER ?? "marketdata_app",
+      cacheFound: result.cacheFound,
+      cachedPriceFound: result.cacheFound,
+      apiStatus: result.marketDataAppStatus,
       finalPrice: result.finalPrice,
       source: result.source
     });
@@ -24,12 +25,15 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         symbol,
-        hasAlphaVantageKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        provider: process.env.MARKET_DATA_PROVIDER ?? "marketdata_app",
+        hasMarketDataApiKey: Boolean(process.env.MARKET_DATA_API_KEY),
+        cacheFound: false,
         cachedPriceFound: false,
         cachedPrice: null,
-        cachedTradingDay: null,
-        alphaVantageStatus: "not_used",
-        yahooFinanceStatus: "not_used",
+        cachedFetchedAt: null,
+        cacheFresh: false,
+        calledMarketDataApp: false,
+        marketDataAppStatus: "not_used",
         finalPrice: null,
         tradingDay: null,
         source: null,

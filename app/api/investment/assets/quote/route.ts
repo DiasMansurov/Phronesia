@@ -23,7 +23,10 @@ export async function GET(request: Request) {
       provider: validation.price.provider,
       priceAvailable: validation.price.priceAvailable,
       priceSource: validation.price.priceSource,
-      priceMessage: validation.price.priceMessage
+      priceMessage: validation.price.priceMessage,
+      fetchedAt: validation.price.fetchedAt ?? null,
+      currency: validation.price.currency,
+      cacheStatus: validation.price.cacheStatus
     }
   });
 }
