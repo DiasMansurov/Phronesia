@@ -66,6 +66,7 @@ type DebugPricePayload = {
   cachedFetchedAt: string | null;
   cacheFresh: boolean;
   calledMarketDataApp: boolean;
+  endpointUsed?: string | null;
   marketDataAppStatus: string;
   finalPrice: number | null;
   tradingDay: string | null;
@@ -74,7 +75,7 @@ type DebugPricePayload = {
 };
 
 const closedMessage =
-  "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
+  "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
 function defaultMarketStatus(): InvestmentMarketStatus {
   return {
@@ -192,7 +193,7 @@ export function InvestmentChallengeDashboard() {
       : activeCompetition?.runtimeStatus === "closed"
         ? "Competition closed. Rankings are final and buy/sell orders are disabled."
       : !marketStatus.isOpen
-        ? "US market is closed. Latest close prices are shown, but buy/sell orders are disabled."
+        ? "US market is closed. Latest cached stock prices are shown, but buy/sell orders are disabled."
         : side === "buy" && account && estimatedNet > cashBalance + 0.00001
           ? `Insufficient virtual cash. Total cost including commission is ${formatUsd(estimatedNet)}.`
           : side === "sell" && account && quantity > ownedQuantity
@@ -319,15 +320,15 @@ export function InvestmentChallengeDashboard() {
       priceAvailable: Boolean(asset.priceAvailable),
       priceSource: hasOptimisticPrice ? "reference" : "unavailable",
       priceMessage: hasOptimisticPrice
-        ? "Checking saved cache and MarketData.app for the latest price..."
-        : "Checking latest close price..."
+        ? "Checking saved cache and the approved MarketData.app stock price endpoint..."
+        : "Checking latest stock price..."
     };
     setSymbol(asset.symbol);
     setHasSelectedAsset(true);
     setAssetQuery("");
     setSelectedQuote(optimistic);
     setAssetResults([]);
-    setAssetSearchStatus("Checking latest close price...");
+    setAssetSearchStatus("Checking latest stock price...");
     setPriceLoading(true);
 
     try {
@@ -340,7 +341,7 @@ export function InvestmentChallengeDashboard() {
         setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
         setAssetSearchStatus("");
       } else {
-        const reason = data.reason ?? "Daily close price unavailable.";
+        const reason = data.reason ?? "MarketData.app stock price unavailable.";
         setSelectedQuote({
           ...optimistic,
           latestClose: 0,
@@ -369,7 +370,7 @@ export function InvestmentChallengeDashboard() {
 
   async function refreshFeaturedPrices() {
     setRefreshingPrices(true);
-    setStatus("Refreshing featured prices server-side from MarketData.app...");
+    setStatus("Refreshing featured prices server-side through /stocks/prices...");
     setPriceRefreshDetails("");
     try {
       const response = await fetch("/api/investment/refresh-featured-prices", {
@@ -408,7 +409,7 @@ export function InvestmentChallengeDashboard() {
   async function refreshSelectedSymbol() {
     if (!symbol) return;
     setPriceLoading(true);
-    setStatus(`Refreshing ${symbol} server-side from MarketData.app...`);
+    setStatus(`Refreshing ${symbol} server-side through /stocks/prices...`);
     try {
       const response = await fetch("/api/investment/refresh-symbol", {
         method: "POST",
@@ -443,7 +444,7 @@ export function InvestmentChallengeDashboard() {
   }
 
   async function testSpyPrice() {
-    setDebugPriceDetails("Testing SPY through cache and MarketData.app...");
+    setDebugPriceDetails("Testing SPY through cache and /stocks/prices...");
     try {
       const response = await fetch("/api/investment/debug-price?symbol=SPY", { cache: "no-store" });
       const data = (await response.json()) as DebugPricePayload;
@@ -569,7 +570,7 @@ export function InvestmentChallengeDashboard() {
             <p className="eyebrow">Phronesia Investment Challenge</p>
             <h1>Build a $100,000 virtual portfolio</h1>
             <p>
-              Search US stocks and ETFs, use daily closing prices, write an investment thesis, and learn how return,
+              Search US stocks and ETFs, use cached educational stock prices, write an investment thesis, and learn how return,
               risk, diversification, and market discipline work together.
             </p>
           </div>
@@ -825,7 +826,7 @@ export function InvestmentChallengeDashboard() {
 
               <div className="asset-price-status">
                 <div>
-                  <span>Latest close</span>
+                  <span>Latest price</span>
                   <strong>{selectedPriceText}</strong>
                   <p>
                     {selectedQuote.priceAvailable
@@ -878,7 +879,7 @@ export function InvestmentChallengeDashboard() {
                 </button>
               ) : null}
               <button className="button primary" type="submit" disabled={!canTrade}>
-                {priceLoading ? "Checking latest close..." : "Submit server-validated trade"}
+                {priceLoading ? "Checking latest price..." : "Submit server-validated trade"}
               </button>
             </>
           )}
@@ -912,7 +913,7 @@ export function InvestmentChallengeDashboard() {
             <div className="investment-empty-state">
               <strong>Your portfolio is empty.</strong>
               <p>
-                Search for an asset, review the latest close price, and place your first simulated trade when the market is open.
+                Search for an asset, review the latest cached stock price, and place your first simulated trade when the market is open.
               </p>
             </div>
           ) : (
@@ -925,7 +926,7 @@ export function InvestmentChallengeDashboard() {
                       <th>Asset</th>
                       <th>Quantity</th>
                       <th>Average buy</th>
-                      <th>Latest close</th>
+                      <th>Latest price</th>
                       <th>Current value</th>
                       <th>Unrealized gain/loss</th>
                       <th>Weight</th>
@@ -1030,8 +1031,8 @@ export function InvestmentChallengeDashboard() {
           <p className="eyebrow">Rules and risk</p>
           <h2>Market closed means orders pause, not prices.</h2>
           <p className="muted">
-            Latest saved prices remain visible from the Supabase cache. MarketData.app is called only by server actions, admin refreshes,
-            selected tickers, held assets, or cron jobs so the challenge saves API credits.
+            Latest saved prices remain visible from the Supabase cache. MarketData.app is called only through the approved
+            /stocks/prices endpoint by server actions, admin refreshes, selected tickers, held assets, or cron jobs so the challenge saves API credits.
           </p>
           <div className="score-formula-note">
             40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
@@ -1062,12 +1063,7 @@ export function InvestmentChallengeDashboard() {
 function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.priceSource === "cache") return "Saved cache";
   if (quote.priceSource === "marketdata_app") return "MarketData.app";
-  if (quote.priceSource === "live") return "Alpha Vantage";
-  if (quote.priceSource === "alpha_vantage") return "Alpha Vantage";
-  if (quote.priceSource === "yahoo_finance") return "Yahoo Finance";
   if (quote.provider === "marketdata_app") return "MarketData.app";
-  if (quote.provider === "alpha_vantage") return "Alpha Vantage";
-  if (quote.provider === "yahoo_finance") return "Yahoo Finance";
   if (quote.priceSource === "reference") return "Educational reference";
   return quote.provider || "Market data";
 }

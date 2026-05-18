@@ -126,12 +126,13 @@ export type InvestmentTradeView = {
 };
 
 const MARKET_CLOSED_MESSAGE =
-  "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
+  "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
 const TEENVESTOR_CODE = "Teenvestor.school";
 const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
+const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/prices";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
@@ -179,6 +180,7 @@ export type InvestmentPriceDebugResult = {
   cachedFetchedAt: string | null;
   cacheFresh: boolean;
   calledMarketDataApp: boolean;
+  endpointUsed?: string | null;
   requestUrlWithoutToken?: string | null;
   httpStatus?: number | null;
   responseOk?: boolean | null;
@@ -307,12 +309,12 @@ function marketDataAppUrl(path: string, params: Record<string, string> = {}) {
   return `https://api.marketdata.app/v1/${path}${search.size ? `?${search.toString()}` : ""}`;
 }
 
-function marketDataAppQuoteUrl(symbol: string) {
-  return marketDataAppUrl(`stocks/quotes/${encodeURIComponent(normalizeSymbol(symbol))}/`);
+function marketDataAppStockPriceUrl(symbol: string) {
+  return marketDataAppUrl(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalizeSymbol(symbol))}/`);
 }
 
-function marketDataAppQuoteUrlWithoutToken(symbol: string) {
-  return `https://api.marketdata.app/v1/stocks/quotes/${encodeURIComponent(normalizeSymbol(symbol))}/?token=[redacted]`;
+function marketDataAppStockPriceUrlWithoutToken(symbol: string) {
+  return `https://api.marketdata.app/v1/${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalizeSymbol(symbol))}/?token=[redacted]`;
 }
 
 function parseMarketDataTimestamp(value: unknown) {
@@ -376,7 +378,7 @@ function parsedMarketDataFields(data: Payload, index = 0) {
   };
 }
 
-function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, index = 0, responseTextPreview?: string | null): MarketPriceResult {
+function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string, index = 0, responseTextPreview?: string | null): MarketPriceResult {
   const status = String(firstValue(data.s ?? data.status) ?? "").toLowerCase();
   const providerMessage = String(firstValue(data.errmsg) ?? firstValue(data.error) ?? firstValue(data.message) ?? "").trim();
   if (status !== "ok") {
@@ -394,10 +396,10 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
 
   const parsedFields = parsedMarketDataFields(data, index);
   const symbol = normalizeSymbol(parsedFields.symbol ?? requestedSymbol);
-  const price = parsedFields.last ?? parsedFields.mid ?? parsedFields.bid ?? parsedFields.ask;
+  const price = parsedFields.mid ?? parsedFields.last ?? parsedFields.bid ?? parsedFields.ask;
 
   if (!price) {
-    return marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
+    return marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
   }
 
   const timestamp = parseMarketDataTimestamp(parsedFields.updated ?? marketDataArrayField(data, "date", index) ?? marketDataArrayField(data, "time", index) ?? marketDataArrayField(data, "timestamp", index));
@@ -411,20 +413,20 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
     volume: Number(marketDataArrayField(data, "volume", index) ?? 0),
     provider: MARKETDATA_APP_PROVIDER,
     source: MARKETDATA_APP_PROVIDER,
-    message: `Latest MarketData.app price from ${tradingDay}.`,
-    raw: data,
+    message: `Latest MarketData.app stock price from ${tradingDay}.`,
+    raw: { endpoint: MARKETDATA_STOCK_PRICE_ENDPOINT, payload: data },
     responseTextPreview: responseTextPreview ?? null
   };
 }
 
-export async function getMarketDataAppQuote(symbol: string): Promise<MarketPriceResult> {
+export async function getMarketDataStockPrice(symbol: string): Promise<MarketPriceResult> {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) return marketDataFailure(normalized, "Symbol not found.", "symbol_not_found");
   const apiKey = getMarketDataApiKey();
   if (!apiKey) return marketDataFailure(normalized, "MarketData.app API key is not configured.");
 
   try {
-    const response = await fetch(marketDataAppQuoteUrl(normalized), {
+    const response = await fetch(marketDataAppStockPriceUrl(normalized), {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -446,13 +448,13 @@ export async function getMarketDataAppQuote(symbol: string): Promise<MarketPrice
         responseTextPreview
       );
     }
-    return parseMarketDataAppQuotePayload(data, normalized, 0, responseTextPreview);
+    return parseMarketDataStockPricePayload(data, normalized, 0, responseTextPreview);
   } catch (error) {
     return marketDataFailure(normalized, errorMessage(error));
   }
 }
 
-export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Record<string, MarketPriceResult>> {
+export async function getMarketDataStockPrices(symbols: string[]): Promise<Record<string, MarketPriceResult>> {
   const uniqueSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(isSupportedSymbol)));
   if (!uniqueSymbols.length) return {};
   const apiKey = getMarketDataApiKey();
@@ -461,7 +463,7 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
   }
 
   try {
-    const response = await fetch(marketDataAppUrl("stocks/quotes/", { symbols: uniqueSymbols.join(",") }), {
+    const response = await fetch(marketDataAppUrl(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/`, { symbols: uniqueSymbols.join(",") }), {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -493,16 +495,16 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
     const result: Record<string, MarketPriceResult> = {};
     if (Array.isArray(symbolsPayload)) {
       symbolsPayload.forEach((rawSymbol, index) => {
-        const parsed = parseMarketDataAppQuotePayload(data, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index, responseTextPreview);
+        const parsed = parseMarketDataStockPricePayload(data, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index, responseTextPreview);
         result[parsed.symbol] = parsed;
       });
     } else {
-      const parsed = parseMarketDataAppQuotePayload(data, uniqueSymbols[0], 0, responseTextPreview);
+      const parsed = parseMarketDataStockPricePayload(data, uniqueSymbols[0], 0, responseTextPreview);
       result[parsed.symbol] = parsed;
     }
 
     for (const symbol of uniqueSymbols) {
-      if (!result[symbol]) result[symbol] = marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data);
+      if (!result[symbol]) result[symbol] = marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable", data);
     }
     return result;
   } catch (error) {
@@ -510,10 +512,18 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
   }
 }
 
+export async function getMarketDataAppQuote(symbol: string): Promise<MarketPriceResult> {
+  return getMarketDataStockPrice(symbol);
+}
+
+export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Record<string, MarketPriceResult>> {
+  return getMarketDataStockPrices(symbols);
+}
+
 export async function searchMarketDataAppAsset(query: string): Promise<InvestmentAssetSearchResult[]> {
   const normalized = normalizeSymbol(query);
   if (!isSupportedSymbol(normalized)) return [];
-  const quote = await getMarketDataAppQuote(normalized);
+  const quote = await getMarketDataStockPrice(normalized);
   if (!quote.ok) return [];
   const featured = getInvestmentAsset(normalized);
   return [
@@ -551,7 +561,8 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     cachedFetchedAt: cached?.fetchedAt ?? null,
     cacheFresh,
     calledMarketDataApp: false,
-    requestUrlWithoutToken: marketDataAppQuoteUrlWithoutToken(normalized),
+    endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
+    requestUrlWithoutToken: marketDataAppStockPriceUrlWithoutToken(normalized),
     httpStatus: null,
     responseOk: null,
     marketDataAppStatus: "not_used",
@@ -575,7 +586,7 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
 
   let calledMarketDataApp = true;
   try {
-    const response = await fetch(marketDataAppQuoteUrl(normalized), {
+    const response = await fetch(marketDataAppStockPriceUrl(normalized), {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -599,7 +610,7 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     }
 
     const parsedFields = parsedMarketDataFields(data);
-    const parsed = parseMarketDataAppQuotePayload(data, normalized, 0, responseTextPreview);
+    const parsed = parseMarketDataStockPricePayload(data, normalized, 0, responseTextPreview);
     if (!response.ok || !parsed.ok) {
       const message = parsed.ok ? "Market data temporarily unavailable." : parsed.message;
       return {
@@ -950,9 +961,9 @@ export function getMarketStatus(now = new Date()): InvestmentMarketStatus {
     opensAtEt: "9:30 AM ET",
     closesAtEt: "4:00 PM ET",
     message: isOpen
-      ? "US market is open. Buy and sell orders use the latest available daily closing price."
+      ? "US market is open. Simulated buy and sell orders use server-side cached stock prices."
       : holidayName
-        ? `US market is closed for ${holidayName}. Latest closing prices are still shown, but buy/sell orders are disabled.`
+        ? `US market is closed for ${holidayName}. Latest cached stock prices are still shown, but buy/sell orders are disabled.`
         : MARKET_CLOSED_MESSAGE
   };
 }
@@ -1061,7 +1072,7 @@ export async function validateAsset(symbol: string) {
   await recordInvestmentAssetEvent(normalized, "trade");
   const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
-    return { ok: false as const, reason: latest.priceMessage ?? "Daily close price unavailable." };
+    return { ok: false as const, reason: latest.priceMessage ?? "MarketData.app stock price unavailable." };
   }
 
   const asset =
@@ -1257,7 +1268,7 @@ export async function getDailyClosePrice(symbol: string): Promise<MarketPriceRes
       volume: Number(latest["5. volume"] ?? 0),
       provider: "alpha_vantage",
       source: "live",
-      message: `Latest Alpha Vantage daily close from ${priceDate}.`,
+      message: `Latest provider price from ${priceDate}.`,
       raw: latest
     };
   } catch {
@@ -1328,6 +1339,7 @@ async function resolveLatestClosePrice(
         cachedFetchedAt: stored.fetchedAt ?? null,
         cacheFresh: true,
         calledMarketDataApp: false,
+        endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus: "skipped_cache_hit",
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
@@ -1338,7 +1350,7 @@ async function resolveLatestClosePrice(
     };
   }
 
-  const marketData = await getMarketDataAppQuote(normalized);
+  const marketData = await getMarketDataStockPrice(normalized);
   calledMarketDataApp = true;
   marketDataAppStatus = marketData.ok ? "ok" : providerStatus(marketData);
   if (marketData.ok) {
@@ -1374,6 +1386,7 @@ async function resolveLatestClosePrice(
         cachedFetchedAt: stored?.fetchedAt ?? null,
         cacheFresh,
         calledMarketDataApp,
+        endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus,
         finalPrice: marketData.closePrice,
         tradingDay: marketData.priceDate,
@@ -1411,6 +1424,7 @@ async function resolveLatestClosePrice(
         cachedFetchedAt: stored.fetchedAt ?? null,
         cacheFresh,
         calledMarketDataApp,
+        endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus,
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
@@ -1426,7 +1440,7 @@ async function resolveLatestClosePrice(
     failure.code === "symbol_not_found"
       ? "Symbol not found."
       : failure.code === "price_unavailable"
-        ? "Daily close price unavailable for this asset."
+        ? "MarketData.app stock price unavailable for this asset."
         : failure.code === "rate_limit"
           ? "API credit limit reached. Using saved prices when available."
           : "No saved price yet. Select the asset to fetch the latest price.";
@@ -1461,6 +1475,7 @@ async function resolveLatestClosePrice(
       cachedFetchedAt: null,
       cacheFresh: false,
       calledMarketDataApp,
+      endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
       marketDataAppStatus,
       finalPrice: null,
       tradingDay: null,
@@ -1478,6 +1493,14 @@ export async function getLatestClosePrice(
 ): Promise<LatestClosePriceResult> {
   const resolved = await resolveLatestClosePrice(symbol, assetInput, { refresh: options.refresh, allowReferenceFallback: false });
   return resolved.result;
+}
+
+export async function getLatestStockPrice(
+  symbol: string,
+  assetInput?: InvestmentAsset,
+  options: { refresh?: boolean } = {}
+): Promise<LatestClosePriceResult> {
+  return getLatestClosePrice(symbol, assetInput, options);
 }
 
 async function getLatestCloseQuote(
@@ -1637,11 +1660,11 @@ export async function refreshPriceCache(
   if (!symbolsToFetch.length) return results;
 
   const providerResults = preferredMarketDataProvider() === MARKETDATA_APP_PROVIDER
-    ? await getMarketDataAppBatchQuotes(symbolsToFetch)
+    ? await getMarketDataStockPrices(symbolsToFetch)
     : Object.fromEntries(symbolsToFetch.map((symbol) => [symbol, marketDataFailure(symbol, "MarketData.app provider is not enabled.")]));
 
   for (const symbol of symbolsToFetch) {
-    const providerResult = providerResults[symbol] ?? marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable");
+    const providerResult = providerResults[symbol] ?? marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable");
     const asset = await resolveInvestmentAsset(symbol);
     if (providerResult.ok) {
       await savePriceToCache(symbol, providerResult.closePrice, providerResult.priceDate, asset, providerResult);
@@ -1779,54 +1802,18 @@ export async function getOptionChain(symbol: string) {
     return { ok: false as const, reason: "Symbol not found.", contracts: [] as Payload[] };
   }
 
-  const apiKey = process.env.MARKET_DATA_API_KEY;
-  const provider = process.env.MARKET_DATA_PROVIDER ?? "alpha_vantage";
-  if (provider !== "alpha_vantage" || !apiKey) {
-    return {
-      ok: false as const,
-      reason: "Real options data is unavailable on the current market data plan. Educational mode is available.",
-      contracts: [] as Payload[]
-    };
-  }
-
-  try {
-    const params = new URLSearchParams({
-      function: "HISTORICAL_OPTIONS",
-      symbol: normalized,
-      apikey: apiKey
-    });
-    const response = await fetch(`https://www.alphavantage.co/query?${params.toString()}`, { cache: "no-store" });
-    if (!response.ok) {
-      return { ok: false as const, reason: "Market data temporarily unavailable.", contracts: [] as Payload[] };
-    }
-    const data = (await response.json()) as Payload;
-    const classified = classifyAlphaResponse(data);
-    if (classified) {
-      return {
-        ok: false as const,
-        reason:
-          classified.code === "rate_limit"
-            ? "Real options data is unavailable on the current market data plan. Educational mode is available."
-            : classified.message,
-        contracts: [] as Payload[]
-      };
-    }
-    const contracts = Array.isArray(data.data) ? (data.data as Payload[]) : [];
-    return {
-      ok: contracts.length > 0,
-      reason: contracts.length ? null : "Real options data is unavailable on the current market data plan. Educational mode is available.",
-      contracts
-    };
-  } catch {
-    return { ok: false as const, reason: "Market data temporarily unavailable.", contracts: [] as Payload[] };
-  }
+  return {
+    ok: false as const,
+    reason: "Options are shown in educational mode using simplified estimates. Real options market data is not used.",
+    contracts: [] as Payload[]
+  };
 }
 
 export async function getOptionContractPrice(contract: Payload) {
   const premium = parsePositiveNumber(contract.mark) ?? parsePositiveNumber(contract.last) ?? parsePositiveNumber(contract.ask) ?? parsePositiveNumber(contract.bid);
   return premium
-    ? { ok: true as const, premium, provider: "alpha_vantage" }
-    : { ok: false as const, reason: "Real options quote unavailable." };
+    ? { ok: true as const, premium, provider: "educational_estimate" }
+    : { ok: false as const, reason: "Real options market data is not used." };
 }
 
 export async function cacheOptionChain(symbol: string, expiration?: string) {
@@ -2192,7 +2179,7 @@ export async function executeInvestmentTrade(input: {
   const latest = validation.price;
   const price = latest.latestClose;
   if (!price || !Number.isFinite(price) || price <= 0) {
-    return rejectTrade(account, asset.symbol, input.side, quantity, "Latest close price is unavailable.");
+    return rejectTrade(account, asset.symbol, input.side, quantity, "Latest cached stock price is unavailable.");
   }
 
   const cash = rowNumber(account, "cash");
@@ -2437,7 +2424,7 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
   if (supabaseConfigured()) {
     try {
       const rows = await selectRows("investment_daily_prices", {
-        select: "symbol,price_date,trading_day,close_price,price,currency,provider,fetched_at,updated_at",
+        select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
         order: "fetched_at.desc,price_date.desc",
         limit: "400"
       });
@@ -2827,6 +2814,7 @@ async function upsertInvestmentDailyPrice(price: {
     volume: price.volume,
     currency: "USD",
     provider: price.provider,
+    endpoint: price.provider === MARKETDATA_APP_PROVIDER ? MARKETDATA_STOCK_PRICE_ENDPOINT : null,
     raw: price.raw,
     raw_source: price.raw,
     fetched_at: fetchedAt,
@@ -2836,8 +2824,8 @@ async function upsertInvestmentDailyPrice(price: {
     return await upsertRow("investment_daily_prices", payload, "symbol,price_date");
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!/trading_day|raw_source|price|currency|updated_at|schema cache|column/i.test(message)) throw error;
-    const { trading_day: _tradingDay, raw_source: _rawSource, price: _price, currency: _currency, updated_at: _updatedAt, ...legacyPayload } = payload;
+    if (!/trading_day|raw_source|price|currency|updated_at|endpoint|schema cache|column/i.test(message)) throw error;
+    const { trading_day: _tradingDay, raw_source: _rawSource, price: _price, currency: _currency, updated_at: _updatedAt, endpoint: _endpoint, ...legacyPayload } = payload;
     return upsertRow("investment_daily_prices", legacyPayload, "symbol,price_date");
   }
 }
@@ -2846,7 +2834,7 @@ async function getStoredLatestPrice(symbol: string) {
   if (!supabaseConfigured()) return null;
   try {
     const rows = await selectRows("investment_daily_prices", {
-      select: "symbol,price_date,trading_day,close_price,price,currency,provider,fetched_at,updated_at",
+      select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
       symbol: `eq.${symbol}`,
       order: "fetched_at.desc,price_date.desc",
       limit: "1"

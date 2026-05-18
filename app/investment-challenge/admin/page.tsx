@@ -56,7 +56,7 @@ export default async function InvestmentChallengeAdminPage() {
             Organizer view for monitoring team portfolios and exporting the current leaderboard.
           </p>
           <p className="muted small">
-            Prices are fetched only for selected, held, traded, or manually refreshed assets to save MarketData.app API credits.
+            Prices are fetched only through MarketData.app /stocks/prices for selected, held, traded, or manually refreshed assets to save API credits.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/api/investment/admin?format=csv">
@@ -66,14 +66,31 @@ export default async function InvestmentChallengeAdminPage() {
               Export trades CSV
             </Link>
             <form action="/api/investment/admin/refresh-prices" method="post">
+              <input type="hidden" name="mode" value="featured" />
               <button className="button secondary" type="submit">
-                Refresh featured prices
+                Refresh featured stock prices
+              </button>
+            </form>
+            <form action="/api/investment/admin/refresh-prices" method="post">
+              <input type="hidden" name="mode" value="held" />
+              <button className="button secondary" type="submit">
+                Refresh held assets
               </button>
             </form>
             <Link className="button secondary" href="/investment-challenge/leaderboard">
               Public Leaderboard
             </Link>
           </div>
+          <form className="cta-row" action="/api/investment/admin/refresh-prices" method="post">
+            <input type="hidden" name="mode" value="selected" />
+            <label className="form-field compact-field">
+              <span>Refresh selected stock price</span>
+              <input name="symbol" placeholder="SPY" />
+            </label>
+            <button className="button secondary" type="submit">
+              Refresh selected stock price
+            </button>
+          </form>
         </div>
       </div>
 

@@ -6,14 +6,14 @@ import { OptionsSimulator } from "@/components/investment/options-simulator";
 export const metadata: Metadata = {
   title: "Phronesia Investment Challenge — Educational Options Simulator",
   description:
-    "Learn call and put options with a safe buy-only virtual simulator. Explore premiums, breakeven, max loss, payoff charts, and options risk without real money.",
+    "Learn call and put options with simplified educational estimates. Real options market data is not used, and no real money is involved.",
   alternates: {
     canonical: "https://phronesia.org/investment-challenge/options"
   },
   openGraph: {
     title: "Phronesia Educational Options Simulator",
     description:
-      "A safe options education module for students: buy-only, no margin, no real money, and no financial advice.",
+      "A safe options education module for students: simplified estimates only, no margin, no real money, and no financial advice.",
     url: "https://phronesia.org/investment-challenge/options",
     siteName: "Phronesia",
     type: "website"

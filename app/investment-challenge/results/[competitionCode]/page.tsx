@@ -33,7 +33,7 @@ export default async function InvestmentCompetitionResultsPage({ params }: PageP
           <p className="lede compact-lede">
             {results.competition?.runtimeStatus === "closed"
               ? "The competition has ended. Rankings are now final."
-              : "This competition is still active. Results update from the live leaderboard until the organizer closes it."}
+              : "This competition is still active. Results update from the current leaderboard until the organizer closes it."}
           </p>
           <div className="cta-row">
             <Link className="button primary" href={`/investment-challenge/leaderboard/${competitionCode}`}>

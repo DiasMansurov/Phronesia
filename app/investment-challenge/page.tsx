@@ -5,16 +5,16 @@ import Link from "next/link";
 import { InvestmentChallengeDashboard } from "@/components/investment/investment-challenge-dashboard";
 
 export const metadata: Metadata = {
-  title: "Phronesia Investment Challenge — Virtual Stock Market Competition",
+  title: "Phronesia Investment Challenge — Educational Virtual Portfolio Simulation",
   description:
-    "Join a virtual investment competition, build a $100,000 portfolio, trade simulated stocks and ETFs, and learn finance through real market data.",
+    "Build a virtual portfolio, learn stocks, ETFs, diversification, risk, and financial decision-making through an educational simulation. No real money is used.",
   alternates: {
     canonical: "https://phronesia.org/investment-challenge"
   },
   openGraph: {
-    title: "Phronesia Investment Challenge — Virtual Stock Market Competition",
+    title: "Phronesia Investment Challenge — Educational Virtual Portfolio Simulation",
     description:
-      "Manage a $100,000 virtual portfolio using daily market data and learn stocks, ETFs, options, diversification, risk, and financial decision-making.",
+      "Build a virtual portfolio, learn stocks, ETFs, diversification, risk, and financial decision-making through an educational simulation. No real money is used.",
     url: "https://phronesia.org/investment-challenge",
     siteName: "Phronesia",
     type: "website"
@@ -29,7 +29,7 @@ export default function InvestmentChallengePage() {
     url: "https://phronesia.org/investment-challenge",
     applicationCategory: "EducationalApplication",
     description:
-      "Students manage a $100,000 virtual portfolio using real market data to learn investing, diversification, risk, and finance.",
+      "Students manage a free virtual portfolio simulation to learn investing, diversification, risk, and finance. No real money is used.",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -50,8 +50,9 @@ export default function InvestmentChallengePage() {
           <p className="eyebrow">Important disclaimer</p>
           <h2>Educational simulation only.</h2>
           <p>
-            This is an educational simulation. No real money is used. This is not financial advice. Trading uses
-            virtual cash, server-validated orders, and daily closing prices for learning purposes.
+            Phronesia is free. This is an educational simulation only: no real money is used, this is not financial
+            advice, no brokerage execution happens, and market data is not resold as a standalone product. Simulated
+            orders use virtual cash, server validation, and cached stock prices for learning purposes.
           </p>
           <div className="cta-row">
             <Link className="button secondary" href="/investment-challenge/rules">

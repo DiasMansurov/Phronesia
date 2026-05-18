@@ -84,8 +84,8 @@ export function OptionsSimulator() {
           <p className="eyebrow">Options Education Module</p>
           <h1>Learn calls and puts without leverage or real-money risk.</h1>
           <p>
-            This simulator is buy-only, virtual-only, and designed for education. Premiums are estimates when live
-            options data is unavailable. This is not financial advice.
+            This simulator is buy-only, virtual-only, and designed for education. Options are shown in educational
+            mode using simplified estimates. Real options market data is not used. This is not financial advice.
           </p>
         </div>
         <div className="options-risk-card">
@@ -192,10 +192,10 @@ export function OptionsSimulator() {
       <section className="options-grid">
         <article className="panel stack-md">
           <p className="eyebrow">Mode 2</p>
-          <h2>Real options data status.</h2>
+          <h2>Educational options mode.</h2>
           <p className="muted">
-            Real options data is unavailable on the current market data plan. Educational mode is available and clearly
-            labeled as an estimate, not a live market quote.
+            Options are shown in educational mode using simplified estimates. Real options market data is not used, and
+            this page does not display real options quotes.
           </p>
         </article>
         <article className="panel stack-md">

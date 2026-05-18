@@ -30,7 +30,7 @@ const productPaths = [
   },
   {
     title: "Practice investing",
-    body: "Build a virtual portfolio, follow market signals, and learn risk before using real money.",
+    body: "Build a free virtual portfolio and learn risk through an educational simulation with no real money.",
     href: "/investment-challenge",
     action: "Open Investment Challenge"
   }
@@ -78,7 +78,7 @@ const platformLinks = [
   },
   {
     title: "Investment Challenge",
-    body: "Practice portfolio decisions with virtual cash and risk feedback.",
+    body: "Practice portfolio decisions with virtual cash, cached stock prices, and risk feedback.",
     href: "/investment-challenge",
     action: "Start Investing"
   },

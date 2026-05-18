@@ -78,7 +78,7 @@ export default function LearnPage() {
               <h2>Practice the concepts with a virtual portfolio.</h2>
               <p className="muted">
                 The Investment Challenge connects glossary terms like stocks, ETFs, bonds, diversification, market hours,
-                closing price, interest rates, and risk vs return to a $100,000 educational simulation.
+                cached stock prices, interest rates, and risk vs return to a $100,000 educational simulation.
               </p>
             </div>
             <Link className="button primary" href="/investment-challenge">

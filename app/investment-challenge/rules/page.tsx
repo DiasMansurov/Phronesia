@@ -35,8 +35,8 @@ export default function InvestmentChallengeRulesPage() {
           <p className="eyebrow">Investment Challenge Rules</p>
           <h1 className="display compact">Learn investing without real-money risk.</h1>
           <p className="lede compact-lede">
-            Every team starts with $100,000 in virtual cash. Orders are server validated, use daily closing prices,
-            and are enabled only during regular US market hours.
+            Every team starts with $100,000 in virtual cash. Simulated orders are server validated, use cached stock
+            prices from the approved MarketData.app stock price endpoint, and are enabled only during regular US market hours.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/investment-challenge">
@@ -53,7 +53,8 @@ export default function InvestmentChallengeRulesPage() {
         <div className="panel compact-panel stack-sm">
           <p className="eyebrow">Core rule</p>
           <p>
-            This is an educational simulation. No real money is used. This is not financial advice.
+            Phronesia is free. This is an educational simulation only. No real money is used, this is not financial
+            advice, no brokerage execution happens, and market data is not resold as a standalone product.
           </p>
         </div>
       </div>

@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ...result,
       provider: process.env.MARKET_DATA_PROVIDER ?? "marketdata_app",
+      endpointUsed: result.endpointUsed ?? "/stocks/prices",
       cacheFound: result.cacheFound,
       cachedPriceFound: result.cacheFound,
       apiStatus: result.marketDataAppStatus,
@@ -37,7 +38,8 @@ export async function GET(request: Request) {
         cachedFetchedAt: null,
         cacheFresh: false,
         calledMarketDataApp: false,
-        requestUrlWithoutToken: `https://api.marketdata.app/v1/stocks/quotes/${encodeURIComponent(symbol)}/?token=[redacted]`,
+        endpointUsed: "/stocks/prices",
+        requestUrlWithoutToken: `https://api.marketdata.app/v1/stocks/prices/${encodeURIComponent(symbol)}/?token=[redacted]`,
         httpStatus: null,
         responseOk: null,
         marketDataAppStatus: "not_used",

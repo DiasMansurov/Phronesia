@@ -44,7 +44,7 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   priceDate: string | null;
   provider: string;
   priceAvailable: boolean;
-  priceSource?: "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
+  priceSource?: "cache" | "marketdata_app" | "reference" | "unavailable";
   priceMessage?: string;
   fetchedAt?: string | null;
   currency?: string;
@@ -125,8 +125,8 @@ export const INVESTMENT_EDUCATIONAL_CARDS: InvestmentEducationalCard[] = [
   },
   {
     title: "Closing Price",
-    concept: "Daily market data",
-    body: "The simulation uses daily closing prices instead of tick-by-tick trading. That keeps the challenge educational and reduces noise from short-term price movements."
+    concept: "Cached stock prices",
+    body: "The simulation uses stock prices cached server-side through the approved MarketData.app stock price endpoint. This keeps the challenge educational and avoids unnecessary API calls."
   },
   {
     title: "Market Hours",
