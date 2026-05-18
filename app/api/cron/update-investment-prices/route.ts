@@ -7,6 +7,8 @@ import {
   updateInvestmentLeaderboard
 } from "@/lib/server-investments";
 
+// Vercel Hobby supports scheduled cron jobs only once per day.
+// Keep this route callable manually for now; 15-minute market refreshes require Vercel Pro or an external scheduler.
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
