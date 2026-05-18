@@ -132,7 +132,7 @@ const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
 const TEENVESTOR_CODE = "Teenvestor.school";
 const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
-const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/prices";
+const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
@@ -313,7 +313,7 @@ function marketDataAppStockPriceUrl(symbol: string) {
   return marketDataAppUrl(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalizeSymbol(symbol))}/`);
 }
 
-function marketDataAppStockPriceUrlWithoutToken(symbol: string) {
+export function marketDataAppStockPriceUrlWithoutToken(symbol: string) {
   return `https://api.marketdata.app/v1/${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalizeSymbol(symbol))}/?token=[redacted]`;
 }
 
@@ -396,7 +396,7 @@ function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string
 
   const parsedFields = parsedMarketDataFields(data, index);
   const symbol = normalizeSymbol(parsedFields.symbol ?? requestedSymbol);
-  const price = parsedFields.mid ?? parsedFields.last ?? parsedFields.bid ?? parsedFields.ask;
+  const price = parsedFields.last ?? parsedFields.mid ?? parsedFields.bid ?? parsedFields.ask;
 
   if (!price) {
     return marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
@@ -413,7 +413,7 @@ function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string
     volume: Number(marketDataArrayField(data, "volume", index) ?? 0),
     provider: MARKETDATA_APP_PROVIDER,
     source: MARKETDATA_APP_PROVIDER,
-    message: `Latest MarketData.app stock price from ${tradingDay}.`,
+    message: `Latest MarketData.app stock quote from ${tradingDay}.`,
     raw: { endpoint: MARKETDATA_STOCK_PRICE_ENDPOINT, payload: data },
     responseTextPreview: responseTextPreview ?? null
   };

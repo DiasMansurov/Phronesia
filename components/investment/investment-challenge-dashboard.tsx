@@ -370,7 +370,7 @@ export function InvestmentChallengeDashboard() {
 
   async function refreshFeaturedPrices() {
     setRefreshingPrices(true);
-    setStatus("Refreshing featured prices server-side through /stocks/prices...");
+    setStatus("Refreshing featured prices server-side through /stocks/quotes...");
     setPriceRefreshDetails("");
     try {
       const response = await fetch("/api/investment/refresh-featured-prices", {
@@ -409,7 +409,7 @@ export function InvestmentChallengeDashboard() {
   async function refreshSelectedSymbol() {
     if (!symbol) return;
     setPriceLoading(true);
-    setStatus(`Refreshing ${symbol} server-side through /stocks/prices...`);
+    setStatus(`Refreshing ${symbol} server-side through /stocks/quotes...`);
     try {
       const response = await fetch("/api/investment/refresh-symbol", {
         method: "POST",
@@ -444,7 +444,7 @@ export function InvestmentChallengeDashboard() {
   }
 
   async function testSpyPrice() {
-    setDebugPriceDetails("Testing SPY through cache and /stocks/prices...");
+    setDebugPriceDetails("Testing SPY through cache and /stocks/quotes...");
     try {
       const response = await fetch("/api/investment/debug-price?symbol=SPY", { cache: "no-store" });
       const data = (await response.json()) as DebugPricePayload;
@@ -1032,7 +1032,7 @@ export function InvestmentChallengeDashboard() {
           <h2>Market closed means orders pause, not prices.</h2>
           <p className="muted">
             Latest saved prices remain visible from the Supabase cache. MarketData.app is called only through the approved
-            /stocks/prices endpoint by server actions, admin refreshes, selected tickers, held assets, or cron jobs so the challenge saves API credits.
+            /stocks/quotes endpoint by server actions, admin refreshes, selected tickers, held assets, or cron jobs so the challenge saves API credits.
           </p>
           <div className="score-formula-note">
             40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
