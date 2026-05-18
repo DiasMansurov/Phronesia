@@ -148,6 +148,7 @@ type MarketPriceResult =
       source: PriceSource;
       message: string;
       raw: unknown;
+      responseTextPreview?: string | null;
     }
   | {
       ok: false;
@@ -156,6 +157,7 @@ type MarketPriceResult =
       code: PriceFailureCode;
       message: string;
       raw?: unknown;
+      responseTextPreview?: string | null;
     };
 
 export type LatestClosePriceResult = {
@@ -181,6 +183,7 @@ export type InvestmentPriceDebugResult = {
   finalPrice: number | null;
   tradingDay: string | null;
   source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
+  responseTextPreview?: string | null;
   error: string | null;
 };
 
@@ -304,27 +307,51 @@ function parseMarketDataTimestamp(value: unknown) {
   return new Date();
 }
 
-function marketDataFailure(symbol: string, message: string, code: PriceFailureCode = "temporary_unavailable", raw?: unknown): MarketPriceResult {
+function marketDataFailure(
+  symbol: string,
+  message: string,
+  code: PriceFailureCode = "temporary_unavailable",
+  raw?: unknown,
+  responseTextPreview?: string | null
+): MarketPriceResult {
   return {
     ok: false,
     symbol: normalizeSymbol(symbol),
     provider: MARKETDATA_APP_PROVIDER,
     code,
     message,
-    raw
+    raw,
+    responseTextPreview: responseTextPreview ?? null
   };
 }
 
-function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, index = 0): MarketPriceResult {
-  const status = String(firstValue(data.s) ?? firstValue(data.status) ?? "").toLowerCase();
+function safeResponsePreview(text: string) {
+  const apiKey = getMarketDataApiKey();
+  return (apiKey ? text.replaceAll(apiKey, "[redacted]") : text).slice(0, 600);
+}
+
+function parseJsonPayload(text: string): Payload | null {
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text) as Payload;
+  } catch {
+    return null;
+  }
+}
+
+function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, index = 0, responseTextPreview?: string | null): MarketPriceResult {
+  const status = String(firstValue(data.s ?? data.status) ?? "").toLowerCase();
   const providerMessage = String(firstValue(data.errmsg) ?? firstValue(data.error) ?? firstValue(data.message) ?? "").trim();
-  if (status && status !== "ok" && status !== "success") {
+  if (status !== "ok") {
     const rateLimited = /limit|quota|credit|unauthorized|payment|required/i.test(providerMessage);
     return marketDataFailure(
       requestedSymbol,
-      rateLimited ? "API credit limit reached. Using saved prices when available." : providerMessage || "Market data temporarily unavailable.",
+      rateLimited
+        ? "API credit limit reached. Using saved prices when available."
+        : providerMessage || `MarketData.app returned status "${status || "missing"}".`,
       rateLimited ? "rate_limit" : "temporary_unavailable",
-      data
+      data,
+      responseTextPreview
     );
   }
 
@@ -335,17 +362,12 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
   const symbol = normalizeSymbol(String(pick("symbol") ?? requestedSymbol));
   const price =
     parsePositiveNumber(pick("last")) ??
-    parsePositiveNumber(pick("regularMarketPrice")) ??
-    parsePositiveNumber(pick("price")) ??
-    parsePositiveNumber(pick("close")) ??
-    parsePositiveNumber(pick("prevClose")) ??
-    parsePositiveNumber(pick("previousClose")) ??
     parsePositiveNumber(pick("mid")) ??
-    parsePositiveNumber(pick("ask")) ??
-    parsePositiveNumber(pick("bid"));
+    parsePositiveNumber(pick("bid")) ??
+    parsePositiveNumber(pick("ask"));
 
   if (!price) {
-    return marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data);
+    return marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
   }
 
   const timestamp = parseMarketDataTimestamp(pick("updated") ?? pick("date") ?? pick("time") ?? pick("timestamp"));
@@ -360,7 +382,8 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
     provider: MARKETDATA_APP_PROVIDER,
     source: MARKETDATA_APP_PROVIDER,
     message: `Latest MarketData.app price from ${tradingDay}.`,
-    raw: data
+    raw: data,
+    responseTextPreview: responseTextPreview ?? null
   };
 }
 
@@ -372,18 +395,28 @@ export async function getMarketDataAppQuote(symbol: string): Promise<MarketPrice
 
   try {
     const response = await fetch(marketDataAppUrl(`stocks/quotes/${encodeURIComponent(normalized)}/`), {
-      cache: "no-store"
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Phronesia/1.0"
+      }
     });
-    const data = (await response.json().catch(() => ({}))) as Payload;
+    const responseText = await response.text();
+    const responseTextPreview = safeResponsePreview(responseText);
+    const data = parseJsonPayload(responseText);
+    if (!data) {
+      return marketDataFailure(normalized, "MarketData.app returned a non-JSON response.", "temporary_unavailable", { responseTextPreview }, responseTextPreview);
+    }
     if (!response.ok) {
       return marketDataFailure(
         normalized,
         response.status === 404 ? "Symbol not found." : "Market data temporarily unavailable.",
         response.status === 404 ? "symbol_not_found" : response.status === 402 || response.status === 429 ? "rate_limit" : "temporary_unavailable",
-        data
+        data,
+        responseTextPreview
       );
     }
-    return parseMarketDataAppQuotePayload(data, normalized);
+    return parseMarketDataAppQuotePayload(data, normalized, 0, responseTextPreview);
   } catch (error) {
     return marketDataFailure(normalized, errorMessage(error));
   }
@@ -399,15 +432,29 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
 
   try {
     const response = await fetch(marketDataAppUrl("stocks/quotes/", { symbols: uniqueSymbols.join(",") }), {
-      cache: "no-store"
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Phronesia/1.0"
+      }
     });
-    const data = (await response.json().catch(() => ({}))) as Payload;
+    const responseText = await response.text();
+    const responseTextPreview = safeResponsePreview(responseText);
+    const data = parseJsonPayload(responseText);
+    if (!data) {
+      return Object.fromEntries(
+        uniqueSymbols.map((symbol) => [
+          symbol,
+          marketDataFailure(symbol, "MarketData.app returned a non-JSON response.", "temporary_unavailable", { responseTextPreview }, responseTextPreview)
+        ])
+      );
+    }
     if (!response.ok) {
       const reason = response.status === 402 || response.status === 429 ? "API credit limit reached. Using saved prices when available." : "Market data temporarily unavailable.";
       return Object.fromEntries(
         uniqueSymbols.map((symbol) => [
           symbol,
-          marketDataFailure(symbol, reason, response.status === 402 || response.status === 429 ? "rate_limit" : "temporary_unavailable", data)
+          marketDataFailure(symbol, reason, response.status === 402 || response.status === 429 ? "rate_limit" : "temporary_unavailable", data, responseTextPreview)
         ])
       );
     }
@@ -416,11 +463,11 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
     const result: Record<string, MarketPriceResult> = {};
     if (Array.isArray(symbolsPayload)) {
       symbolsPayload.forEach((rawSymbol, index) => {
-        const parsed = parseMarketDataAppQuotePayload(data, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index);
+        const parsed = parseMarketDataAppQuotePayload(data, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index, responseTextPreview);
         result[parsed.symbol] = parsed;
       });
     } else {
-      const parsed = parseMarketDataAppQuotePayload(data, uniqueSymbols[0]);
+      const parsed = parseMarketDataAppQuotePayload(data, uniqueSymbols[0], 0, responseTextPreview);
       result[parsed.symbol] = parsed;
     }
 
@@ -1126,6 +1173,7 @@ async function resolveLatestClosePrice(
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
         source: "cache" as const,
+        responseTextPreview: null,
         error: null
       } satisfies InvestmentPriceDebugResult
     };
@@ -1133,7 +1181,7 @@ async function resolveLatestClosePrice(
 
   const marketData = await getMarketDataAppQuote(normalized);
   calledMarketDataApp = true;
-  marketDataAppStatus = providerStatus(marketData);
+  marketDataAppStatus = marketData.ok ? "ok" : providerStatus(marketData);
   if (marketData.ok) {
     await savePriceToCache(normalized, marketData.closePrice, marketData.priceDate, asset, marketData);
     const quote = {
@@ -1171,6 +1219,7 @@ async function resolveLatestClosePrice(
         finalPrice: marketData.closePrice,
         tradingDay: marketData.priceDate,
         source: "marketdata_app" as const,
+        responseTextPreview: marketData.responseTextPreview ?? null,
         error: null
       } satisfies InvestmentPriceDebugResult
     };
@@ -1207,6 +1256,7 @@ async function resolveLatestClosePrice(
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
         source: "cache" as const,
+        responseTextPreview: marketData.responseTextPreview ?? null,
         error: quote.priceMessage
       } satisfies InvestmentPriceDebugResult
     };
@@ -1256,6 +1306,7 @@ async function resolveLatestClosePrice(
       finalPrice: null,
       tradingDay: null,
       source: null,
+      responseTextPreview: failure.responseTextPreview ?? null,
       error
     } satisfies InvestmentPriceDebugResult
   };

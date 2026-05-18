@@ -37,6 +37,7 @@ export async function GET(request: Request) {
         finalPrice: null,
         tradingDay: null,
         source: null,
+        responseTextPreview: null,
         error: error instanceof Error ? error.message : "Market data temporarily unavailable."
       },
       { status: 500 }
