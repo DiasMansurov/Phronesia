@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  INVESTMENT_ACCOUNT_STORAGE_KEY,
   INVESTMENT_ASSETS,
   INVESTMENT_EDUCATIONAL_CARDS,
+  INVESTMENT_RECENT_BUY_TRADE_STORAGE_KEY,
   INVESTMENT_STARTING_CASH,
   INVESTMENT_TRANSACTION_FEE_RATE,
   formatPercent,
@@ -14,6 +17,7 @@ import {
   type InvestmentAssetSearchResult,
   type InvestmentEducationalCard,
   type InvestmentMarketStatus,
+  type InvestmentRecentBuyTradeContext,
   type TradeSide
 } from "@/lib/investment-challenge";
 import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentLeaderboardRow } from "@/lib/server-investments";
@@ -63,7 +67,6 @@ type DebugPricePayload = {
   error: string | null;
 };
 
-const accountStorageKey = "phronesia.investmentChallenge.accountId";
 const closedMessage =
   "US market is closed. Latest closing prices are still shown. Trading reopens at 9:30 AM ET.";
 
@@ -99,6 +102,7 @@ function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) 
 }
 
 export function InvestmentChallengeDashboard() {
+  const router = useRouter();
   const [market, setMarket] = useState<MarketPayload>({
     marketStatus: defaultMarketStatus(),
     quotes: featuredQuotes(),
@@ -112,7 +116,8 @@ export function InvestmentChallengeDashboard() {
   const [resolvedCompetition, setResolvedCompetition] = useState<InvestmentCompetitionView | null>(null);
   const [symbol, setSymbol] = useState("SPY");
   const [selectedQuote, setSelectedQuote] = useState<InvestmentAssetQuote>(featuredQuotes()[0]);
-  const [assetQuery, setAssetQuery] = useState("SPY");
+  const [hasSelectedAsset, setHasSelectedAsset] = useState(false);
+  const [assetQuery, setAssetQuery] = useState("");
   const [assetResults, setAssetResults] = useState<InvestmentAssetSearchResult[]>([]);
   const [assetSearchStatus, setAssetSearchStatus] = useState("");
   const [priceLoading, setPriceLoading] = useState(false);
@@ -123,30 +128,13 @@ export function InvestmentChallengeDashboard() {
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [thesis, setThesis] = useState({
-    thesis: "",
-    risks: "",
-    diversificationLogic: "",
-    macroView: ""
-  });
 
   useEffect(() => {
     void loadMarket();
     void loadLeaderboard();
-    void selectAsset(featuredQuotes()[0]);
-    const storedAccountId = window.localStorage.getItem(accountStorageKey);
+    const storedAccountId = window.localStorage.getItem(INVESTMENT_ACCOUNT_STORAGE_KEY);
     if (storedAccountId) void loadAccount(storedAccountId);
   }, []);
-
-  useEffect(() => {
-    if (!account?.thesis) return;
-    setThesis({
-      thesis: account.thesis.thesis,
-      risks: account.thesis.risks,
-      diversificationLogic: account.thesis.diversificationLogic,
-      macroView: account.thesis.macroView
-    });
-  }, [account]);
 
   useEffect(() => {
     const query = assetQuery.trim();
@@ -181,13 +169,15 @@ export function InvestmentChallengeDashboard() {
   const activeCompetition = account?.competition ?? resolvedCompetition ?? leaderboard.competition ?? null;
   const portfolio = account?.portfolio;
   const holdingsCount = account?.holdings.length ?? 0;
-  const estimatedGross = selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
+  const estimatedGross = hasSelectedAsset && selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
   const estimatedFee = estimatedGross * INVESTMENT_TRANSACTION_FEE_RATE;
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
-  const ownedQuantity = account?.holdings.find((holding) => holding.symbol === symbol)?.quantity ?? 0;
+  const ownedQuantity = hasSelectedAsset ? (account?.holdings.find((holding) => holding.symbol === symbol)?.quantity ?? 0) : 0;
   const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
   const clientTradeWarning =
-    !selectedQuote.priceAvailable
+    !hasSelectedAsset
+      ? ""
+      : !selectedQuote.priceAvailable
       ? selectedQuote.priceMessage ?? "No saved market price yet for this asset."
       : activeCompetition?.runtimeStatus === "not_started"
         ? "Competition has not started yet. You can register and prepare your thesis, but trading is disabled."
@@ -202,6 +192,7 @@ export function InvestmentChallengeDashboard() {
             : "";
   const canTrade = Boolean(
     account &&
+      hasSelectedAsset &&
       marketStatus.isOpen &&
       (!activeCompetition || activeCompetition.runtimeStatus === "active") &&
       !busy &&
@@ -211,12 +202,15 @@ export function InvestmentChallengeDashboard() {
       !(side === "sell" && quantity > ownedQuantity)
   );
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
-  const selectedHasDisplayPrice = selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
+  const selectedHasDisplayPrice =
+    hasSelectedAsset && selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
   const selectedPriceText = priceLoading
     ? "Checking..."
     : selectedHasDisplayPrice
       ? formatUsd(selectedQuote.latestClose)
-      : "No saved price yet";
+      : hasSelectedAsset
+        ? "No saved price yet"
+        : "Select an asset";
   const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 
   async function loadMarket() {
@@ -224,8 +218,10 @@ export function InvestmentChallengeDashboard() {
     if (!response.ok) return;
     const data = (await response.json()) as MarketPayload;
     setMarket(data);
-    const current = data.quotes.find((quote) => quote.symbol === symbol) ?? data.quotes[0];
-    if (current) setSelectedQuote(current);
+    if (hasSelectedAsset) {
+      const current = data.quotes.find((quote) => quote.symbol === symbol);
+      if (current) setSelectedQuote(current);
+    }
   }
 
   async function loadLeaderboard(code = competitionCode) {
@@ -242,7 +238,7 @@ export function InvestmentChallengeDashboard() {
       cache: "no-store"
     });
     if (!response.ok) {
-      window.localStorage.removeItem(accountStorageKey);
+      window.localStorage.removeItem(INVESTMENT_ACCOUNT_STORAGE_KEY);
       return;
     }
     const data = (await response.json()) as { account: InvestmentAccountView | null };
@@ -294,7 +290,7 @@ export function InvestmentChallengeDashboard() {
         setStatus(data.error ?? data.reason ?? "Portfolio storage is not configured yet.");
         return;
       }
-      window.localStorage.setItem(accountStorageKey, data.account.account.id);
+      window.localStorage.setItem(INVESTMENT_ACCOUNT_STORAGE_KEY, data.account.account.id);
       setAccount(data.account);
       setResolvedCompetition(data.account.competition);
       setCompetitionCode(data.account.competition.code);
@@ -319,7 +315,8 @@ export function InvestmentChallengeDashboard() {
         : "Checking latest close price..."
     };
     setSymbol(asset.symbol);
-    setAssetQuery(asset.symbol);
+    setHasSelectedAsset(true);
+    setAssetQuery("");
     setSelectedQuote(optimistic);
     setAssetResults([]);
     setAssetSearchStatus("Checking latest close price...");
@@ -431,14 +428,23 @@ export function InvestmentChallengeDashboard() {
 
   async function submitTrade(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!account) return;
+    if (!account || !hasSelectedAsset) return;
+    const submittedSide = side;
+    const submittedSymbol = symbol;
+    const submittedQuantity = quantity;
+    const submittedQuote = selectedQuote;
     setBusy(true);
     setStatus("Validating trade on the server...");
     try {
       const response = await fetch("/api/investment/trades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.account.id, symbol, side, quantity })
+        body: JSON.stringify({
+          accountId: account.account.id,
+          symbol: submittedSymbol,
+          side: submittedSide,
+          quantity: submittedQuantity
+        })
       });
       const data = (await response.json()) as {
         ok?: boolean;
@@ -456,35 +462,33 @@ export function InvestmentChallengeDashboard() {
       }
       setAccount(data.account);
       setStatus(
-        `${side === "buy" ? "Bought" : "Sold"} ${quantity} ${symbol} at ${formatUsd(data.price ?? 0)}. Commission: ${formatUsd(
+        `${submittedSide === "buy" ? "Bought" : "Sold"} ${submittedQuantity} ${submittedSymbol} at ${formatUsd(data.price ?? 0)}. Commission: ${formatUsd(
           data.fee ?? 0
-        )}. ${side === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`
+        )}. ${submittedSide === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`
       );
-      void loadLeaderboard(account.competition.code);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitThesis(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!account) return;
-    setBusy(true);
-    setStatus("Saving investment thesis...");
-    try {
-      const response = await fetch("/api/investment/thesis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.account.id, ...thesis })
-      });
-      const data = (await response.json()) as { account?: InvestmentAccountView | null; error?: string };
-      if (!response.ok || !data.account) {
-        setStatus(data.error ?? "Thesis could not be saved.");
-        return;
+      if (submittedSide === "buy") {
+        const latestTrade =
+          data.account.trades.find(
+            (trade) =>
+              !trade.rejected &&
+              trade.side === "buy" &&
+              trade.symbol === submittedSymbol &&
+              trade.quantity === submittedQuantity
+          ) ?? null;
+        const recentBuyTrade: InvestmentRecentBuyTradeContext = {
+          accountId: data.account.account.id,
+          symbol: submittedSymbol,
+          companyName: submittedQuote.name,
+          quantity: submittedQuantity,
+          tradeValue: data.gross ?? (data.price ?? 0) * submittedQuantity,
+          commission: data.fee ?? 0,
+          totalCost: data.net ?? 0,
+          executedAt: latestTrade?.executedAt ?? latestTrade?.createdAt ?? null
+        };
+        window.sessionStorage.setItem(INVESTMENT_RECENT_BUY_TRADE_STORAGE_KEY, JSON.stringify(recentBuyTrade));
+        router.push("/investment/thesis");
       }
-      setAccount(data.account);
-      setStatus(`Investment thesis saved. Thesis score: ${data.account.thesis?.thesisScore ?? 0}/100.`);
-      void loadLeaderboard();
+      void loadLeaderboard(account.competition.code);
     } finally {
       setBusy(false);
     }
@@ -493,16 +497,24 @@ export function InvestmentChallengeDashboard() {
   const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
   const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
   const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
-  const featuredPriceQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 25), [quotes]);
+  const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 6), [quotes]);
+  const centerSuggestionQuotes = quickPickQuotes.slice(0, 4);
   const recentTrades = account?.trades.slice(0, 5) ?? [];
   const educationCards = market.educationalCards.filter((card) =>
     ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
   );
   const typedTickerCandidate = assetQuery.trim().toUpperCase();
+  const hasAssetSearchQuery = assetQuery.trim().length > 0;
+  const showAssetResults = assetQuery.trim().length >= 2 && assetResults.length > 0;
   const canTryTypedTicker =
     /^[A-Z][A-Z0-9.-]{0,11}$/.test(typedTickerCandidate) &&
     !assetResults.some((asset) => asset.symbol === typedTickerCandidate) &&
     !quotes.some((asset) => asset.symbol === typedTickerCandidate);
+  const totalCostLabel = side === "buy" ? "Estimated total cost" : "Estimated net proceeds";
+  const priceStatusLabel = priceLoading ? "Checking price" : selectedQuote.priceAvailable ? "Price available" : "Price missing";
+  const latestPortfolioStatus = portfolio
+    ? `${formatUsd(portfolio.totalValue)} · ${formatPercent(portfolio.totalReturn)}`
+    : "Not available";
 
   return (
     <div className="investment-app stack-xl">
@@ -634,11 +646,11 @@ export function InvestmentChallengeDashboard() {
       </section>
 
       <section className="investment-workspace-grid">
-        <form className="panel stack-md trade-ticket-v2" onSubmit={submitTrade}>
+        <aside className="panel stack-md investment-search-sidebar">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Trade ticket</p>
-              <h2>Submit a server-validated trade</h2>
+              <p className="eyebrow">Asset search</p>
+              <h2>Find a stock or ETF</h2>
             </div>
           </div>
 
@@ -652,7 +664,27 @@ export function InvestmentChallengeDashboard() {
                 autoComplete="off"
               />
             </label>
-            {assetResults.length ? (
+
+            {!hasAssetSearchQuery ? (
+              <div className="asset-search-empty">
+                <p>Search by company name or ticker, or start with one of these common picks.</p>
+                <div className="asset-quick-picks" aria-label="Quick pick assets">
+                  {quickPickQuotes.map((quote) => (
+                    <button
+                      key={quote.symbol}
+                      type="button"
+                      onClick={() => selectAsset(quote)}
+                      className={hasSelectedAsset && quote.symbol === symbol ? "selected" : ""}
+                    >
+                      <strong>{quote.symbol}</strong>
+                      <span>{quote.type}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {showAssetResults ? (
               <div className="asset-results" role="listbox" aria-label="Asset search results">
                 {assetResults.map((asset) => (
                   <button key={asset.symbol} type="button" onClick={() => selectAsset(asset)}>
@@ -666,7 +698,7 @@ export function InvestmentChallengeDashboard() {
                 ))}
               </div>
             ) : null}
-            {canTryTypedTicker ? (
+            {hasAssetSearchQuery && canTryTypedTicker ? (
               <button
                 className="asset-direct-pick"
                 type="button"
@@ -687,70 +719,126 @@ export function InvestmentChallengeDashboard() {
                 Use ticker {typedTickerCandidate} and check price
               </button>
             ) : null}
-            {assetSearchStatus ? <p className="asset-search-status">{assetSearchStatus}</p> : null}
+            {hasAssetSearchQuery && assetSearchStatus ? <p className="asset-search-status">{assetSearchStatus}</p> : null}
+            {priceRefreshDetails ? <p className="asset-search-status">{priceRefreshDetails}</p> : null}
+            {debugPriceDetails ? <pre className="investment-debug-output">{debugPriceDetails}</pre> : null}
           </div>
 
-          <div className="selected-asset-card">
-            <div>
-              <span>Selected asset</span>
-              <strong>{selectedQuote.symbol}</strong>
-              <p>{selectedQuote.name}</p>
-            </div>
-            <div>
-              <span>Latest close</span>
-              <strong>{selectedPriceText}</strong>
-              <p>
-                {selectedQuote.priceAvailable
-                  ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)}`
-                  : selectedQuote.priceMessage ?? "No saved market price yet for this asset."}
-              </p>
-            </div>
-          </div>
-
-          <div className="featured-asset-row" aria-label="Featured assets">
-            {quotes.slice(0, 25).map((quote) => (
-              <button key={quote.symbol} type="button" onClick={() => selectAsset(quote)} className={quote.symbol === symbol ? "selected" : ""}>
-                {quote.symbol}
-              </button>
-            ))}
-          </div>
-
-          <div className="trade-side-toggle" aria-label="Trade side">
-            <button type="button" className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>
-              Buy
-            </button>
-            <button type="button" className={side === "sell" ? "selected" : ""} onClick={() => setSide("sell")}>
-              Sell
-            </button>
-          </div>
-
-          <label className="form-field">
-            <span>Quantity</span>
-            <input
-              min={1}
-              step={1}
-              type="number"
-              value={quantity}
-              onChange={(event) => setQuantity(Number(event.target.value))}
-              required
-            />
-          </label>
-
-          <div className="trade-estimate-grid">
-            <div><span>Trade value</span><strong>{formatUsd(estimatedGross)}</strong></div>
-            <div><span>Commission {feeRateLabel}</span><strong>{formatUsd(estimatedFee)}</strong></div>
-            <div><span>{side === "buy" ? "Total cost" : "Net proceeds"}</span><strong>{formatUsd(estimatedNet)}</strong></div>
-          </div>
-
-          {clientTradeWarning ? <p className="market-closed-note">{clientTradeWarning}</p> : null}
-          {!selectedQuote.priceAvailable ? (
-            <button className="button secondary" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
-              Try refresh price
-            </button>
-          ) : null}
-          <button className="button primary" type="submit" disabled={!canTrade}>
-            {priceLoading ? "Checking latest close..." : "Submit server-validated trade"}
+          <button className="button secondary compact-button" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
+            {refreshingPrices ? "Refreshing prices..." : "Refresh saved prices"}
           </button>
+        </aside>
+
+        <form className="panel stack-md trade-ticket-v2 investment-trade-dashboard" onSubmit={submitTrade}>
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Investment dashboard</p>
+              <h2>{hasSelectedAsset ? "Review and trade" : "Choose an asset to begin"}</h2>
+            </div>
+          </div>
+
+          {!hasSelectedAsset ? (
+            <div className="trade-empty-state">
+              <strong>Search for an asset on the left to place your first simulated trade.</strong>
+              <div className="trade-step-guide" aria-label="Trade steps">
+                <span>Search asset</span>
+                <span>Refresh price</span>
+                <span>Confirm trade</span>
+              </div>
+              <div className="asset-suggestion-row" aria-label="Example tickers">
+                {centerSuggestionQuotes.map((quote) => (
+                  <button key={quote.symbol} type="button" onClick={() => selectAsset(quote)}>
+                    {quote.symbol}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="selected-asset-card asset-preview-card">
+                <div>
+                  <span>Selected asset</span>
+                  <strong>{selectedQuote.symbol}</strong>
+                  <p>{selectedQuote.name}</p>
+                </div>
+                <div className="asset-preview-meta">
+                  <span>Details</span>
+                  <p>{selectedQuote.type}</p>
+                  <p>{selectedQuote.region ?? "United States"} · {selectedQuote.currency ?? "USD"}</p>
+                </div>
+              </div>
+
+              <div className="asset-price-status">
+                <div>
+                  <span>Latest close</span>
+                  <strong>{selectedPriceText}</strong>
+                  <p>
+                    {selectedQuote.priceAvailable
+                      ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)}`
+                      : selectedQuote.priceMessage ?? "No saved market price yet for this asset."}
+                  </p>
+                </div>
+                <span className={selectedQuote.priceAvailable ? "positive-text" : "negative-text"}>{priceStatusLabel}</span>
+              </div>
+
+              <div className="trade-side-toggle" aria-label="Trade side">
+                <button type="button" className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>
+                  Buy
+                </button>
+                <button type="button" className={side === "sell" ? "selected" : ""} onClick={() => setSide("sell")}>
+                  Sell
+                </button>
+              </div>
+
+              <label className="form-field">
+                <span>Quantity</span>
+                <input
+                  min={1}
+                  step={1}
+                  type="number"
+                  value={quantity}
+                  onChange={(event) => setQuantity(Number(event.target.value))}
+                  required
+                />
+              </label>
+
+              <div className="trade-readiness-grid">
+                <div><span>Price status</span><strong>{priceStatusLabel}</strong></div>
+                <div><span>Quantity selected</span><strong>{quantity}</strong></div>
+                <div><span>Estimated trade value</span><strong>{formatUsd(estimatedGross)}</strong></div>
+                <div><span>Estimated commission</span><strong>{formatUsd(estimatedFee)}</strong></div>
+                <div><span>{totalCostLabel}</span><strong>{formatUsd(estimatedNet)}</strong></div>
+              </div>
+
+              <p className="trade-research-note">
+                Research the business, risks, valuation, and portfolio fit before buying. The simulation rewards the reasoning behind the trade as well as the return.
+              </p>
+
+              {clientTradeWarning ? <p className="market-closed-note">{clientTradeWarning}</p> : null}
+              {!selectedQuote.priceAvailable ? (
+                <button className="button secondary" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
+                  Try refresh price
+                </button>
+              ) : null}
+              <button className="button primary" type="submit" disabled={!canTrade}>
+                {priceLoading ? "Checking latest close..." : "Submit server-validated trade"}
+              </button>
+            </>
+          )}
+
+          {account?.holdings.length ? (
+            <section className="portfolio-center-summary" aria-label="Portfolio summary">
+              <div><span>Cash balance</span><strong>{formatUsd(cashBalance)}</strong></div>
+              <div><span>Holdings count</span><strong>{holdingsCount}</strong></div>
+              <div><span>Total invested</span><strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong></div>
+              <div><span>Portfolio status</span><strong>{latestPortfolioStatus}</strong></div>
+            </section>
+          ) : null}
+          {account?.holdings.length ? (
+            <Link className="button secondary" href="/investment/thesis">
+              Write Investment Thesis
+            </Link>
+          ) : null}
         </form>
 
         <aside className="investment-side-stack">
@@ -824,36 +912,6 @@ export function InvestmentChallengeDashboard() {
           )}
         </section>
 
-          <section className="panel stack-md featured-prices-panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">Featured assets</p>
-                <h2>Latest close watchlist</h2>
-              </div>
-              <button className="button secondary compact-button" type="button" onClick={refreshFeaturedPrices} disabled={refreshingPrices}>
-                {refreshingPrices ? "Refreshing..." : "Refresh featured prices"}
-              </button>
-            </div>
-            {priceRefreshDetails ? <p className="asset-search-status">{priceRefreshDetails}</p> : null}
-            {debugPriceDetails ? <pre className="investment-debug-output">{debugPriceDetails}</pre> : null}
-            <div className="featured-price-grid">
-              {featuredPriceQuotes.map((quote) => (
-                <button
-                  className="featured-price-card"
-                  key={quote.symbol}
-                  type="button"
-                  onClick={() => selectAsset(quote)}
-                >
-                  <span>{quote.symbol}</span>
-                  <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Check price"}</strong>
-                  <small>
-                    {quote.priceDate ? `${quote.priceDate} · ${sourceLabel(quote)}` : quote.priceMessage ?? "Refresh featured prices or select asset"}
-                  </small>
-                </button>
-              ))}
-            </div>
-          </section>
-
           <section className="panel stack-md portfolio-activity-panel">
             <div className="section-header">
               <div>
@@ -907,52 +965,6 @@ export function InvestmentChallengeDashboard() {
               )}
             </div>
           </aside>
-        </aside>
-      </section>
-
-      <section className="investment-dashboard-grid">
-        <form className="panel stack-md investment-thesis-panel" onSubmit={submitThesis}>
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Investment thesis</p>
-              <h2>Explain the thinking behind your portfolio</h2>
-            </div>
-            <span className="pill">{account?.thesis ? `${account.thesis.thesisScore}/100` : "15% of score"}</span>
-          </div>
-          <label className="form-field">
-            <span>Why did you choose these assets?</span>
-            <textarea value={thesis.thesis} onChange={(event) => setThesis({ ...thesis, thesis: event.target.value })} />
-          </label>
-          <label className="form-field">
-            <span>Expected risks</span>
-            <textarea value={thesis.risks} onChange={(event) => setThesis({ ...thesis, risks: event.target.value })} />
-          </label>
-          <label className="form-field">
-            <span>Diversification logic</span>
-            <textarea
-              value={thesis.diversificationLogic}
-              onChange={(event) => setThesis({ ...thesis, diversificationLogic: event.target.value })}
-            />
-          </label>
-          <label className="form-field">
-            <span>How rates, inflation, or news could affect the portfolio</span>
-            <textarea value={thesis.macroView} onChange={(event) => setThesis({ ...thesis, macroView: event.target.value })} />
-          </label>
-          <button className="button primary" type="submit" disabled={!account || busy}>
-            Save Thesis
-          </button>
-        </form>
-
-        <aside className="panel stack-md investment-risk-panel">
-          <p className="eyebrow">Rules and risk</p>
-          <h2>Market closed means orders pause, not prices.</h2>
-          <p className="muted">
-            Latest closing prices remain visible whenever they are saved or available from Alpha Vantage or Yahoo Finance. Buy and sell
-            orders are disabled outside regular US market hours so every team competes under the same rules.
-          </p>
-          <div className="score-formula-note">
-            40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
-          </div>
         </aside>
       </section>
 

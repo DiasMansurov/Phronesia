@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/articles", priority: 0.85 },
     { path: "/finance-lab", priority: 0.95 },
     { path: "/investment-challenge", priority: 0.96 },
+    { path: "/investment/thesis", priority: 0.62 },
     { path: "/investment-challenge/rules", priority: 0.76 },
     { path: "/investment-challenge/leaderboard", priority: 0.78 },
     { path: "/investment-challenge/leaderboard/teenvestor-school", priority: 0.72 },

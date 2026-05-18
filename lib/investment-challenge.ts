@@ -3,6 +3,8 @@ const configuredTransactionFee = Number(process.env.NEXT_PUBLIC_INVESTMENT_TRANS
 export const INVESTMENT_TRANSACTION_FEE_RATE =
   Number.isFinite(configuredTransactionFee) && configuredTransactionFee >= 0 ? configuredTransactionFee : 0.001;
 export const DEFAULT_INVESTMENT_COMPETITION_SLUG = "phronesia-investment-challenge";
+export const INVESTMENT_ACCOUNT_STORAGE_KEY = "phronesia.investmentChallenge.accountId";
+export const INVESTMENT_RECENT_BUY_TRADE_STORAGE_KEY = "phronesia.investmentChallenge.recentBuyTrade";
 
 export type InvestmentAssetType = "ETF" | "Stock";
 export type TradeSide = "buy" | "sell";
@@ -51,6 +53,17 @@ export type InvestmentAssetSearchResult = InvestmentAsset & {
   priceAvailable?: boolean;
   latestClose?: number | null;
   priceDate?: string | null;
+};
+
+export type InvestmentRecentBuyTradeContext = {
+  accountId: string;
+  symbol: string;
+  companyName: string;
+  quantity: number;
+  tradeValue: number;
+  commission: number;
+  totalCost: number;
+  executedAt: string | null;
 };
 
 export const INVESTMENT_ASSETS: InvestmentAsset[] = [
