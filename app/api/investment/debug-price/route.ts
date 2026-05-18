@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { debugInvestmentPrice } from "@/lib/server-investments";
+import { debugMarketDataAppPrice } from "@/lib/server-investments";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -11,7 +15,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await debugInvestmentPrice(symbol);
+    const result = await debugMarketDataAppPrice(symbol);
     return NextResponse.json({
       ...result,
       provider: process.env.MARKET_DATA_PROVIDER ?? "marketdata_app",
@@ -33,11 +37,17 @@ export async function GET(request: Request) {
         cachedFetchedAt: null,
         cacheFresh: false,
         calledMarketDataApp: false,
+        requestUrlWithoutToken: `https://api.marketdata.app/v1/stocks/quotes/${encodeURIComponent(symbol)}/?token=[redacted]`,
+        httpStatus: null,
+        responseOk: null,
         marketDataAppStatus: "not_used",
+        parsedFields: null,
         finalPrice: null,
         tradingDay: null,
         source: null,
         responseTextPreview: null,
+        errorName: error instanceof Error ? error.name : "DebugRouteError",
+        errorMessage: error instanceof Error ? error.message : "Market data temporarily unavailable.",
         error: error instanceof Error ? error.message : "Market data temporarily unavailable."
       },
       { status: 500 }

@@ -179,11 +179,24 @@ export type InvestmentPriceDebugResult = {
   cachedFetchedAt: string | null;
   cacheFresh: boolean;
   calledMarketDataApp: boolean;
+  requestUrlWithoutToken?: string | null;
+  httpStatus?: number | null;
+  responseOk?: boolean | null;
   marketDataAppStatus: string;
+  parsedFields?: {
+    symbol: string | null;
+    last: number | null;
+    mid: number | null;
+    bid: number | null;
+    ask: number | null;
+    updated: number | string | null;
+  } | null;
   finalPrice: number | null;
   tradingDay: string | null;
   source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
   responseTextPreview?: string | null;
+  errorName?: string | null;
+  errorMessage?: string | null;
   error: string | null;
 };
 
@@ -294,6 +307,14 @@ function marketDataAppUrl(path: string, params: Record<string, string> = {}) {
   return `https://api.marketdata.app/v1/${path}${search.size ? `?${search.toString()}` : ""}`;
 }
 
+function marketDataAppQuoteUrl(symbol: string) {
+  return marketDataAppUrl(`stocks/quotes/${encodeURIComponent(normalizeSymbol(symbol))}/`);
+}
+
+function marketDataAppQuoteUrlWithoutToken(symbol: string) {
+  return `https://api.marketdata.app/v1/stocks/quotes/${encodeURIComponent(normalizeSymbol(symbol))}/?token=[redacted]`;
+}
+
 function parseMarketDataTimestamp(value: unknown) {
   const raw = firstValue(value);
   if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -339,6 +360,22 @@ function parseJsonPayload(text: string): Payload | null {
   }
 }
 
+function marketDataArrayField(data: Payload, key: string, index = 0) {
+  const value = data[key];
+  return Array.isArray(value) ? value[index] : value;
+}
+
+function parsedMarketDataFields(data: Payload, index = 0) {
+  return {
+    symbol: typeof marketDataArrayField(data, "symbol", index) === "string" ? String(marketDataArrayField(data, "symbol", index)) : null,
+    last: parsePositiveNumber(marketDataArrayField(data, "last", index)),
+    mid: parsePositiveNumber(marketDataArrayField(data, "mid", index)),
+    bid: parsePositiveNumber(marketDataArrayField(data, "bid", index)),
+    ask: parsePositiveNumber(marketDataArrayField(data, "ask", index)),
+    updated: (marketDataArrayField(data, "updated", index) as number | string | null | undefined) ?? null
+  };
+}
+
 function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, index = 0, responseTextPreview?: string | null): MarketPriceResult {
   const status = String(firstValue(data.s ?? data.status) ?? "").toLowerCase();
   const providerMessage = String(firstValue(data.errmsg) ?? firstValue(data.error) ?? firstValue(data.message) ?? "").trim();
@@ -355,22 +392,15 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
     );
   }
 
-  const pick = (key: string) => {
-    const value = data[key];
-    return Array.isArray(value) ? value[index] : value;
-  };
-  const symbol = normalizeSymbol(String(pick("symbol") ?? requestedSymbol));
-  const price =
-    parsePositiveNumber(pick("last")) ??
-    parsePositiveNumber(pick("mid")) ??
-    parsePositiveNumber(pick("bid")) ??
-    parsePositiveNumber(pick("ask"));
+  const parsedFields = parsedMarketDataFields(data, index);
+  const symbol = normalizeSymbol(parsedFields.symbol ?? requestedSymbol);
+  const price = parsedFields.last ?? parsedFields.mid ?? parsedFields.bid ?? parsedFields.ask;
 
   if (!price) {
     return marketDataFailure(symbol, "Daily close price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
   }
 
-  const timestamp = parseMarketDataTimestamp(pick("updated") ?? pick("date") ?? pick("time") ?? pick("timestamp"));
+  const timestamp = parseMarketDataTimestamp(parsedFields.updated ?? marketDataArrayField(data, "date", index) ?? marketDataArrayField(data, "time", index) ?? marketDataArrayField(data, "timestamp", index));
   const tradingDay = todayIsoInEt(timestamp);
   return {
     ok: true,
@@ -378,7 +408,7 @@ function parseMarketDataAppQuotePayload(data: Payload, requestedSymbol: string, 
     priceDate: tradingDay,
     closePrice: price,
     adjustedClosePrice: price,
-    volume: Number(pick("volume") ?? 0),
+    volume: Number(marketDataArrayField(data, "volume", index) ?? 0),
     provider: MARKETDATA_APP_PROVIDER,
     source: MARKETDATA_APP_PROVIDER,
     message: `Latest MarketData.app price from ${tradingDay}.`,
@@ -394,7 +424,7 @@ export async function getMarketDataAppQuote(symbol: string): Promise<MarketPrice
   if (!apiKey) return marketDataFailure(normalized, "MarketData.app API key is not configured.");
 
   try {
-    const response = await fetch(marketDataAppUrl(`stocks/quotes/${encodeURIComponent(normalized)}/`), {
+    const response = await fetch(marketDataAppQuoteUrl(normalized), {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -503,6 +533,135 @@ export async function searchMarketDataAppAsset(query: string): Promise<Investmen
       priceDate: quote.priceDate
     }
   ];
+}
+
+export async function debugMarketDataAppPrice(symbol: string): Promise<InvestmentPriceDebugResult> {
+  const normalized = normalizeSymbol(symbol);
+  const provider = preferredMarketDataProvider();
+  const apiKey = getMarketDataApiKey();
+  const cached = await getCachedPrice(normalized).catch(() => null);
+  const marketStatus = getMarketStatus();
+  const cacheFresh = cached ? isCachedQuoteFresh(cached, marketStatus) : false;
+  const baseDebug = {
+    symbol: normalized,
+    provider,
+    hasMarketDataApiKey: Boolean(apiKey),
+    cacheFound: Boolean(cached),
+    cachedPrice: cached?.latestClose ?? null,
+    cachedFetchedAt: cached?.fetchedAt ?? null,
+    cacheFresh,
+    calledMarketDataApp: false,
+    requestUrlWithoutToken: marketDataAppQuoteUrlWithoutToken(normalized),
+    httpStatus: null,
+    responseOk: null,
+    marketDataAppStatus: "not_used",
+    parsedFields: null,
+    finalPrice: null,
+    tradingDay: null,
+    source: null,
+    responseTextPreview: null,
+    errorName: null,
+    errorMessage: null,
+    error: null
+  } satisfies InvestmentPriceDebugResult;
+
+  if (!isSupportedSymbol(normalized)) {
+    return { ...baseDebug, error: "Invalid ticker format.", errorMessage: "Invalid ticker format.", marketDataAppStatus: "invalid_symbol" };
+  }
+
+  if (!apiKey) {
+    return { ...baseDebug, error: "MarketData.app API key is not configured.", errorMessage: "MarketData.app API key is not configured.", marketDataAppStatus: "missing_api_key" };
+  }
+
+  let calledMarketDataApp = true;
+  try {
+    const response = await fetch(marketDataAppQuoteUrl(normalized), {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Phronesia/1.0"
+      }
+    });
+    const responseText = await response.text();
+    const responseTextPreview = safeResponsePreview(responseText);
+    const data = parseJsonPayload(responseText);
+    if (!data) {
+      return {
+        ...baseDebug,
+        calledMarketDataApp,
+        httpStatus: response.status,
+        responseOk: response.ok,
+        marketDataAppStatus: "non_json_response",
+        responseTextPreview,
+        errorMessage: "MarketData.app returned a non-JSON response.",
+        error: "MarketData.app returned a non-JSON response."
+      };
+    }
+
+    const parsedFields = parsedMarketDataFields(data);
+    const parsed = parseMarketDataAppQuotePayload(data, normalized, 0, responseTextPreview);
+    if (!response.ok || !parsed.ok) {
+      const message = parsed.ok ? "Market data temporarily unavailable." : parsed.message;
+      return {
+        ...baseDebug,
+        calledMarketDataApp,
+        httpStatus: response.status,
+        responseOk: response.ok,
+        marketDataAppStatus: String(firstValue(data.s ?? data.status) ?? providerStatus(parsed)),
+        parsedFields,
+        responseTextPreview,
+        errorMessage: message,
+        error: message
+      };
+    }
+
+    try {
+      await savePriceToCache(normalized, parsed.closePrice, parsed.priceDate, await resolveInvestmentAsset(normalized), parsed);
+    } catch (cacheError) {
+      return {
+        ...baseDebug,
+        calledMarketDataApp,
+        httpStatus: response.status,
+        responseOk: response.ok,
+        marketDataAppStatus: "ok",
+        parsedFields,
+        finalPrice: parsed.closePrice,
+        tradingDay: parsed.priceDate,
+        source: "marketdata_app",
+        responseTextPreview,
+        errorName: cacheError instanceof Error ? cacheError.name : "CacheSaveError",
+        errorMessage: cacheError instanceof Error ? cacheError.message : "Price fetched, but cache save failed.",
+        error: null
+      };
+    }
+
+    return {
+      ...baseDebug,
+      calledMarketDataApp,
+      httpStatus: response.status,
+      responseOk: response.ok,
+      marketDataAppStatus: "ok",
+      parsedFields,
+      finalPrice: parsed.closePrice,
+      tradingDay: parsed.priceDate,
+      source: "marketdata_app",
+      responseTextPreview,
+      error: null
+    };
+  } catch (error) {
+    const fallbackPrice = cached?.latestClose ?? null;
+    return {
+      ...baseDebug,
+      calledMarketDataApp,
+      marketDataAppStatus: "fetch_failed",
+      finalPrice: fallbackPrice,
+      tradingDay: cached?.priceDate ?? null,
+      source: fallbackPrice ? "cache" : null,
+      errorName: error instanceof Error ? error.name : "FetchError",
+      errorMessage: errorMessage(error),
+      error: errorMessage(error)
+    };
+  }
 }
 
 function classifyAlphaResponse(data: Payload): { code: PriceFailureCode; message: string } | null {
