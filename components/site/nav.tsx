@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 import { AuthControls } from "@/components/site/auth-controls";
 
@@ -16,6 +19,13 @@ const links = [
 ];
 
 export function SiteNav() {
+  const pathname = usePathname();
+
+  function isActive(href: string) {
+    if (href === "/") return pathname === "/";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <header className="site-header">
       <div className="shell nav-shell">
@@ -39,7 +49,9 @@ export function SiteNav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={link.href === "/investment-challenge" ? "nav-cta" : undefined}
+                className={[link.href === "/investment-challenge" ? "nav-cta" : "", isActive(link.href) ? "active" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
               >
                 {link.label}
               </Link>

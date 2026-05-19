@@ -9926,3 +9926,540 @@ body::before {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Phronesia balanced dark-frame and light-card system */
+body {
+  color: #111827;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(45, 212, 191, 0.18), transparent 28rem),
+    radial-gradient(circle at 88% 0%, rgba(59, 130, 246, 0.16), transparent 30rem),
+    #070b13;
+}
+
+.site-frame {
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 26rem),
+    linear-gradient(180deg, #050814 0%, #07101d 18rem, #f6f3ec 18rem, #eef2f5 100%);
+}
+
+main {
+  min-width: 0;
+  background:
+    linear-gradient(180deg, rgba(5, 8, 20, 0.98) 0, rgba(7, 16, 29, 0.98) 15rem, #f6f3ec 15rem, #eef2f5 100%);
+}
+
+.site-header .nav-links a.active {
+  border-color: rgba(94, 234, 212, 0.48);
+  background: rgba(255, 255, 255, 0.92);
+  color: #07111f;
+  box-shadow: 0 12px 30px rgba(20, 184, 166, 0.18);
+}
+
+.shell.section {
+  padding-block: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.panel,
+.compact-panel,
+.scenario-card,
+.scenario-card-rich,
+.finance-scenario-card,
+.stat-card,
+.lesson-card,
+.case-study-card,
+.glossary-card,
+.goal-item,
+.level-path-card,
+.progression-card,
+.article-card,
+.article-preview-card,
+.article-context-card,
+.articles-hero-panel,
+.market-terminal,
+.investment-disclaimer,
+.investment-search-sidebar,
+.trade-ticket-v2,
+.portfolio-panel,
+.holdings-panel-v2,
+.portfolio-activity-panel,
+.leaderboard-preview-panel,
+.investment-risk-panel,
+.market-status-card-v2,
+.metric-card-v2,
+.mini-lab-card,
+.selected-asset-card,
+.asset-direct-pick,
+.mobile-holding-card,
+.leaderboard-preview-row,
+.activity-row,
+.investment-empty-state,
+.empty-state {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 247, 241, 0.94)),
+    #ffffff;
+  color: #111827;
+  box-shadow:
+    0 18px 50px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.panel::before,
+.scenario-card::before,
+.article-card::before,
+.market-terminal::before {
+  display: none;
+}
+
+.panel h1,
+.panel h2,
+.panel h3,
+.panel strong,
+.scenario-card h3,
+.article-card h2,
+.lesson-card h3,
+.case-study-card h3,
+.glossary-card h3,
+.goal-item strong,
+.stat-card strong,
+.progression-card strong,
+.mini-lab-card strong,
+.metric-card-v2 strong,
+.selected-asset-card strong,
+.record-table td,
+.record-table th {
+  color: #111827;
+}
+
+.muted,
+.lede,
+.compact-lede,
+.panel p,
+.scenario-card p,
+.article-card p,
+.lesson-card p,
+.case-study-card p,
+.glossary-card p,
+.goal-item p,
+.progression-card p,
+.market-terminal p,
+.metric-card-v2 span,
+.selected-asset-card span {
+  color: #5b6472;
+}
+
+.eyebrow,
+.card-topline span,
+.mini-status,
+.pill,
+.article-card-topline span,
+.footer-heading {
+  color: #0f766e;
+  letter-spacing: 0.11em;
+}
+
+.pill,
+.mini-status,
+.card-meta span,
+.asset-symbol-cloud span {
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: rgba(240, 253, 250, 0.94);
+  color: #0f766e;
+}
+
+.button.primary {
+  border: 1px solid rgba(20, 184, 166, 0.42);
+  background: linear-gradient(135deg, #2dd4bf, #22d3ee);
+  color: #04111d;
+  box-shadow: 0 14px 34px rgba(20, 184, 166, 0.2);
+}
+
+.button.secondary {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+  color: #111827;
+}
+
+.button.secondary:hover,
+.button.primary:hover {
+  transform: translateY(-2px);
+}
+
+.text-link {
+  color: #0f766e;
+  font-weight: 900;
+}
+
+input,
+select,
+textarea {
+  border-color: rgba(15, 23, 42, 0.14);
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8a94a3;
+}
+
+.form-field span,
+label span {
+  color: #111827;
+  font-weight: 850;
+}
+
+.table-wrap {
+  border-radius: 20px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.05);
+}
+
+.record-table {
+  color: #111827;
+  background: #ffffff;
+}
+
+.record-table th {
+  background: #f4f7f8;
+  color: #344054;
+}
+
+.record-table td {
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.hero-band,
+.market-page-hero,
+.market-hero,
+.articles-hero,
+.article-hero,
+.investment-hero,
+.investment-hero-v2,
+.olympiad-hero,
+.learn-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background:
+    radial-gradient(circle at 15% 5%, rgba(45, 212, 191, 0.2), transparent 26rem),
+    radial-gradient(circle at 90% 0%, rgba(59, 130, 246, 0.14), transparent 30rem),
+    linear-gradient(135deg, #07111f 0%, #0b1323 58%, #08111c 100%);
+  color: #f8fafc;
+  box-shadow: 0 22px 70px rgba(2, 6, 23, 0.24);
+}
+
+.hero-band .display,
+.hero-band h1,
+.hero-band h2,
+.hero-band strong,
+.market-page-hero .display,
+.market-page-hero h1,
+.market-hero .display,
+.market-hero h1,
+.articles-hero .display,
+.articles-hero h1,
+.article-hero .display,
+.article-hero h1,
+.investment-hero-v2 h1,
+.olympiad-hero h1,
+.learn-hero h1 {
+  color: #ffffff;
+}
+
+.hero-band .lede,
+.hero-band .muted,
+.market-page-hero .lede,
+.market-hero .lede,
+.articles-hero .lede,
+.article-hero .lede,
+.investment-hero-v2 p,
+.olympiad-hero .lede,
+.learn-hero .lede {
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.hero-band .panel,
+.hero-band .compact-panel,
+.market-page-hero .panel,
+.market-hero .market-terminal,
+.articles-hero .articles-hero-panel,
+.article-hero .article-context-card,
+.investment-hero-v2 .market-status-card-v2,
+.olympiad-hero .olympiad-login-card,
+.learn-hero .learn-mode-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 241, 0.96)),
+    #ffffff;
+  color: #111827;
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 18px 52px rgba(2, 6, 23, 0.22);
+}
+
+.hero-band .panel h2,
+.hero-band .panel strong,
+.hero-band .panel p,
+.market-page-hero .panel h2,
+.market-page-hero .panel strong,
+.market-hero .market-terminal strong,
+.articles-hero .articles-hero-panel strong,
+.olympiad-login-card h2,
+.learn-mode-panel h2 {
+  color: #111827;
+}
+
+.hero-band .panel .muted,
+.market-page-hero .panel .muted,
+.olympiad-login-card .muted,
+.learn-mode-panel .goal-item {
+  color: #5b6472;
+}
+
+.scenario-filter-panel,
+.scenario-filter-bar,
+.asset-picker,
+.trade-side-toggle,
+.trade-readiness-grid,
+.portfolio-metric-grid,
+.market-status-grid,
+.competition-facts-grid,
+.finance-lab-grid,
+.leaderboard-type-grid,
+.progress-overview-grid,
+.finance-progression-grid,
+.lesson-grid,
+.case-study-grid,
+.glossary-grid,
+.article-grid,
+.scenario-grid {
+  color: #111827;
+}
+
+.scenario-filter-panel {
+  border-radius: 26px;
+  background: #fffdfa;
+}
+
+.scenario-filter-bar label {
+  color: #111827;
+}
+
+.finance-mini-lab-grid,
+.investment-workspace-grid,
+.investment-summary-section,
+.investment-dashboard-grid {
+  align-items: stretch;
+}
+
+.investment-app {
+  color: #111827;
+}
+
+.investment-hero-v2 {
+  margin-bottom: clamp(1rem, 2vw, 1.5rem);
+}
+
+.investment-hero-copy .eyebrow,
+.investment-hero-copy .text-link,
+.investment-hero-copy h1,
+.investment-hero-copy p {
+  color: inherit;
+}
+
+.investment-hero-copy h1 {
+  color: #ffffff;
+}
+
+.investment-hero-copy p {
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.asset-results button,
+.asset-quick-picks button,
+.asset-suggestion-row button,
+.trade-side-toggle button {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #111827;
+}
+
+.asset-results button:hover,
+.asset-quick-picks button:hover,
+.asset-suggestion-row button:hover,
+.trade-side-toggle button.selected {
+  border-color: rgba(20, 184, 166, 0.34);
+  background: #eafffb;
+  color: #0f766e;
+}
+
+.positive-text {
+  color: #0f7a52 !important;
+}
+
+.negative-text {
+  color: #b42335 !important;
+}
+
+.premium-home {
+  color: #111827;
+  background:
+    radial-gradient(circle at 15% 7%, rgba(45, 212, 191, 0.18), transparent 29rem),
+    radial-gradient(circle at 84% 11%, rgba(139, 92, 246, 0.14), transparent 32rem),
+    linear-gradient(180deg, #050711 0, #07101f 45rem, #f6f3ec 45rem, #eef2f5 100%);
+}
+
+.premium-home::before {
+  opacity: 0.72;
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.74) 35rem, transparent 52rem);
+}
+
+.premium-hero {
+  color: #f8fafc;
+}
+
+.premium-hero h1 {
+  color: #ffffff;
+}
+
+.premium-lede {
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.premium-disclaimer {
+  color: rgba(203, 213, 225, 0.82);
+}
+
+.premium-section h2,
+.premium-section h3,
+.premium-section strong,
+.premium-section p,
+.premium-final-cta h2 {
+  color: #111827;
+}
+
+.premium-section p {
+  color: #5b6472;
+}
+
+.hero-dashboard,
+.dashboard-progress,
+.dashboard-decision,
+.dashboard-feedback,
+.dashboard-metric-card,
+.benefit-card,
+.problem-card,
+.process-card,
+.capability-card,
+.recommended-card,
+.split-panel,
+.system-foundation,
+.system-node {
+  border-color: rgba(15, 23, 42, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 241, 0.96)),
+    #ffffff;
+  color: #111827;
+  box-shadow: 0 20px 58px rgba(15, 23, 42, 0.08);
+}
+
+.hero-dashboard span,
+.dashboard-metric-card span,
+.benefit-card span,
+.capability-card span,
+.card-meta span,
+.system-node span {
+  color: #0f766e;
+}
+
+.hero-dashboard strong,
+.dashboard-metric-card strong,
+.dashboard-decision strong,
+.dashboard-feedback strong,
+.benefit-card strong,
+.problem-card strong,
+.process-card strong,
+.capability-card strong,
+.recommended-card h3,
+.split-panel h2,
+.system-node strong {
+  color: #111827;
+}
+
+.dashboard-decision p,
+.dashboard-feedback p,
+.dashboard-metric-card small,
+.benefit-card p,
+.problem-card p,
+.process-card p,
+.capability-card p,
+.recommended-card p,
+.split-panel p,
+.system-copy p {
+  color: #5b6472;
+}
+
+.dashboard-status {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: #eafffb;
+  color: #0f766e;
+}
+
+.progress-ring {
+  background:
+    radial-gradient(circle at center, #ffffff 54%, transparent 55%),
+    conic-gradient(#14b8a6 0 82%, rgba(15, 23, 42, 0.1) 82% 100%);
+  color: #111827;
+}
+
+.mini-chart {
+  background: #f2f7f6;
+}
+
+.premium-final-cta {
+  background:
+    radial-gradient(circle at top right, rgba(34, 211, 238, 0.22), transparent 26rem),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(8, 13, 25, 0.98));
+}
+
+.premium-final-cta h2,
+.premium-final-cta .premium-eyebrow {
+  color: #ffffff;
+}
+
+.premium-final-cta .button.secondary {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.site-footer {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(20, 184, 166, 0.14), transparent 24rem),
+    linear-gradient(180deg, #07101d, #030712);
+}
+
+@media (max-width: 820px) {
+  main {
+    background:
+      linear-gradient(180deg, rgba(5, 8, 20, 0.98) 0, rgba(7, 16, 29, 0.98) 18rem, #f6f3ec 18rem, #eef2f5 100%);
+  }
+
+  .premium-home {
+    background:
+      radial-gradient(circle at 15% 7%, rgba(45, 212, 191, 0.16), transparent 25rem),
+      linear-gradient(180deg, #050711 0, #07101f 48rem, #f6f3ec 48rem, #eef2f5 100%);
+  }
+
+  .hero-band,
+  .market-page-hero,
+  .market-hero,
+  .articles-hero,
+  .article-hero,
+  .investment-hero-v2,
+  .olympiad-hero,
+  .learn-hero {
+    border-radius: 26px;
+  }
+}
