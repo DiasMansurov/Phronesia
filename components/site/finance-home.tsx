@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import type { ArticleSummary } from "@/lib/articles";
 import { SCENARIOS } from "@/lib/game/content";
 import {
   getNextScenario,
-  getRecommendedScenarios,
   getScenarioLearningProfile,
   getUserLevel,
   USER_LEVELS,
@@ -17,35 +16,43 @@ import { loadRuns } from "@/lib/game/storage";
 
 const benefitCards = [
   {
-    label: "Interactive Simulations",
-    body: "Students learn markets, money, policy, and risk by making decisions and reading the outcome."
+    value: "Interactive",
+    label: "Simulations",
+    body: "Markets, policy, investing, and personal finance become choices with visible consequences."
   },
   {
-    label: "Investment Challenges",
-    body: "Practice portfolio decisions with virtual cash, cached stock prices, and no real-money investing."
+    value: "$100k",
+    label: "Virtual portfolio",
+    body: "Students practice portfolio decisions with educational virtual cash and no real-money risk."
   },
   {
-    label: "Scenario-Based Learning",
-    body: "Every scenario connects a choice to visible consequences, scores, and feedback."
+    value: "Scenario",
+    label: "Feedback",
+    body: "Each simulation connects the decision, the outcome, the score, and the tradeoff."
   },
   {
-    label: "Progress Tracking",
-    body: "Completed simulations, rankings, and saved learning paths help students improve over time."
+    value: "Progress",
+    label: "Tracking",
+    body: "Students can track finance learning progress, achievements, best scores, and next scenarios."
   }
 ];
 
 const problemCards = [
   {
-    title: "Definitions are not enough",
-    body: "Students can memorize inflation, bonds, GDP, or diversification without practicing how those ideas change a real decision."
+    title: "Concepts without decisions",
+    body: "Students can understand finance and economics ideas through short explanations, but the ideas stay abstract without practice."
   },
   {
-    title: "Tradeoffs stay hidden",
-    body: "Phronesia makes the cost of every choice visible: households, markets, debt, risk, approval, and long-term stability all react."
+    title: "No safe place to test ideas",
+    body: "Investment concepts are hard to learn with real money, so Phronesia uses a free virtual portfolio simulation."
   },
   {
-    title: "Feedback needs to be immediate",
-    body: "Theory cards and score breakdowns explain why a result happened while the decision is still fresh."
+    title: "Scenarios without feedback",
+    body: "A choice matters only when students can review the outcome, score, and feedback behind the tradeoff."
+  },
+  {
+    title: "Progress is hard to see",
+    body: "Saved concepts, rankings, and progress tracking help students see what they have practiced and what to try next."
   }
 ];
 
@@ -53,26 +60,30 @@ const processSteps = [
   {
     step: "01",
     title: "Learn the concept",
-    body: "Build finance and economics foundations with short lessons, examples, and saved concepts."
+    body: "Understand finance and economics ideas through short explanations and examples.",
+    href: "/learn"
   },
   {
     step: "02",
     title: "Make a decision",
-    body: "Set a budget, trade, policy move, or personal finance choice inside the simulation."
+    body: "Set a budget, trade, policy move, or personal finance choice inside the simulation.",
+    href: "/play/setup"
   },
   {
     step: "03",
     title: "Simulate the outcome",
-    body: "Review how markets, households, debt, inflation, and confidence respond to the choice."
+    body: "Make decisions in realistic finance and economics situations and see the consequences.",
+    href: "/scenarios"
   },
   {
     step: "04",
     title: "Reflect and improve",
-    body: "Use score feedback, rankings, articles, and progress tracking to understand the tradeoff."
+    body: "Review the outcome, score, and feedback so the tradeoff is clear.",
+    href: "/progress"
   }
 ];
 
-const platformLinks = [
+const featureCards = [
   {
     title: "Finance Lab",
     body: "Test market mechanics and finance ideas in focused interactive labs.",
@@ -81,9 +92,9 @@ const platformLinks = [
   },
   {
     title: "Market Simulation",
-    body: "Practice portfolio decisions with virtual cash, cached stock prices, and risk feedback.",
-    href: "/investment-challenge",
-    action: "Open Simulation"
+    body: "Practice how stocks, bonds, currencies, banks, debt, and confidence react to decisions.",
+    href: "/play/setup?scenario=finance-market-stock-reaction",
+    action: "Try Simulation"
   },
   {
     title: "Investment Challenge",
@@ -105,19 +116,19 @@ const platformLinks = [
   },
   {
     title: "Rankings",
-    body: "Compare scenario scores, challenge results, and decision performance.",
+    body: "See finance simulation rankings, scenario ladders, school leaderboards, and policy score comparisons.",
     href: "/rankings",
     action: "View Rankings"
   },
   {
     title: "Student Progress",
-    body: "Track completed scenarios, level growth, badges, and recommended next steps.",
+    body: "Track Phronesia finance learning progress, achievements, best scores, and recommended next scenarios.",
     href: "/progress",
-    action: "Open Progress"
+    action: "View Progress"
   },
   {
     title: "Olympiad Practice",
-    body: "Run competition cases where teams submit decisions and organizers review results.",
+    body: "Open structured economics and finance competition practice through the Olympiad portal.",
     href: "/olympiad",
     action: "Open Olympiad"
   }
@@ -127,25 +138,31 @@ const systemNodes = ["Concepts", "Decisions", "Simulations", "Feedback", "Progre
 
 const splitSections = [
   {
-    eyebrow: "Practice without real-world risk",
-    title: "Try hard decisions in a safe educational simulation.",
-    body: "Phronesia lets students test investing, budgeting, policy, debt, and market choices with virtual outcomes. No real money is used, and the experience is not financial advice.",
-    href: "/investment-challenge",
-    action: "Open Investment Challenge"
+    eyebrow: "Decision-making",
+    title: "Make decisions in realistic finance and economics situations.",
+    body: "Phronesia lets students choose a concept, scenario, market, or investing challenge, then make a choice inside the simulation.",
+    href: "/scenarios",
+    action: "Browse Scenarios",
+    metric: "Choice",
+    metricLabel: "budget, trade, policy, or finance decision"
   },
   {
-    eyebrow: "Understand markets through decisions",
-    title: "See how markets, rates, debt, and confidence connect.",
-    body: "Finance Lab and scenarios show how stock prices, bond yields, exchange rates, household welfare, and inflation react when a decision changes the system.",
-    href: "/finance-lab",
-    action: "Explore Finance Lab"
+    eyebrow: "Scenario feedback",
+    title: "See what changes after every choice.",
+    body: "Students review the consequence, score, and explanation so the tradeoff is clear instead of theoretical.",
+    href: "/play/setup",
+    action: "Start Learning",
+    metric: "Result",
+    metricLabel: "outcome, score, and feedback loop"
   },
   {
-    eyebrow: "Track progress and improve",
-    title: "Move from beginner concepts to advanced cases.",
-    body: "Progress pages, rankings, articles, and recommended scenarios help students keep learning after each simulation ends.",
+    eyebrow: "Progress tracking",
+    title: "Use progress, rankings, and saved concepts to improve.",
+    body: "Phronesia connects completed simulations, achievements, best scores, rankings, and recommended next scenarios.",
     href: "/progress",
-    action: "View Progress"
+    action: "View Progress",
+    metric: "Progress",
+    metricLabel: "completed simulations and next steps"
   }
 ];
 
@@ -153,6 +170,205 @@ function readStoredLevel(): UserLevelId {
   if (typeof window === "undefined") return "beginner";
   const stored = window.localStorage.getItem("phronesia.userLevel");
   return USER_LEVELS.some((level) => level.id === stored) ? (stored as UserLevelId) : "beginner";
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  body,
+  action
+}: {
+  eyebrow: string;
+  title: string;
+  body?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="premium-section-header">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+      </div>
+      {body ? <p>{body}</p> : null}
+      {action ? <div className="premium-header-action">{action}</div> : null}
+    </div>
+  );
+}
+
+function BenefitCard({ value, label, body }: { value: string; label: string; body: string }) {
+  return (
+    <article className="premium-stat-card">
+      <strong>{value}</strong>
+      <span>{label}</span>
+      <p>{body}</p>
+    </article>
+  );
+}
+
+function ProcessCard({ step, title, body, href }: { step: string; title: string; body: string; href: string }) {
+  return (
+    <Link className="premium-process-card" href={href} prefetch={href === "/play/setup" ? false : undefined}>
+      <span>{step}</span>
+      <strong>{title}</strong>
+      <p>{body}</p>
+    </Link>
+  );
+}
+
+function FeatureCard({
+  title,
+  body,
+  href,
+  action,
+  index
+}: {
+  title: string;
+  body: string;
+  href: string;
+  action: string;
+  index: number;
+}) {
+  return (
+    <Link className="premium-feature-card" href={href} prefetch={href.startsWith("/play/setup") ? false : undefined}>
+      <div className="premium-feature-index" aria-hidden="true">
+        {String(index + 1).padStart(2, "0")}
+      </div>
+      <h3>{title}</h3>
+      <p>{body}</p>
+      <span>{action}</span>
+    </Link>
+  );
+}
+
+function DashboardPreview({
+  selectedLevel,
+  completedCount,
+  nextScenario,
+  nextProfile,
+  featuredArticle
+}: {
+  selectedLevel: string;
+  completedCount: number;
+  nextScenario: ReturnType<typeof getNextScenario>;
+  nextProfile: ReturnType<typeof getScenarioLearningProfile>;
+  featuredArticle?: ArticleSummary;
+}) {
+  return (
+    <aside className="premium-dashboard-card" aria-label="Finance learning dashboard preview">
+      <div className="dashboard-topline">
+        <span>Simulation Preview</span>
+        <strong>{selectedLevel}</strong>
+      </div>
+
+      <div className="dashboard-primary-metric">
+        <span>Recommended next</span>
+        <strong>{nextScenario.title}</strong>
+        <small>
+          {nextProfile.difficulty} · {nextProfile.estimatedMinutes} min · {nextProfile.concepts.slice(0, 2).join(", ")}
+        </small>
+      </div>
+
+      <div className="dashboard-chart" aria-hidden="true">
+        {[38, 54, 46, 72, 63, 86, 78, 94].map((height, index) => (
+          <i key={index} style={{ height: `${height}%` }} />
+        ))}
+      </div>
+
+      <div className="dashboard-metric-grid">
+        <div>
+          <span>Portfolio signal</span>
+          <strong>$100k</strong>
+        </div>
+        <div>
+          <span>Completed</span>
+          <strong>{completedCount}</strong>
+        </div>
+        <div>
+          <span>Scenarios</span>
+          <strong>{SCENARIOS.length}</strong>
+        </div>
+        <div>
+          <span>Feedback</span>
+          <strong>Active</strong>
+        </div>
+      </div>
+
+      <div className="dashboard-feedback">
+        <span>Consequence</span>
+        <p>Review the outcome, score, and feedback so the tradeoff is clear.</p>
+      </div>
+
+      {featuredArticle ? (
+        <Link className="dashboard-article-link" href={`/articles/${featuredArticle.slug}`}>
+          <span>{featuredArticle.category}</span>
+          <strong>{featuredArticle.title}</strong>
+        </Link>
+      ) : null}
+    </aside>
+  );
+}
+
+function SystemDiagram() {
+  return (
+    <div className="premium-foundation-diagram" aria-label="Phronesia education system">
+      <div className="foundation-orbit">
+        {systemNodes.map((node, index) => (
+          <span key={node} style={{ "--node-index": index } as CSSProperties}>
+            {node}
+          </span>
+        ))}
+        <strong>Education system</strong>
+      </div>
+      <div className="foundation-status-card">
+        <span>System active</span>
+        <strong>Concepts, decisions, simulations, feedback, and progress.</strong>
+        <p>
+          Phronesia connects lessons, finance dashboards, scenario decisions, investment practice, rankings, and
+          classroom-ready results into one learning loop.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SplitSection({
+  eyebrow,
+  title,
+  body,
+  href,
+  action,
+  metric,
+  metricLabel,
+  index
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  href: string;
+  action: string;
+  metric: string;
+  metricLabel: string;
+  index: number;
+}) {
+  return (
+    <section className={`premium-split-section ${index % 2 ? "is-reversed" : ""}`}>
+      <div className="premium-split-copy">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+        <p>{body}</p>
+        <Link className="button secondary" href={href} prefetch={href === "/play/setup" ? false : undefined}>
+          {action}
+        </Link>
+      </div>
+      <div className="premium-split-visual" aria-hidden="true">
+        <span>{metric}</span>
+        <strong>{metricLabel}</strong>
+        <i />
+        <i />
+        <i />
+      </div>
+    </section>
+  );
 }
 
 export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: ArticleSummary[] }) {
@@ -165,36 +381,30 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
     setCompletedIds(loadRuns().filter((run) => run.complete).map((run) => run.scenarioId));
   }, []);
 
-  const beginnerRecommendations = useMemo(() => getRecommendedScenarios("beginner", SCENARIOS, 2), []);
   const nextScenario = useMemo(() => getNextScenario(userLevel, completedIds, SCENARIOS), [completedIds, userLevel]);
   const selectedLevel = getUserLevel(userLevel);
   const nextProfile = getScenarioLearningProfile(nextScenario);
   const featuredArticle = featuredArticles[0];
 
-  const dashboardCards = [
-    { label: "Simulation Progress", value: "82%", detail: selectedLevel.label },
-    { label: "Portfolio Result", value: "$100,000", detail: "Virtual starting capital" },
-    { label: "Decision Score", value: "Feedback", detail: "Theory cards after choices" },
-    { label: "Scenario Feedback", value: nextProfile.difficulty, detail: nextScenario.title },
-    { label: "Learning Streak", value: "Progress", detail: "Saved on your learning path" },
-    { label: "Ranking Position", value: "Compare", detail: "Scenario and challenge boards" },
-    { label: "Investment Thesis Status", value: "Draft", detail: "Explain strategy and risk" }
-  ];
-
   return (
-    <section className="premium-home">
-      <div className="premium-orb orb-one" aria-hidden="true" />
-      <div className="premium-orb orb-two" aria-hidden="true" />
-
-      <section className="premium-hero shell">
+    <section className="shell section phronesia-home premium-home">
+      <section className="premium-hero">
         <div className="premium-hero-copy">
-          <p className="premium-eyebrow">Phronesia</p>
-          <h1>Learn finance by making decisions.</h1>
-          <p className="premium-lede">
-            Phronesia turns markets, policy, investing, and personal finance into interactive simulations where
-            students see the consequences of every choice.
-          </p>
-          <div className="premium-actions">
+          <div className="premium-hero-kicker">
+            <span>Finance simulation school</span>
+            <span>Decision feedback platform</span>
+          </div>
+
+          <div className="stack-md">
+            <p className="eyebrow">Phronesia</p>
+            <h1>Learn finance by making decisions.</h1>
+            <p>
+              Phronesia turns markets, policy, investing, and personal finance into interactive simulations where
+              students see the consequences of every choice.
+            </p>
+          </div>
+
+          <div className="premium-hero-actions">
             <Link className="button primary" href="/play/setup" prefetch={false}>
               Start Learning
             </Link>
@@ -202,230 +412,97 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
               Explore Scenarios
             </Link>
           </div>
+
           <p className="premium-disclaimer">
             Educational simulation only. No real money is used. This is not financial advice.
           </p>
         </div>
 
-        <aside className="hero-dashboard" aria-label="Phronesia simulation dashboard preview">
-          <div className="dashboard-header">
-            <div>
-              <span>Simulation Preview</span>
-              <strong>{selectedLevel.label}</strong>
-            </div>
-            <div className="dashboard-status">Learning Mode</div>
-          </div>
-
-          <div className="dashboard-progress">
-            <div>
-              <span>Scenario</span>
-              <strong>Budget Balance</strong>
-            </div>
-            <div className="progress-ring" aria-hidden="true">
-              82%
-            </div>
-          </div>
-
-          <div className="dashboard-decision">
-            <span>Decision</span>
-            <strong>Balance the budget without hurting household demand.</strong>
-            <p>Recommended next: {nextScenario.title} · {nextProfile.difficulty}</p>
-          </div>
-
-          <div className="dashboard-card-grid">
-            {dashboardCards.map((card) => (
-              <div className="dashboard-metric-card" key={card.label}>
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-                <small>{card.detail}</small>
-              </div>
-            ))}
-          </div>
-
-          <div className="dashboard-feedback">
-            <div className="mini-chart" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <div>
-              <span>Consequence</span>
-              <strong>Bond yields ease and market confidence improves.</strong>
-              <p>Household welfare risk stays visible, so the score rewards stability but warns about tradeoffs.</p>
-            </div>
-          </div>
-        </aside>
+        <DashboardPreview
+          selectedLevel={selectedLevel.label}
+          completedCount={completedIds.length}
+          nextScenario={nextScenario}
+          nextProfile={nextProfile}
+          featuredArticle={featuredArticle}
+        />
       </section>
 
-      <section className="premium-section shell benefit-strip">
-        <div className="section-kicker">
-          <p className="premium-eyebrow">Product overview</p>
-          <h2>What you can do on Phronesia</h2>
-        </div>
-        <div className="benefit-grid">
-          {benefitCards.map((card) => (
-            <article className="benefit-card" key={card.label}>
-              <span>{card.label}</span>
-              <p>{card.body}</p>
-            </article>
+      <section className="premium-section premium-benefits-section">
+        <SectionHeader
+          eyebrow="Learning benefits"
+          title="Simulation-based finance practice students can measure."
+          body="The platform focuses on practice: concepts, scenarios, investing, feedback, and progress tracking."
+        />
+        <div className="premium-stats-grid">
+          {benefitCards.map((benefit) => (
+            <BenefitCard key={benefit.label} {...benefit} />
           ))}
         </div>
       </section>
 
-      <section className="premium-section shell problem-section">
-        <div className="problem-copy">
-          <p className="premium-eyebrow">The learning gap</p>
-          <h2>Finance education becomes clearer when students practice decisions, not only memorize terms.</h2>
-          <p>
-            Phronesia is a student-led finance and economics education platform for learning business, investing, and
-            decision-making through simulations, market choices, and scenario-based feedback.
-          </p>
-        </div>
-        <div className="problem-card-grid">
+      <section className="premium-section premium-problem-section">
+        <SectionHeader
+          eyebrow="The problem"
+          title="Why passive finance education does not work."
+          body="Students need to make decisions, see consequences, and review feedback before finance and economics feel practical."
+        />
+        <div className="premium-problem-grid">
           {problemCards.map((card) => (
-            <article className="problem-card" key={card.title}>
-              <strong>{card.title}</strong>
+            <article className="premium-problem-card" key={card.title}>
+              <h3>{card.title}</h3>
               <p>{card.body}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="premium-section shell process-section">
-        <div className="section-kicker">
-          <p className="premium-eyebrow">How it works</p>
-          <h2>Choose, decide, see what changes.</h2>
-          <p>The whole learning loop fits into one short simulation.</p>
-        </div>
-        <div className="process-grid">
-          {processSteps.map((item) => (
-            <article className="process-card" key={item.step}>
-              <span>{item.step}</span>
-              <strong>{item.title}</strong>
-              <p>{item.body}</p>
-            </article>
+      <section className="premium-section premium-system-section">
+        <SectionHeader
+          eyebrow="How it works"
+          title="Choose, decide, see what changes."
+          body="The whole learning loop fits into one short simulation."
+        />
+        <div className="premium-process-grid">
+          {processSteps.map((step) => (
+            <ProcessCard key={step.step} {...step} />
           ))}
         </div>
       </section>
 
-      <section className="premium-section shell capability-section">
-        <div className="section-kicker">
-          <p className="premium-eyebrow">Explore the platform</p>
-          <h2>Find the right place to start.</h2>
-          <p>Use the main product pages when you want the full lessons, labs, simulations, and articles.</p>
-        </div>
-        <div className="capability-grid">
-          {platformLinks.map((item) => (
-            <Link className="capability-card" href={item.href} key={`${item.title}-${item.href}`}>
-              <span>{item.title}</span>
-              <p>{item.body}</p>
-              <strong>{item.action}</strong>
-            </Link>
+      <section className="premium-section premium-features-section">
+        <SectionHeader
+          eyebrow="Core capabilities"
+          title="What you can do on Phronesia."
+          body="Use the main product pages when you want the full lessons, labs, simulations, rankings, and articles."
+        />
+        <div className="premium-feature-grid">
+          {featureCards.map((feature, index) => (
+            <FeatureCard key={feature.href} index={index} {...feature} />
           ))}
         </div>
       </section>
 
-      <section className="premium-section shell system-foundation">
-        <div className="system-copy">
-          <p className="premium-eyebrow">Education system</p>
-          <h2>A simulation engine for concepts, choices, feedback, and progress.</h2>
-          <p>
-            Phronesia connects short explanations to actions, then connects those actions to market and household
-            outcomes so students can understand why a result happened.
-          </p>
-        </div>
-        <div className="system-diagram" aria-label="Phronesia learning system">
-          {systemNodes.map((node, index) => (
-            <div className="system-node" key={node}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <strong>{node}</strong>
-            </div>
-          ))}
-        </div>
+      <section className="premium-section premium-foundation-section">
+        <SectionHeader
+          eyebrow="The foundation"
+          title="Phronesia is an education system, not just a website."
+          body="Every part of the platform connects concepts, decisions, simulations, feedback, and progress."
+        />
+        <SystemDiagram />
       </section>
 
-      <section className="premium-section shell split-stack">
+      <div className="premium-split-stack">
         {splitSections.map((section, index) => (
-          <article className="split-panel" key={section.title}>
-            <div>
-              <p className="premium-eyebrow">{section.eyebrow}</p>
-              <h2>{section.title}</h2>
-            </div>
-            <div>
-              <p>{section.body}</p>
-              <Link className="text-link" href={section.href}>
-                {section.action}
-              </Link>
-            </div>
-            <div className="split-index" aria-hidden="true">
-              {String(index + 1).padStart(2, "0")}
-            </div>
-          </article>
+          <SplitSection key={section.title} index={index} {...section} />
         ))}
-      </section>
+      </div>
 
-      <section className="premium-section shell recommended-section" id="recommended">
-        <div className="section-kicker">
-          <p className="premium-eyebrow">Start here</p>
-          <h2>Try a focused preview, then open the full pages.</h2>
-          <Link className="button secondary" href="/scenarios">
-            Browse All Scenarios
-          </Link>
-        </div>
-
-        <div className="recommended-grid">
-          {beginnerRecommendations.map((scenario) => {
-            const profile = getScenarioLearningProfile(scenario);
-            return (
-              <article className="recommended-card" key={scenario.id}>
-                <div className="card-meta">
-                  <span>{profile.difficulty}</span>
-                  <span>{profile.estimatedMinutes} min</span>
-                  <span>{profile.concepts.slice(0, 2).join(", ")}</span>
-                </div>
-                <h3>{scenario.title}</h3>
-                <p>Start with a beginner simulation, make a decision, and use the feedback to understand the tradeoff.</p>
-                <div className="card-actions">
-                  <Link className="button primary" href={`/play/setup?scenario=${scenario.id}`} prefetch={false}>
-                    Start
-                  </Link>
-                  <Link className="text-link" href="/scenarios">
-                    View library
-                  </Link>
-                </div>
-              </article>
-            );
-          })}
-
-          {featuredArticle ? (
-            <article className="recommended-card article-card">
-              <div className="card-meta">
-                <span>{featuredArticle.category}</span>
-                <span>{featuredArticle.level}</span>
-              </div>
-              <h3>{featuredArticle.title}</h3>
-              <p>{featuredArticle.excerpt}</p>
-              <div className="card-actions">
-                <Link className="button secondary" href={`/articles/${featuredArticle.slug}`}>
-                  Read article
-                </Link>
-                <Link className="text-link" href="/articles">
-                  View all articles
-                </Link>
-              </div>
-            </article>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="premium-final-cta shell">
+      <section className="premium-final-cta">
         <div>
           <p className="premium-eyebrow">Start Learning</p>
           <h2>Start learning economics by making decisions, not memorizing definitions.</h2>
         </div>
-        <div className="premium-actions">
+        <div className="premium-final-actions">
           <Link className="button primary" href="/play/setup" prefetch={false}>
             Start Learning
           </Link>
