@@ -31,36 +31,38 @@ export function SiteFooter() {
         </div>
         <div className="footer-link-groups">
           <div className="footer-link-column">
-            <p className="footer-heading">Explore</p>
+            <p className="footer-heading">Platform</p>
             <Link href="/play/setup" prefetch={false}>
               Start Learning
             </Link>
             <Link href="/learn">Learn</Link>
-            <Link href="/articles">Articles</Link>
             <Link href="/finance-lab">Finance Lab</Link>
+            <Link href="/scenarios">Scenarios</Link>
+            <Link href="/progress">Progress</Link>
+          </div>
+          <div className="footer-link-column">
+            <p className="footer-heading">Learn</p>
+            <Link href="/articles">Articles</Link>
             <Link href="/investment-challenge">Investment Challenge</Link>
             <Link href="/investment-challenge/options">Options Simulator</Link>
-            <Link href="/scenarios">Scenarios</Link>
+            <Link href="/rankings">Rankings</Link>
             <Link href="/olympiad">Olympiad Portal</Link>
-            <Link href="/results">Organizer Results</Link>
-            <Link href="/rankings">View Rankings</Link>
-            <Link href="/progress">Progress</Link>
+          </div>
+          <div className="footer-link-column">
+            <p className="footer-heading">Company</p>
+            <Link href="/teachers">Teachers</Link>
+            <Link href="/teachers/classes">Classes</Link>
             <Link href="/championship">Championship</Link>
-            <Link href="/join">Student Join</Link>
+            <Link href="/results">Organizer Results</Link>
+            <Link href="/about">About</Link>
           </div>
           <div className="footer-link-column">
-            <p className="footer-heading">Teachers</p>
-            <Link href="/teachers">Teacher Overview</Link>
-            <Link href="/teachers/classes">Teacher Classes</Link>
-            <Link href="/schools/privacy">School Privacy</Link>
-            <Link href="/schools/dpa">School DPA</Link>
-          </div>
-          <div className="footer-link-column">
-            <p className="footer-heading">Trust</p>
+            <p className="footer-heading">Legal</p>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
             <Link href="/cookies">Cookies</Link>
             <Link href="/accessibility">Accessibility</Link>
+            <Link href="/security">Security</Link>
           </div>
         </div>
       </div>
