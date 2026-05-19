@@ -1,24 +1,31 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 import { AuthControls } from "@/components/site/auth-controls";
 
 const links = [
   { href: "/", label: "Home" },
   { href: "/learn", label: "Learn" },
-  { href: "/articles", label: "Articles" },
   { href: "/finance-lab", label: "Finance Lab" },
-  { href: "/investment-challenge", label: "Investment" },
   { href: "/scenarios", label: "Scenarios" },
-  { href: "/play/setup", label: "Play" },
-  { href: "/olympiad", label: "Olympiad" },
+  { href: "/investment-challenge", label: "Investment" },
+  { href: "/articles", label: "Articles" },
   { href: "/rankings", label: "Rankings" },
   { href: "/progress", label: "Progress" },
-  { href: "/teachers", label: "Teachers" },
-  { href: "/about", label: "About" }
+  { href: "/olympiad", label: "Olympiad" }
 ];
 
 export function SiteNav() {
+  const pathname = usePathname();
+
+  function isActive(href: string) {
+    if (href === "/") return pathname === "/";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <header className="site-header">
       <div className="shell nav-shell">
@@ -42,12 +49,9 @@ export function SiteNav() {
               <Link
                 key={link.href}
                 href={link.href}
-                prefetch={link.href === "/play/setup" ? false : undefined}
-                className={
-                  link.href === "/finance-lab" || link.href === "/investment-challenge" || link.href === "/play/setup"
-                    ? "nav-cta"
-                    : undefined
-                }
+                className={[link.href === "/investment-challenge" ? "nav-cta" : "", isActive(link.href) ? "active" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
               >
                 {link.label}
               </Link>
