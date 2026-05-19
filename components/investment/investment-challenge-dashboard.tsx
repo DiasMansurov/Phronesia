@@ -110,6 +110,31 @@ function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) 
   return [next, ...filtered];
 }
 
+function quoteFromDebugPrice(data: DebugPricePayload, fallback: InvestmentAssetQuote): InvestmentAssetQuote | null {
+  const finalPrice = Number(data.finalPrice);
+  if (!Number.isFinite(finalPrice) || finalPrice <= 0) return null;
+
+  const priceSource = data.source === "cache" ? "cache" : "marketdata_app";
+  const tradingDay = data.tradingDay ?? fallback.priceDate ?? null;
+
+  return {
+    ...fallback,
+    symbol: (data.symbol || fallback.symbol).toUpperCase(),
+    latestClose: finalPrice,
+    referencePrice: finalPrice,
+    priceDate: tradingDay,
+    provider: priceSource === "cache" ? fallback.provider || "marketdata_app" : "marketdata_app",
+    priceAvailable: true,
+    priceSource,
+    priceMessage:
+      priceSource === "cache"
+        ? `Using latest saved price${tradingDay ? ` from ${tradingDay}` : ""}.`
+        : `Latest price from MarketData.app${tradingDay ? ` from ${tradingDay}` : ""}.`,
+    fetchedAt: new Date().toISOString(),
+    cacheStatus: priceSource === "cache" ? "cached" : "fresh"
+  };
+}
+
 export function InvestmentChallengeDashboard() {
   const router = useRouter();
   const [market, setMarket] = useState<MarketPayload>({
@@ -368,6 +393,45 @@ export function InvestmentChallengeDashboard() {
     }
   }
 
+  function applySelectedQuote(nextQuote: InvestmentAssetQuote) {
+    setSymbol(nextQuote.symbol);
+    setHasSelectedAsset(true);
+    setSelectedQuote(nextQuote);
+    setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, nextQuote) }));
+    setAccount((current) => (current ? { ...current, quotes: mergeQuote(current.quotes, nextQuote) } : current));
+  }
+
+  async function fetchSelectedSymbolPrice(actionLabel = "Fetching") {
+    if (!hasSelectedAsset || !symbol) return;
+    setPriceLoading(true);
+    setStatus(`${actionLabel} ${symbol} price from MarketData.app...`);
+    setAssetSearchStatus(`${actionLabel} ${symbol} price from the backend endpoint...`);
+    try {
+      const response = await fetch(`/api/investment/debug-price?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+      const data = (await response.json()) as DebugPricePayload;
+      const nextQuote = quoteFromDebugPrice(data, selectedQuote);
+      setDebugPriceDetails(JSON.stringify(data, null, 2));
+
+      if (response.ok && nextQuote) {
+        applySelectedQuote(nextQuote);
+        setStatus(`${nextQuote.symbol} price loaded: ${formatUsd(nextQuote.latestClose)} from ${data.source ?? "market data"}.`);
+        setAssetSearchStatus("");
+        return;
+      }
+
+      const message = data.error ?? `${symbol} price is unavailable.`;
+      setStatus(message);
+      setAssetSearchStatus(message);
+    } catch {
+      const message = `${symbol} price endpoint is temporarily unavailable.`;
+      setStatus(message);
+      setAssetSearchStatus(message);
+      setDebugPriceDetails(message);
+    } finally {
+      setPriceLoading(false);
+    }
+  }
+
   async function refreshFeaturedPrices() {
     setRefreshingPrices(true);
     setStatus("Refreshing featured prices server-side through /stocks/quotes...");
@@ -411,6 +475,19 @@ export function InvestmentChallengeDashboard() {
     setPriceLoading(true);
     setStatus(`Refreshing ${symbol} server-side through /stocks/quotes...`);
     try {
+      const debugResponse = await fetch(`/api/investment/debug-price?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+      const debugData = (await debugResponse.json()) as DebugPricePayload;
+      const debugQuote = quoteFromDebugPrice(debugData, selectedQuote);
+      setDebugPriceDetails(JSON.stringify(debugData, null, 2));
+
+      if (debugResponse.ok && debugQuote) {
+        applySelectedQuote(debugQuote);
+        setStatus(`${debugQuote.symbol} refreshed: ${formatUsd(debugQuote.latestClose)} from ${debugData.source ?? "market data"}.`);
+        setAssetSearchStatus("");
+        void loadLeaderboard(account?.competition.code ?? competitionCode);
+        return;
+      }
+
       const response = await fetch("/api/investment/refresh-symbol", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -449,19 +526,28 @@ export function InvestmentChallengeDashboard() {
       const response = await fetch("/api/investment/debug-price?symbol=SPY", { cache: "no-store" });
       const data = (await response.json()) as DebugPricePayload;
       setDebugPriceDetails(JSON.stringify(data, null, 2));
-      if (data.finalPrice) {
-        setStatus(`SPY debug succeeded: ${formatUsd(data.finalPrice)} from ${data.source ?? "market data"}.`);
-        await selectAsset({
-          symbol: "SPY",
-          name: "SPDR S&P 500 ETF",
-          type: "ETF",
-          theme: "Broad US stocks",
-          referencePrice: data.finalPrice,
-          region: "United States",
-          currency: "USD",
-          exchange: "NYSE Arca",
-          featured: true
-        });
+      const nextQuote = quoteFromDebugPrice(data, {
+        symbol: "SPY",
+        name: "SPDR S&P 500 ETF",
+        type: "ETF",
+        theme: "Broad US stocks",
+        referencePrice: data.finalPrice ?? 0,
+        region: "United States",
+        currency: "USD",
+        exchange: "NYSE Arca",
+        featured: true,
+        latestClose: data.finalPrice ?? 0,
+        priceDate: data.tradingDay,
+        provider: "marketdata_app",
+        priceAvailable: Boolean(data.finalPrice),
+        priceSource: "marketdata_app",
+        priceMessage: "Testing SPY through the backend endpoint.",
+        fetchedAt: null,
+        cacheStatus: "missing"
+      });
+      if (response.ok && nextQuote) {
+        applySelectedQuote(nextQuote);
+        setStatus(`SPY debug succeeded: ${formatUsd(nextQuote.latestClose)} from ${data.source ?? "market data"}.`);
       } else {
         setStatus(data.error ?? "SPY debug did not return a final price.");
       }
@@ -775,7 +861,7 @@ export function InvestmentChallengeDashboard() {
           </button>
           {hasSelectedAsset ? (
             <div className="selected-asset-actions">
-              <button className="button secondary compact-button" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
+              <button className="button secondary compact-button" type="button" onClick={() => fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
                 Fetch price
               </button>
               <button className="button secondary compact-button" type="button" onClick={refreshSelectedSymbol} disabled={priceLoading}>
@@ -874,7 +960,7 @@ export function InvestmentChallengeDashboard() {
 
               {clientTradeWarning ? <p className="market-closed-note">{clientTradeWarning}</p> : null}
               {!selectedQuote.priceAvailable ? (
-                <button className="button secondary" type="button" onClick={() => selectAsset(selectedQuote)} disabled={priceLoading}>
+                <button className="button secondary" type="button" onClick={() => fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
                   Try refresh price
                 </button>
               ) : null}
