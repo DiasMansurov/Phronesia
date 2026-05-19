@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { listInvestmentAssetQuotes, recalculatePortfolios, refreshPriceForSymbol, updateInvestmentLeaderboard } from "@/lib/server-investments";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { symbol?: string };
   const symbol = body.symbol?.trim().toUpperCase();

@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { executeInvestmentTrade } from "@/lib/server-investments";
 import type { TradeSide } from "@/lib/investment-challenge";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     accountId?: string;

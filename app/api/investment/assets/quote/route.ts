@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getAssetQuote } from "@/lib/server-investments";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get("symbol") ?? "";

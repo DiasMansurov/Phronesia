@@ -7,6 +7,10 @@ import {
   updateInvestmentLeaderboard
 } from "@/lib/server-investments";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+
 export async function POST() {
   try {
     const results = await refreshFeaturedAssetPrices();
