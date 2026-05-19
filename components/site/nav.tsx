@@ -49,16 +49,30 @@ export function SiteNav() {
               <Link
                 key={link.href}
                 href={link.href}
+<<<<<<< HEAD
                 className={[link.href === "/investment-challenge" ? "nav-cta" : "", isActive(link.href) ? "active" : ""]
                   .filter(Boolean)
                   .join(" ")}
+=======
+                prefetch={link.href === "/play/setup" ? false : undefined}
+                className={
+                  link.href === "/finance-lab" || link.href === "/investment-challenge" || link.href === "/scenarios"
+                    ? "nav-cta"
+                    : undefined
+                }
+>>>>>>> 71085ab (11)
               >
                 {link.label}
               </Link>
             ))}
           </nav>
         </div>
-        <AuthControls />
+        <div className="nav-actions">
+          <Link className="button primary nav-start-button" href="/play/setup" prefetch={false}>
+            Start Learning
+          </Link>
+          <AuthControls />
+        </div>
       </div>
     </header>
   );
