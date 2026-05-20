@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { InvestmentChallengeDashboard } from "@/components/investment/investment-challenge-dashboard";
 import { getInvestmentAccess } from "@/lib/investment-access";
@@ -19,15 +20,21 @@ export default async function InvestmentChallengeAppPage() {
   const access = await getInvestmentAccess();
 
   if (!access.allowed) {
+    if (access.reason !== "missing_secret") {
+      redirect("/investment-challenge/join");
+    }
     return (
       <section className="shell section stack-xl">
         <div className="hero-band compact">
           <div className="stack-sm">
             <p className="eyebrow">Protected student area</p>
-            <h1 className="display compact">Enter your team access before opening the simulation.</h1>
+            <h1 className="display compact">
+              {access.reason === "missing_secret" ? "Team session secret is not configured." : "Enter your team access before opening the simulation."}
+            </h1>
             <p className="lede compact-lede">
-              Market prices, portfolios, trade tickets, and live rankings are available only after a valid competition
-              code, team name, and team password.
+              {access.reason === "missing_secret"
+                ? "Add INVESTMENT_TEAM_SESSION_SECRET in the deployment environment before students can enter protected team portfolios."
+                : "Market prices, portfolios, trade tickets, and live rankings are available only after a valid competition code, team name, and team password."}
             </p>
             <div className="cta-row">
               <Link className="button primary" href="/investment-challenge/join">

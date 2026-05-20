@@ -23,6 +23,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!process.env.INVESTMENT_TEAM_SESSION_SECRET?.trim()) {
+    return NextResponse.json({ ok: false, reason: "Team session secret is not configured." }, { status: 500 });
+  }
+
   const body = (await request.json().catch(() => ({}))) as {
     competitionCode?: string;
     teamName?: string;
@@ -39,7 +43,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: result.reason }, { status: result.status });
   }
 
-  await setInvestmentTeamSessionCookie(result.session.token, result.session.expiresAt);
+  const cookieResult = await setInvestmentTeamSessionCookie(result.session.account);
+  if (!cookieResult.ok) {
+    return NextResponse.json({ ok: false, reason: cookieResult.reason }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,

@@ -11,7 +11,7 @@ import {
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "crypto";
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from "crypto";
 import { insertRow, selectRows, supabaseConfigured, updateRows, upsertRow } from "@/lib/supabase-rest";
 
 type Payload = Record<string, unknown>;
@@ -127,8 +127,6 @@ export type InvestmentTradeView = {
 };
 
 export type InvestmentTeamSessionView = {
-  token: string;
-  expiresAt: string;
   account: InvestmentAccountView;
   competition: InvestmentCompetitionView;
   created: boolean;
@@ -145,7 +143,6 @@ const MARKETDATA_APP_PROVIDER = "marketdata_app";
 const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
 const TEAM_PASSWORD_ITERATIONS = 210000;
-const TEAM_SESSION_DAYS = 30;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
@@ -267,14 +264,6 @@ function verifyTeamPassword(password: string, storedHash: string | null) {
   const expected = Buffer.from(expectedHash, "hex");
   if (actualHash.length !== expected.length) return false;
   return timingSafeEqual(actualHash, expected);
-}
-
-function createSessionToken() {
-  return randomBytes(32).toString("base64url");
-}
-
-export function hashInvestmentTeamSessionToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
 }
 
 function formatTradeUsd(value: number) {
@@ -2371,23 +2360,6 @@ export async function createOrGetInvestmentAccount(input: {
   return buildInvestmentAccountView(accountId);
 }
 
-async function createInvestmentTeamSession(accountRow: Payload, competition: InvestmentCompetitionView) {
-  const token = createSessionToken();
-  const tokenHash = hashInvestmentTeamSessionToken(token);
-  const expiresAt = new Date();
-  expiresAt.setUTCDate(expiresAt.getUTCDate() + TEAM_SESSION_DAYS);
-  const now = new Date().toISOString();
-  await insertRow("investment_team_sessions", {
-    account_id: rowString(accountRow, "id"),
-    competition_id: competition.id,
-    session_token_hash: tokenHash,
-    expires_at: expiresAt.toISOString(),
-    created_at: now,
-    last_seen_at: now
-  });
-  return { token, expiresAt: expiresAt.toISOString() };
-}
-
 export async function createOrEnterInvestmentTeam(input: {
   competitionCode: string;
   teamName: string;
@@ -2442,23 +2414,34 @@ export async function createOrEnterInvestmentTeam(input: {
     }
   } else {
     let rows: Payload[] | { ok: boolean; reason: "missing_env" };
+    const accountPayload = {
+      competition_id: competition.id,
+      team_name: teamName,
+      participant_login: null,
+      starting_cash: competition.startingCash,
+      cash: competition.startingCash,
+      cash_balance: competition.startingCash,
+      password_hash: hashTeamPassword(password),
+      last_login_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
     try {
       rows = await upsertRow(
         "investment_accounts",
-        {
-          competition_id: competition.id,
-          team_name: teamName,
-          participant_login: null,
-          starting_cash: competition.startingCash,
-          cash: competition.startingCash,
-          password_hash: hashTeamPassword(password),
-          last_login_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
+        accountPayload,
         "competition_id,team_name"
       );
-    } catch {
-      return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!/cash_balance|schema cache|column/i.test(message)) {
+        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+      }
+      const { cash_balance: _cashBalance, ...legacyPayload } = accountPayload;
+      try {
+        rows = await upsertRow("investment_accounts", legacyPayload, "competition_id,team_name");
+      } catch {
+        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+      }
     }
     if (!Array.isArray(rows) || !rows[0]) {
       return { ok: false, status: 500, reason: "Could not create team portfolio." };
@@ -2474,11 +2457,6 @@ export async function createOrEnterInvestmentTeam(input: {
     { last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
   ).catch(() => null);
 
-  const sessionMeta = await createInvestmentTeamSession(accountRow, competition).catch(() => null);
-  if (!sessionMeta) {
-    return { ok: false, status: 500, reason: "Team sessions are not configured yet." };
-  }
-
   await recalculatePortfolios();
   await updateInvestmentLeaderboard(competition.code);
   const account = await buildInvestmentAccountView(rowString(accountRow, "id"));
@@ -2487,47 +2465,12 @@ export async function createOrEnterInvestmentTeam(input: {
   return {
     ok: true,
     session: {
-      token: sessionMeta.token,
-      expiresAt: sessionMeta.expiresAt,
       account,
       competition: account.competition,
       created,
       message
     }
   };
-}
-
-export async function getInvestmentTeamSession(token: string | null | undefined) {
-  if (!token || !supabaseConfigured()) return null;
-  const tokenHash = hashInvestmentTeamSessionToken(token);
-  try {
-    const rows = await selectRows("investment_team_sessions", {
-      select: "*",
-      session_token_hash: `eq.${tokenHash}`,
-      limit: "1"
-    });
-    if (!Array.isArray(rows) || !rows[0]) return null;
-    const sessionRow = rows[0];
-    const expiresAt = rowString(sessionRow, "expires_at");
-    if (!expiresAt || Date.parse(expiresAt) <= Date.now()) return null;
-    await updateRows(
-      "investment_team_sessions",
-      { id: `eq.${rowString(sessionRow, "id")}` },
-      { last_seen_at: new Date().toISOString() }
-    ).catch(() => null);
-    const account = await buildInvestmentAccountView(rowString(sessionRow, "account_id"));
-    if (!account) return null;
-    return {
-      account,
-      competition: account.competition,
-      teamName: account.account.teamName,
-      accountId: account.account.id,
-      competitionCode: account.competition.code,
-      expiresAt
-    };
-  } catch {
-    return null;
-  }
 }
 
 export async function getInvestmentAccountView(accountId: string) {
@@ -2583,7 +2526,7 @@ export async function executeInvestmentTrade(input: {
     return rejectTrade(account, asset.symbol, input.side, quantity, "Latest cached stock price is unavailable.");
   }
 
-  const cash = rowNumber(account, "cash");
+  const cash = rowNumber(account, "cash", rowNumber(account, "cash_balance"));
   const gross = price * quantity;
   const fee = gross * INVESTMENT_TRANSACTION_FEE_RATE;
   const holding = await getHoldingRow(rowString(account, "id"), asset.symbol);
@@ -2606,7 +2549,7 @@ export async function executeInvestmentTrade(input: {
     const newAverage = newQuantity > 0 ? (previousAvg * currentQuantity + totalCost) / newQuantity : 0;
     await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource, latest.fetchedAt);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newAverage, holding ? rowNumber(holding, "realized_gain_loss") : 0);
-    await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash - totalCost, updated_at: new Date().toISOString() });
+    await updateInvestmentAccountCash(rowString(account, "id"), cash - totalCost);
   } else {
     if (currentQuantity < quantity) {
       return rejectTrade(account, asset.symbol, "sell", quantity, "You cannot sell more shares than you own.");
@@ -2619,7 +2562,7 @@ export async function executeInvestmentTrade(input: {
     const newQuantity = currentQuantity - quantity;
     await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource, latest.fetchedAt);
     await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newQuantity > 0 ? avg : 0, realized);
-    await updateRows("investment_accounts", { id: `eq.${rowString(account, "id")}` }, { cash: cash + proceeds, updated_at: new Date().toISOString() });
+    await updateInvestmentAccountCash(rowString(account, "id"), cash + proceeds);
   }
 
   await recalculatePortfolios();
@@ -3311,6 +3254,17 @@ async function getHoldingRow(accountId: string, symbol: string) {
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
+async function updateInvestmentAccountCash(accountId: string, cash: number) {
+  const payload = { cash, cash_balance: cash, updated_at: new Date().toISOString() };
+  try {
+    return await updateRows("investment_accounts", { id: `eq.${accountId}` }, payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/cash_balance|schema cache|column/i.test(message)) throw error;
+    return updateRows("investment_accounts", { id: `eq.${accountId}` }, { cash, updated_at: payload.updated_at });
+  }
+}
+
 async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
   const account = await getAccountRow(accountId);
   if (!account) return null;
@@ -3387,7 +3341,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
         })
     : [];
 
-  const cash = rowNumber(account, "cash", INVESTMENT_STARTING_CASH);
+  const cash = rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
   const startingCash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
   const holdingsValue = holdingViews.reduce((sum, holding) => sum + holding.marketValue, 0);
   const totalValue = cash + holdingsValue;
