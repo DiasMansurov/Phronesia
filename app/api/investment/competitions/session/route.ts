@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
-import {
-  clearInvestmentCompetitionCookie,
-  getInvestmentAccess,
-  setInvestmentCompetitionCookie
-} from "@/lib/investment-access";
-import { resolveInvestmentCompetition } from "@/lib/server-investments";
+import { clearInvestmentTeamSessionCookie, getInvestmentAccess } from "@/lib/investment-access";
+import { resolveExistingInvestmentCompetition } from "@/lib/server-investments";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,21 +25,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: "Competition code is required." }, { status: 400 });
   }
 
-  const competition = await resolveInvestmentCompetition(code);
+  const competition = await resolveExistingInvestmentCompetition(code);
   if (!competition) {
-    return NextResponse.json({ ok: false, reason: "Competition code was not found." }, { status: 404 });
+    return NextResponse.json({ ok: false, reason: "Competition not found." }, { status: 404 });
   }
-
-  await setInvestmentCompetitionCookie(competition.code);
 
   return NextResponse.json({
     ok: true,
     competition,
-    redirectTo: "/investment-challenge/app"
+    redirectTo: "/investment-challenge/join"
   });
 }
 
 export async function DELETE() {
-  await clearInvestmentCompetitionCookie();
+  await clearInvestmentTeamSessionCookie();
   return NextResponse.json({ ok: true });
 }

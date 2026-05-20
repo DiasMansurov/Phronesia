@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Script from "next/script";
 
-import { InvestmentAccessForm } from "@/components/investment/investment-access-form";
-
 export const metadata: Metadata = {
   title: "Phronesia Investment Challenge — Educational Virtual Portfolio Simulation",
   description:
@@ -64,18 +62,28 @@ export default function InvestmentChallengePage() {
               password-protected student competition area.
             </p>
             <div className="cta-row">
-              <a className="button primary" href="#join-investment-challenge">
+              <Link className="button primary" href="/investment-challenge/join">
                 Join with code
-              </a>
+              </Link>
               <Link className="button secondary" href="/investment-challenge/rules">
                 Read Rules
               </Link>
-              <Link className="button secondary" href="/sign-in">
-                Sign in
+              <Link className="button secondary" href="/articles">
+                Read Articles
               </Link>
             </div>
           </div>
-          <InvestmentAccessForm />
+          <article className="panel compact-panel stack-md investment-disclaimer">
+            <p className="eyebrow">Protected student area</p>
+            <h2>No public market prices.</h2>
+            <p>
+              Competition prices, portfolio values, trade tickets, and rankings are available only after students enter
+              a valid competition code, team name, and team password.
+            </p>
+            <Link className="button primary" href="/investment-challenge/join">
+              Join Competition
+            </Link>
+          </article>
         </div>
 
         <section className="grid four">
@@ -108,7 +116,17 @@ export default function InvestmentChallengePage() {
         </section>
 
         <section className="grid two" id="join-investment-challenge">
-          <InvestmentAccessForm />
+          <article className="panel stack-md investment-access-card">
+            <p className="eyebrow">Student competition access</p>
+            <h2>Join with your competition code.</h2>
+            <p className="muted">
+              The code is not shown or pre-filled. Your organizer will give your team the competition code, team name,
+              and team password to enter the protected simulation.
+            </p>
+            <Link className="button primary" href="/investment-challenge/join">
+              Join Competition
+            </Link>
+          </article>
           <article className="panel stack-md investment-disclaimer">
             <p className="eyebrow">Important disclaimer</p>
             <h2>Educational simulation only.</h2>

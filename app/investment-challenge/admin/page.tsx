@@ -114,8 +114,8 @@ export default async function InvestmentChallengeAdminPage() {
           <p className="eyebrow">Create or edit competition</p>
           <h2>Competition code, dates, and starting cash.</h2>
           <form className="stack-sm" action="/api/investment/admin/competitions" method="post">
-            <label className="form-field"><span>Code</span><input name="code" defaultValue="Teenvestor.school" required /></label>
-            <label className="form-field"><span>Name</span><input name="name" defaultValue="Teenvestor.school Investment Competition" /></label>
+            <label className="form-field"><span>Code</span><input name="code" placeholder="Competition code" required /></label>
+            <label className="form-field"><span>Name</span><input name="name" placeholder="Competition name" /></label>
             <label className="form-field"><span>Description</span><input name="description" placeholder="Private educational portfolio competition" /></label>
             <label className="form-field"><span>Starting cash</span><input name="startingCash" type="number" defaultValue={100000} min={1} /></label>
             <label className="form-field"><span>Allowed assets</span><input name="allowedAssets" placeholder="Blank = all searchable US stocks/ETFs" /></label>

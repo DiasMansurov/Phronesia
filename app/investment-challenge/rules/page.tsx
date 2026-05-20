@@ -39,8 +39,8 @@ export default function InvestmentChallengeRulesPage() {
             prices only inside the protected student area, and are enabled only during regular US market hours.
           </p>
           <div className="cta-row">
-            <Link className="button primary" href="/investment-challenge">
-              Enter Competition Code
+            <Link className="button primary" href="/investment-challenge/join">
+              Join Competition
             </Link>
             <Link className="button secondary" href="/investment-challenge/app">
               Student Area

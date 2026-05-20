@@ -28,15 +28,15 @@ export default async function InvestmentThesisPage() {
             <p className="eyebrow">Protected student area</p>
             <h1 className="display compact">Investment thesis is available after competition access.</h1>
             <p className="lede compact-lede">
-              Thesis forms connect to private student portfolios, so they are shown only after sign-in or a valid
-              competition code.
+              Thesis forms connect to private student portfolios, so they are shown only after a valid competition code,
+              team name, and team password.
             </p>
             <div className="cta-row">
-              <Link className="button primary" href="/investment-challenge#join-investment-challenge">
-                Enter competition code
+              <Link className="button primary" href="/investment-challenge/join">
+                Join Competition
               </Link>
-              <Link className="button secondary" href="/sign-in">
-                Sign in
+              <Link className="button secondary" href="/investment-challenge">
+                Overview
               </Link>
             </div>
           </div>

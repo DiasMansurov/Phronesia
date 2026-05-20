@@ -8,7 +8,7 @@ import { listInvestmentLeaderboard } from "@/lib/server-investments";
 export const metadata: Metadata = {
   title: "Investment Challenge Leaderboard",
   description:
-    "Public leaderboard for the Phronesia Investment Challenge, ranked by return, risk-adjusted performance, diversification, thesis, and drawdown control.",
+    "Protected student leaderboard for the Phronesia Investment Challenge, ranked by return, risk, diversification, thesis, and drawdown control.",
   alternates: {
     canonical: "https://phronesia.org/investment-challenge/leaderboard"
   },
@@ -33,7 +33,7 @@ export default async function InvestmentChallengeLeaderboardPage() {
     return <ProtectedLeaderboardGate title="Investment leaderboard" />;
   }
 
-  const leaderboard = await listInvestmentLeaderboard();
+  const leaderboard = await listInvestmentLeaderboard(access.competitionCode);
 
   return (
     <section className="shell section stack-xl">
@@ -134,11 +134,11 @@ function ProtectedLeaderboardGate({ title }: { title: string }) {
             competition area.
           </p>
           <div className="cta-row">
-            <Link className="button primary" href="/investment-challenge#join-investment-challenge">
-              Enter competition code
+            <Link className="button primary" href="/investment-challenge/join">
+              Join Competition
             </Link>
-            <Link className="button secondary" href="/sign-in">
-              Sign in
+            <Link className="button secondary" href="/investment-challenge">
+              Overview
             </Link>
           </div>
         </div>

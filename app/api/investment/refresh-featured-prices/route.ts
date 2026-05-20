@@ -19,7 +19,7 @@ export async function POST() {
   try {
     const results = await refreshFeaturedAssetPrices();
     const portfolios = await recalculatePortfolios();
-    const leaderboard = await updateInvestmentLeaderboard();
+    const leaderboard = await updateInvestmentLeaderboard(access.access.allowed ? access.access.competitionCode : undefined);
     const quotes = await listInvestmentAssetQuotes();
     const apiLimitReached = results.some((result) => result.apiLimitReached);
 

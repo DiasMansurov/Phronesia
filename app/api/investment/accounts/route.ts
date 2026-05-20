@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireInvestmentStudentAccess } from "@/lib/investment-access";
-import {
-  createOrGetInvestmentAccount,
-  getInvestmentAccountView
-} from "@/lib/server-investments";
+import { getInvestmentAccountView } from "@/lib/server-investments";
 import { supabaseConfigured } from "@/lib/supabase-rest";
 
 export async function GET(request: Request) {
@@ -15,6 +12,9 @@ export async function GET(request: Request) {
   const accountId = searchParams.get("accountId")?.trim();
   if (!accountId) {
     return NextResponse.json({ error: "accountId is required." }, { status: 400 });
+  }
+  if (access.access.allowed && accountId !== access.access.accountId) {
+    return NextResponse.json({ error: "You can only open the current team portfolio." }, { status: 403 });
   }
 
   if (!supabaseConfigured()) {
@@ -33,27 +33,10 @@ export async function POST(request: Request) {
   const access = await requireInvestmentStudentAccess();
   if (access.errorResponse) return access.errorResponse;
 
-  const body = (await request.json().catch(() => ({}))) as {
-    teamName?: string;
-    participantLogin?: string;
-    competitionSlug?: string;
-    competitionCode?: string;
-  };
-
-  if (!body.teamName?.trim()) {
-    return NextResponse.json({ error: "Team name is required." }, { status: 400 });
-  }
-
-  if (!supabaseConfigured()) {
-    return NextResponse.json({ ok: true, persisted: false, reason: "missing_supabase_env", account: null });
-  }
-
-  const account = await createOrGetInvestmentAccount({
-    teamName: body.teamName,
-    participantLogin: body.participantLogin,
-    competitionSlug: body.competitionSlug,
-    competitionCode: body.competitionCode
+  return NextResponse.json({
+    ok: true,
+    persisted: true,
+    account: access.access.allowed ? access.access.account : null,
+    message: "Team portfolios are created through /investment-challenge/join."
   });
-
-  return NextResponse.json({ ok: true, persisted: true, account });
 }

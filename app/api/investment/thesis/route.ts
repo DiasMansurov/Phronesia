@@ -18,6 +18,9 @@ export async function POST(request: Request) {
   if (!body.accountId) {
     return NextResponse.json({ error: "accountId is required." }, { status: 400 });
   }
+  if (access.access.allowed && body.accountId !== access.access.accountId) {
+    return NextResponse.json({ error: "You can only edit the current team thesis." }, { status: 403 });
+  }
 
   try {
     const account = await saveInvestmentThesis({

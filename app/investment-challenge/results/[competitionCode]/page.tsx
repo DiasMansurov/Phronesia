@@ -35,15 +35,14 @@ export default async function InvestmentCompetitionResultsPage({ params }: PageP
             <p className="eyebrow">Protected student area</p>
             <h1 className="display compact">Competition results are protected.</h1>
             <p className="lede compact-lede">
-              Final rankings use portfolio values and market data, so they are shown only after sign-in or valid
-              competition code access.
+              Final rankings use portfolio values and market data, so they are shown only after team access is verified.
             </p>
             <div className="cta-row">
-              <Link className="button primary" href="/investment-challenge#join-investment-challenge">
-                Enter competition code
+              <Link className="button primary" href="/investment-challenge/join">
+                Join Competition
               </Link>
-              <Link className="button secondary" href="/sign-in">
-                Sign in
+              <Link className="button secondary" href="/investment-challenge">
+                Overview
               </Link>
             </div>
           </div>
@@ -52,7 +51,25 @@ export default async function InvestmentCompetitionResultsPage({ params }: PageP
     );
   }
 
-  const results = await listInvestmentFinalResults(decodeURIComponent(competitionCode));
+  const decodedCode = decodeURIComponent(competitionCode);
+  if (decodedCode !== access.competitionCode && decodedCode !== access.competition.slug) {
+    return (
+      <section className="shell section stack-xl">
+        <div className="hero-band compact">
+          <div className="stack-sm">
+            <p className="eyebrow">Protected student area</p>
+            <h1 className="display compact">These results belong to another competition.</h1>
+            <p className="lede compact-lede">Use the team access flow for that competition before viewing final results.</p>
+            <Link className="button primary" href="/investment-challenge/join">
+              Join Competition
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const results = await listInvestmentFinalResults(access.competitionCode);
   const winner = results.rows[0];
 
   return (

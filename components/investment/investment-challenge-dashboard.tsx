@@ -93,7 +93,15 @@ function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) 
   return [next, ...filtered];
 }
 
-export function InvestmentChallengeDashboard({ initialCompetitionCode = "" }: { initialCompetitionCode?: string }) {
+export function InvestmentChallengeDashboard({
+  initialCompetitionCode = "",
+  initialAccountId = "",
+  initialAccount = null
+}: {
+  initialCompetitionCode?: string;
+  initialAccountId?: string;
+  initialAccount?: InvestmentAccountView | null;
+}) {
   const router = useRouter();
   const [market, setMarket] = useState<MarketPayload>({
     marketStatus: defaultMarketStatus(),
@@ -101,11 +109,9 @@ export function InvestmentChallengeDashboard({ initialCompetitionCode = "" }: { 
     educationalCards: INVESTMENT_EDUCATIONAL_CARDS
   });
   const [leaderboard, setLeaderboard] = useState<LeaderboardPayload>({ rows: [], persisted: false });
-  const [account, setAccount] = useState<InvestmentAccountView | null>(null);
-  const [teamName, setTeamName] = useState("");
-  const [participantLogin, setParticipantLogin] = useState("");
+  const [account, setAccount] = useState<InvestmentAccountView | null>(initialAccount);
   const [competitionCode, setCompetitionCode] = useState(initialCompetitionCode);
-  const [resolvedCompetition, setResolvedCompetition] = useState<InvestmentCompetitionView | null>(null);
+  const [resolvedCompetition, setResolvedCompetition] = useState<InvestmentCompetitionView | null>(initialAccount?.competition ?? null);
   const [symbol, setSymbol] = useState("SPY");
   const [selectedQuote, setSelectedQuote] = useState<InvestmentAssetQuote>(featuredQuotes()[0]);
   const [hasSelectedAsset, setHasSelectedAsset] = useState(false);
@@ -121,13 +127,24 @@ export function InvestmentChallengeDashboard({ initialCompetitionCode = "" }: { 
   useEffect(() => {
     void loadMarket();
     void loadLeaderboard(initialCompetitionCode);
+    if (initialAccount) {
+      setAccount(initialAccount);
+      setResolvedCompetition(initialAccount.competition);
+      setCompetitionCode(initialAccount.competition.code);
+      const current = initialAccount.quotes.find((quote) => quote.symbol === symbol) ?? initialAccount.quotes[0];
+      if (current) setSelectedQuote(current);
+      window.localStorage.setItem(INVESTMENT_ACCOUNT_STORAGE_KEY, initialAccount.account.id);
+      return;
+    }
+    if (initialAccountId.trim()) {
+      void loadAccount(initialAccountId);
+      return;
+    }
     if (initialCompetitionCode.trim()) {
       setCompetitionCode(initialCompetitionCode);
       void resolveCompetitionCode(initialCompetitionCode);
     }
-    const storedAccountId = window.localStorage.getItem(INVESTMENT_ACCOUNT_STORAGE_KEY);
-    if (storedAccountId) void loadAccount(storedAccountId);
-  }, [initialCompetitionCode]);
+  }, [initialAccount, initialAccountId, initialCompetitionCode]);
 
   useEffect(() => {
     const query = assetQuery.trim();
@@ -265,32 +282,6 @@ export function InvestmentChallengeDashboard({ initialCompetitionCode = "" }: { 
       void loadLeaderboard(data.competition.code);
     } catch {
       setStatus("Competition code lookup is temporarily unavailable.");
-    }
-  }
-
-  async function createAccount(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setStatus("Creating team portfolio...");
-    try {
-      const response = await fetch("/api/investment/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamName, participantLogin, competitionCode: competitionCode.trim() || undefined })
-      });
-      const data = (await response.json()) as { account?: InvestmentAccountView | null; reason?: string; error?: string };
-      if (!response.ok || !data.account) {
-        setStatus(data.error ?? data.reason ?? "Portfolio storage is not configured yet.");
-        return;
-      }
-      window.localStorage.setItem(INVESTMENT_ACCOUNT_STORAGE_KEY, data.account.account.id);
-      setAccount(data.account);
-      setResolvedCompetition(data.account.competition);
-      setCompetitionCode(data.account.competition.code);
-      setStatus(`Portfolio ready for ${data.account.account.teamName}.`);
-      void loadLeaderboard(data.account.competition.code);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -589,37 +580,21 @@ export function InvestmentChallengeDashboard({ initialCompetitionCode = "" }: { 
           <div className="section-header">
             <div>
               <p className="eyebrow">Portfolio dashboard</p>
-              <h2>{account ? account.account.teamName : "Create your team account"}</h2>
+              <h2>{account ? account.account.teamName : "Team access required"}</h2>
             </div>
             <span className="pill">Virtual cash only</span>
           </div>
 
           {!account ? (
-            <form className="team-setup-form" onSubmit={createAccount}>
-              <label className="form-field">
-                <span>Team name</span>
-                <input value={teamName} onChange={(event) => setTeamName(event.target.value)} required />
-              </label>
-              <label className="form-field">
-                <span>Competition login or class code</span>
-                <input value={participantLogin} onChange={(event) => setParticipantLogin(event.target.value)} />
-              </label>
-              <label className="form-field">
-                <span>Investment competition code</span>
-                <input
-                  value={competitionCode}
-                  onChange={(event) => setCompetitionCode(event.target.value)}
-                  onBlur={() => resolveCompetitionCode()}
-                  placeholder="Teenvestor.school"
-                />
-              </label>
-              <button className="button secondary" type="button" onClick={() => resolveCompetitionCode()}>
-                Check Competition Code
-              </button>
-              <button className="button primary" type="submit" disabled={busy}>
-                Create $100,000 Portfolio
-              </button>
-            </form>
+            <div className="investment-empty-state">
+              <strong>Open the join page to create or enter a team portfolio.</strong>
+              <p>
+                Team portfolios are stored in Supabase and unlocked with competition code, team name, and team password.
+              </p>
+              <Link className="button primary" href="/investment-challenge/join">
+                Join Competition
+              </Link>
+            </div>
           ) : null}
 
           <div className="portfolio-metric-grid">

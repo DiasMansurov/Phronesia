@@ -11,6 +11,7 @@ import {
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "crypto";
 import { insertRow, selectRows, supabaseConfigured, updateRows, upsertRow } from "@/lib/supabase-rest";
 
 type Payload = Record<string, unknown>;
@@ -125,6 +126,15 @@ export type InvestmentTradeView = {
   rejectReason: string | null;
 };
 
+export type InvestmentTeamSessionView = {
+  token: string;
+  expiresAt: string;
+  account: InvestmentAccountView;
+  competition: InvestmentCompetitionView;
+  created: boolean;
+  message: string;
+};
+
 const MARKET_CLOSED_MESSAGE =
   "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
@@ -134,6 +144,8 @@ const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
 const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
+const TEAM_PASSWORD_ITERATIONS = 210000;
+const TEAM_SESSION_DAYS = 30;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
@@ -237,6 +249,32 @@ function rowNumber(row: Payload, key: string, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
+}
+
+function hashTeamPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = pbkdf2Sync(password, salt, TEAM_PASSWORD_ITERATIONS, 32, "sha256").toString("hex");
+  return `pbkdf2_sha256$${TEAM_PASSWORD_ITERATIONS}$${salt}$${hash}`;
+}
+
+function verifyTeamPassword(password: string, storedHash: string | null) {
+  if (!storedHash) return false;
+  const [scheme, iterationsRaw, salt, expectedHash] = storedHash.split("$");
+  if (scheme !== "pbkdf2_sha256" || !iterationsRaw || !salt || !expectedHash) return false;
+  const iterations = Number(iterationsRaw);
+  if (!Number.isInteger(iterations) || iterations <= 0) return false;
+  const actualHash = pbkdf2Sync(password, salt, iterations, 32, "sha256");
+  const expected = Buffer.from(expectedHash, "hex");
+  if (actualHash.length !== expected.length) return false;
+  return timingSafeEqual(actualHash, expected);
+}
+
+function createSessionToken() {
+  return randomBytes(32).toString("base64url");
+}
+
+export function hashInvestmentTeamSessionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function formatTradeUsd(value: number) {
@@ -2333,6 +2371,165 @@ export async function createOrGetInvestmentAccount(input: {
   return buildInvestmentAccountView(accountId);
 }
 
+async function createInvestmentTeamSession(accountRow: Payload, competition: InvestmentCompetitionView) {
+  const token = createSessionToken();
+  const tokenHash = hashInvestmentTeamSessionToken(token);
+  const expiresAt = new Date();
+  expiresAt.setUTCDate(expiresAt.getUTCDate() + TEAM_SESSION_DAYS);
+  const now = new Date().toISOString();
+  await insertRow("investment_team_sessions", {
+    account_id: rowString(accountRow, "id"),
+    competition_id: competition.id,
+    session_token_hash: tokenHash,
+    expires_at: expiresAt.toISOString(),
+    created_at: now,
+    last_seen_at: now
+  });
+  return { token, expiresAt: expiresAt.toISOString() };
+}
+
+export async function createOrEnterInvestmentTeam(input: {
+  competitionCode: string;
+  teamName: string;
+  password: string;
+}): Promise<
+  | { ok: true; session: InvestmentTeamSessionView }
+  | { ok: false; status: number; reason: string }
+> {
+  if (!supabaseConfigured()) {
+    return { ok: false, status: 503, reason: "Supabase is not configured for team portfolios yet." };
+  }
+
+  const competitionCode = input.competitionCode.trim();
+  const teamName = input.teamName.trim().slice(0, 96);
+  const password = input.password;
+
+  if (!competitionCode) return { ok: false, status: 400, reason: "Competition code is required." };
+  if (!teamName) return { ok: false, status: 400, reason: "Team name is required." };
+  if (!password) return { ok: false, status: 400, reason: "Team password is required." };
+
+  const competition = await resolveExistingInvestmentCompetition(competitionCode);
+  if (!competition) return { ok: false, status: 404, reason: "Competition not found." };
+
+  const existing = await selectRows("investment_accounts", {
+    select: "*",
+    competition_id: `eq.${competition.id}`,
+    team_name: `eq.${teamName}`,
+    limit: "1"
+  });
+
+  let accountRow: Payload | null = Array.isArray(existing) && existing[0] ? existing[0] : null;
+  let created = false;
+  let message = "Welcome back to your team portfolio.";
+
+  if (accountRow) {
+    const storedPasswordHash = rowNullableString(accountRow, "password_hash");
+    if (storedPasswordHash) {
+      const passwordMatches = verifyTeamPassword(password, storedPasswordHash);
+      if (!passwordMatches) return { ok: false, status: 401, reason: "Invalid team password." };
+    } else {
+      const passwordHash = hashTeamPassword(password);
+      try {
+        const updated = await updateRows(
+          "investment_accounts",
+          { id: `eq.${rowString(accountRow, "id")}` },
+          { password_hash: passwordHash, last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+        );
+        accountRow = Array.isArray(updated) && updated[0] ? updated[0] : { ...accountRow, password_hash: passwordHash };
+      } catch {
+        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+      }
+    }
+  } else {
+    let rows: Payload[] | { ok: boolean; reason: "missing_env" };
+    try {
+      rows = await upsertRow(
+        "investment_accounts",
+        {
+          competition_id: competition.id,
+          team_name: teamName,
+          participant_login: null,
+          starting_cash: competition.startingCash,
+          cash: competition.startingCash,
+          password_hash: hashTeamPassword(password),
+          last_login_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        "competition_id,team_name"
+      );
+    } catch {
+      return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+    }
+    if (!Array.isArray(rows) || !rows[0]) {
+      return { ok: false, status: 500, reason: "Could not create team portfolio." };
+    }
+    accountRow = rows[0];
+    created = true;
+    message = "Team created successfully.";
+  }
+
+  await updateRows(
+    "investment_accounts",
+    { id: `eq.${rowString(accountRow, "id")}` },
+    { last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+  ).catch(() => null);
+
+  const sessionMeta = await createInvestmentTeamSession(accountRow, competition).catch(() => null);
+  if (!sessionMeta) {
+    return { ok: false, status: 500, reason: "Team sessions are not configured yet." };
+  }
+
+  await recalculatePortfolios();
+  await updateInvestmentLeaderboard(competition.code);
+  const account = await buildInvestmentAccountView(rowString(accountRow, "id"));
+  if (!account) return { ok: false, status: 500, reason: "Could not load team portfolio." };
+
+  return {
+    ok: true,
+    session: {
+      token: sessionMeta.token,
+      expiresAt: sessionMeta.expiresAt,
+      account,
+      competition: account.competition,
+      created,
+      message
+    }
+  };
+}
+
+export async function getInvestmentTeamSession(token: string | null | undefined) {
+  if (!token || !supabaseConfigured()) return null;
+  const tokenHash = hashInvestmentTeamSessionToken(token);
+  try {
+    const rows = await selectRows("investment_team_sessions", {
+      select: "*",
+      session_token_hash: `eq.${tokenHash}`,
+      limit: "1"
+    });
+    if (!Array.isArray(rows) || !rows[0]) return null;
+    const sessionRow = rows[0];
+    const expiresAt = rowString(sessionRow, "expires_at");
+    if (!expiresAt || Date.parse(expiresAt) <= Date.now()) return null;
+    await updateRows(
+      "investment_team_sessions",
+      { id: `eq.${rowString(sessionRow, "id")}` },
+      { last_seen_at: new Date().toISOString() }
+    ).catch(() => null);
+    const account = await buildInvestmentAccountView(rowString(sessionRow, "account_id"));
+    if (!account) return null;
+    return {
+      account,
+      competition: account.competition,
+      teamName: account.account.teamName,
+      accountId: account.account.id,
+      competitionCode: account.competition.code,
+      expiresAt
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getInvestmentAccountView(accountId: string) {
   if (!supabaseConfigured()) return null;
   return buildInvestmentAccountView(accountId);
@@ -2944,6 +3141,44 @@ export async function resolveInvestmentCompetition(codeOrSlug?: string | null): 
   }
 
   return ensureDefaultCompetition(code);
+}
+
+export async function resolveExistingInvestmentCompetition(codeOrSlug?: string | null): Promise<InvestmentCompetitionView | null> {
+  if (!supabaseConfigured()) return null;
+  const rawCode = codeOrSlug?.trim();
+  if (!rawCode) return null;
+  const code = displayCompetitionCode(rawCode);
+  const slug = competitionCodeToSlug(code);
+
+  if (slug === TEENVESTOR_SLUG) {
+    await ensureDefaultCompetition(TEENVESTOR_CODE);
+  } else {
+    await ensureInvestmentSeedData(false);
+  }
+
+  try {
+    const bySlug = await selectRows("investment_competitions", {
+      select: "*",
+      slug: `eq.${slug}`,
+      limit: "1"
+    });
+    if (Array.isArray(bySlug) && bySlug[0]) return mapCompetitionRow(bySlug[0]);
+  } catch {
+    // Try exact code lookup below.
+  }
+
+  try {
+    const byCode = await selectRows("investment_competitions", {
+      select: "*",
+      code: `eq.${code}`,
+      limit: "1"
+    });
+    if (Array.isArray(byCode) && byCode[0]) return mapCompetitionRow(byCode[0]);
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 async function ensureDefaultCompetition(codeInput = DEFAULT_INVESTMENT_COMPETITION_SLUG) {

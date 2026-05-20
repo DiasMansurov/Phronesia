@@ -22,6 +22,9 @@ export async function POST(request: Request) {
   if (!body.accountId || !body.symbol || !body.side || typeof body.quantity !== "number") {
     return NextResponse.json({ error: "accountId, symbol, side, and quantity are required." }, { status: 400 });
   }
+  if (access.access.allowed && body.accountId !== access.access.accountId) {
+    return NextResponse.json({ error: "You can only trade from the current team portfolio." }, { status: 403 });
+  }
 
   try {
     const result = await executeInvestmentTrade({

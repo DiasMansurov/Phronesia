@@ -24,17 +24,17 @@ export default async function InvestmentChallengeAppPage() {
         <div className="hero-band compact">
           <div className="stack-sm">
             <p className="eyebrow">Protected student area</p>
-            <h1 className="display compact">Enter a competition code before opening the simulation.</h1>
+            <h1 className="display compact">Enter your team access before opening the simulation.</h1>
             <p className="lede compact-lede">
-              Market prices, portfolios, trade tickets, and live rankings are available only after sign-in or a valid
-              student competition code.
+              Market prices, portfolios, trade tickets, and live rankings are available only after a valid competition
+              code, team name, and team password.
             </p>
             <div className="cta-row">
-              <Link className="button primary" href="/investment-challenge#join-investment-challenge">
-                Enter competition code
+              <Link className="button primary" href="/investment-challenge/join">
+                Join Competition
               </Link>
-              <Link className="button secondary" href="/sign-in">
-                Sign in
+              <Link className="button secondary" href="/investment-challenge">
+                Overview
               </Link>
             </div>
           </div>
@@ -45,7 +45,11 @@ export default async function InvestmentChallengeAppPage() {
 
   return (
     <section className="shell section stack-xl">
-      <InvestmentChallengeDashboard initialCompetitionCode={access.competitionCode ?? access.competition?.code ?? ""} />
+      <InvestmentChallengeDashboard
+        initialCompetitionCode={access.competitionCode}
+        initialAccountId={access.accountId}
+        initialAccount={access.account}
+      />
       <section className="panel investment-disclaimer stack-sm">
         <p className="eyebrow">Important disclaimer</p>
         <h2>Educational simulation only.</h2>
