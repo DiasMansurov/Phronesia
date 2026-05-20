@@ -111,6 +111,9 @@ export default async function InvestmentCompetitionLeaderboardPage({ params }: P
               <tr>
                 <th>Rank</th>
                 <th>Team</th>
+                <th>Starting cash</th>
+                <th>Current cash</th>
+                <th>Holdings value</th>
                 <th>Final/Current value</th>
                 <th>Profit/Loss</th>
                 <th>Return</th>
@@ -125,6 +128,9 @@ export default async function InvestmentCompetitionLeaderboardPage({ params }: P
                   <tr key={row.accountId}>
                     <td>#{row.rank}</td>
                     <td>{row.teamName}</td>
+                    <td>{formatUsd(row.startingCash)}</td>
+                    <td>{formatUsd(row.cashBalance)}</td>
+                    <td>{formatUsd(row.holdingsValue)}</td>
                     <td>{formatUsd(row.totalValue)}</td>
                     <td className={row.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(row.profitLoss)}</td>
                     <td className={row.totalReturn >= 0 ? "positive-text" : "negative-text"}>{formatPercent(row.totalReturn)}</td>
@@ -135,7 +141,7 @@ export default async function InvestmentCompetitionLeaderboardPage({ params }: P
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8}>No teams are ranked in this competition yet.</td>
+                  <td colSpan={11}>No teams are ranked in this competition yet.</td>
                 </tr>
               )}
             </tbody>

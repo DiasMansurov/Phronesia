@@ -898,12 +898,20 @@ export function InvestmentChallengeDashboard({
               {recentTrades.length ? (
                 recentTrades.map((trade) => (
                   <article className="activity-row" key={trade.id}>
-                    <span>{trade.side.toUpperCase()} {trade.quantity} {trade.symbol}</span>
-                    <strong>{trade.price ? formatUsd(trade.price) : "Rejected"}</strong>
+                    <span>
+                      {formatTradeTimestamp(trade.executedAt ?? trade.createdAt)} · {trade.side.toUpperCase()} {trade.symbol}
+                    </span>
+                    <strong>
+                      {trade.rejected
+                        ? "Rejected"
+                        : `${trade.quantity} ${trade.quantity === 1 ? "share" : "shares"} · ${formatUsd(trade.price)}`}
+                    </strong>
                     <small>
                       {trade.rejected
                         ? trade.rejectReason ?? "Rejected"
-                        : `${trade.executedAt?.slice(0, 16) ?? trade.createdAt.slice(0, 16)} · commission ${formatUsd(trade.feeAmount)}`}
+                        : `${trade.assetName} · Trade ${formatUsd(trade.grossValue)} · Fee ${formatUsd(trade.feeAmount)} · ${
+                            trade.side === "buy" ? "Total" : "Net"
+                          } ${formatUsd(trade.netValue)}`}
                     </small>
                   </article>
                 ))
@@ -995,6 +1003,18 @@ function formatDateTime(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short"
+  }).format(date);
+}
+
+function formatTradeTimestamp(value: string | null) {
+  if (!value) return "Just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Just now";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
   }).format(date);
 }
 

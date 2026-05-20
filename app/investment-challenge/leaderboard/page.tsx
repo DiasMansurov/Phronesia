@@ -82,6 +82,8 @@ export default async function InvestmentChallengeLeaderboardPage() {
                 <th>Rank</th>
                 <th>Team</th>
                 <th>Starting cash</th>
+                <th>Current cash</th>
+                <th>Holdings value</th>
                 <th>Total value</th>
                 <th>Profit/Loss</th>
                 <th>Total return</th>
@@ -99,6 +101,8 @@ export default async function InvestmentChallengeLeaderboardPage() {
                     <td>#{row.rank}</td>
                     <td>{row.teamName}</td>
                     <td>{formatUsd(row.startingCash)}</td>
+                    <td>{formatUsd(row.cashBalance)}</td>
+                    <td>{formatUsd(row.holdingsValue)}</td>
                     <td>{formatUsd(row.totalValue)}</td>
                     <td className={row.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(row.profitLoss)}</td>
                     <td className={row.totalReturn >= 0 ? "positive-text" : "negative-text"}>{formatPercent(row.totalReturn)}</td>
@@ -111,7 +115,7 @@ export default async function InvestmentChallengeLeaderboardPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={10}>No teams have submitted investment portfolios yet.</td>
+                  <td colSpan={13}>No teams have submitted investment portfolios yet.</td>
                 </tr>
               )}
             </tbody>

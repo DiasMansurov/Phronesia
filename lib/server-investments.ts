@@ -89,10 +89,13 @@ export type InvestmentThesisView = {
 export type InvestmentLeaderboardRow = {
   rank: number;
   accountId: string;
+  teamId: string;
   competitionId: string;
   competitionCode?: string;
   teamName: string;
   startingCash: number;
+  cashBalance: number;
+  holdingsValue: number;
   totalValue: number;
   profitLoss: number;
   totalReturn: number;
@@ -112,6 +115,7 @@ export type InvestmentTradeView = {
   createdAt: string;
   executedAt: string | null;
   symbol: string;
+  assetName: string;
   side: string;
   quantity: number;
   price: number;
@@ -2152,10 +2156,13 @@ export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string
       scored.push({
         rank: 0,
         accountId: view.account.id,
+        teamId: view.account.id,
         competitionId: competition.id,
         competitionCode: competition.code,
         teamName: view.account.teamName,
         startingCash: view.portfolio.startingCash,
+        cashBalance: view.portfolio.cash,
+        holdingsValue: view.portfolio.holdingsValue,
         totalValue: view.portfolio.totalValue,
         profitLoss,
         totalReturn: view.portfolio.totalReturn,
@@ -2199,10 +2206,13 @@ async function listLockedCompetitionResultRows(competition: InvestmentCompetitio
     return rows.map((row) => ({
       rank: rowNumber(row, "final_rank"),
       accountId: rowString(row, "account_id"),
+      teamId: rowString(row, "account_id"),
       competitionId: competition.id,
       competitionCode: competition.code,
       teamName: rowString(row, "team_name"),
       startingCash: rowNumber(row, "starting_cash"),
+      cashBalance: 0,
+      holdingsValue: 0,
       totalValue: rowNumber(row, "final_value"),
       profitLoss: rowNumber(row, "profit_loss"),
       totalReturn: rowNumber(row, "total_return"),
@@ -2225,12 +2235,18 @@ async function upsertLeaderboardRow(row: InvestmentLeaderboardRow) {
   const payload = {
     competition_id: row.competitionId,
     account_id: row.accountId,
+    team_id: row.teamId,
     team_name: row.teamName,
     starting_cash: row.startingCash,
+    cash_balance: row.cashBalance,
+    holdings_value: row.holdingsValue,
     total_value: row.totalValue,
+    total_portfolio_value: row.totalValue,
     profit_loss: row.profitLoss,
     total_return: row.totalReturn,
+    return_percent: row.totalReturn,
     trade_count: row.tradeCount,
+    trades_count: row.tradeCount,
     risk_adjusted_score: row.riskAdjustedScore,
     diversification_score: row.diversificationScore,
     risk_score: row.riskScore,
@@ -2239,14 +2255,22 @@ async function upsertLeaderboardRow(row: InvestmentLeaderboardRow) {
     overall_score: row.overallScore,
     status: row.status,
     rank_position: row.rank,
+    rank: row.rank,
     updated_at: row.updatedAt
   };
   try {
     return await upsertRow("investment_leaderboard", payload, "competition_id,account_id");
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!/starting_cash|profit_loss|trade_count|risk_score|status|schema cache|column/i.test(message)) throw error;
+    if (!/team_id|cash_balance|holdings_value|total_portfolio_value|return_percent|trades_count|rank|starting_cash|profit_loss|trade_count|risk_score|status|schema cache|column/i.test(message)) throw error;
     const legacyPayload: Payload = { ...payload };
+    delete legacyPayload.team_id;
+    delete legacyPayload.cash_balance;
+    delete legacyPayload.holdings_value;
+    delete legacyPayload.total_portfolio_value;
+    delete legacyPayload.return_percent;
+    delete legacyPayload.trades_count;
+    delete legacyPayload.rank;
     delete legacyPayload.starting_cash;
     delete legacyPayload.profit_loss;
     delete legacyPayload.trade_count;
@@ -2547,8 +2571,8 @@ export async function executeInvestmentTrade(input: {
     const previousAvg = holding ? rowNumber(holding, "average_buy_price") : 0;
     const newQuantity = currentQuantity + quantity;
     const newAverage = newQuantity > 0 ? (previousAvg * currentQuantity + totalCost) / newQuantity : 0;
-    await saveTrade(account, asset.symbol, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource, latest.fetchedAt);
-    await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newAverage, holding ? rowNumber(holding, "realized_gain_loss") : 0);
+    await saveTrade(account, asset.symbol, asset.name, "buy", quantity, price, gross, fee, totalCost, latest.priceDate, latest.priceSource, latest.fetchedAt);
+    await upsertHolding(account, asset.symbol, asset.name, newQuantity, newAverage, holding ? rowNumber(holding, "realized_gain_loss") : 0);
     await updateInvestmentAccountCash(rowString(account, "id"), cash - totalCost);
   } else {
     if (currentQuantity < quantity) {
@@ -2560,8 +2584,8 @@ export async function executeInvestmentTrade(input: {
     const previousRealized = holding ? rowNumber(holding, "realized_gain_loss") : 0;
     const realized = previousRealized + (price - avg) * quantity - fee;
     const newQuantity = currentQuantity - quantity;
-    await saveTrade(account, asset.symbol, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource, latest.fetchedAt);
-    await upsertHolding(rowString(account, "id"), asset.symbol, newQuantity, newQuantity > 0 ? avg : 0, realized);
+    await saveTrade(account, asset.symbol, asset.name, "sell", quantity, price, gross, fee, proceeds, latest.priceDate, latest.priceSource, latest.fetchedAt);
+    await upsertHolding(account, asset.symbol, asset.name, newQuantity, newQuantity > 0 ? avg : 0, realized);
     await updateInvestmentAccountCash(rowString(account, "id"), cash + proceeds);
   }
 
@@ -2702,10 +2726,13 @@ export async function listInvestmentFinalResults(competitionCodeOrSlug?: string 
     rows: resultRows.map((row) => ({
       rank: rowNumber(row, "final_rank"),
       accountId: rowString(row, "account_id"),
+      teamId: rowString(row, "account_id"),
       competitionId: rowString(row, "competition_id"),
       competitionCode: competition.code,
       teamName: rowString(row, "team_name"),
       startingCash: rowNumber(row, "starting_cash"),
+      cashBalance: 0,
+      holdingsValue: 0,
       totalValue: rowNumber(row, "final_value"),
       profitLoss: rowNumber(row, "profit_loss"),
       totalReturn: rowNumber(row, "total_return"),
@@ -3298,7 +3325,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     select: "*",
     account_id: `eq.${accountId}`,
     order: "created_at.desc",
-    limit: "8"
+    limit: "20"
   });
 
   const quoteList = quotes ?? assets.map((asset) => ({
@@ -3322,13 +3349,14 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
         .map((row) => {
           const symbol = rowString(row, "symbol");
           const asset = quoteList.find((quote) => quote.symbol === symbol) ?? getInvestmentAsset(symbol);
+          const assetName = rowNullableString(row, "asset_name") ?? asset?.name ?? symbol;
           const latestClose = priceMap.get(symbol) ?? asset?.referencePrice ?? 0;
           const quantity = rowNumber(row, "quantity");
           const averageBuyPrice = rowNumber(row, "average_buy_price");
           const marketValue = quantity * latestClose;
           return {
             symbol,
-            assetName: asset?.name ?? symbol,
+            assetName,
             assetType: asset?.type ?? "Stock",
             quantity,
             averageBuyPrice,
@@ -3413,6 +3441,7 @@ function mapTradeRow(row: Payload): InvestmentTradeView {
     createdAt: rowString(row, "created_at"),
     executedAt: rowNullableString(row, "executed_at"),
     symbol: rowString(row, "symbol"),
+    assetName: rowNullableString(row, "asset_name") ?? rowString(row, "symbol"),
     side: rowString(row, "side"),
     quantity: rowNumber(row, "quantity"),
     price: rowNumber(row, "price"),
@@ -3435,25 +3464,43 @@ function scoreThesis(input: { thesis: string; risks: string; diversificationLogi
   return clampScore(completeness + depth);
 }
 
-async function upsertHolding(accountId: string, symbol: string, quantity: number, averageBuyPrice: number, realizedGainLoss: number) {
+async function upsertHolding(
+  account: Payload,
+  symbol: string,
+  assetName: string,
+  quantity: number,
+  averageBuyPrice: number,
+  realizedGainLoss: number
+) {
   if (quantity > 0) await recordInvestmentAssetEvent(symbol, "hold");
-  return upsertRow(
-    "investment_holdings",
-    {
-      account_id: accountId,
-      symbol,
-      quantity,
-      average_buy_price: averageBuyPrice,
-      realized_gain_loss: realizedGainLoss,
-      updated_at: new Date().toISOString()
-    },
-    "account_id,symbol"
-  );
+  const payload = {
+    account_id: rowString(account, "id"),
+    team_id: rowString(account, "id"),
+    competition_id: rowString(account, "competition_id"),
+    symbol,
+    asset_name: assetName,
+    quantity,
+    average_buy_price: averageBuyPrice,
+    realized_gain_loss: realizedGainLoss,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    return await upsertRow("investment_holdings", payload, "account_id,symbol");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/team_id|competition_id|asset_name|schema cache|column/i.test(message)) throw error;
+    const legacyPayload: Payload = { ...payload };
+    delete legacyPayload.team_id;
+    delete legacyPayload.competition_id;
+    delete legacyPayload.asset_name;
+    return upsertRow("investment_holdings", legacyPayload, "account_id,symbol");
+  }
 }
 
 async function saveTrade(
   account: Payload,
   symbol: string,
+  assetName: string,
   side: TradeSide,
   quantity: number,
   price: number,
@@ -3467,8 +3514,10 @@ async function saveTrade(
   const executedAt = new Date().toISOString();
   return insertInvestmentTrade({
     account_id: rowString(account, "id"),
+    team_id: rowString(account, "id"),
     competition_id: rowString(account, "competition_id"),
     symbol,
+    asset_name: assetName,
     side,
     quantity,
     price,
@@ -3494,8 +3543,10 @@ async function rejectTrade(account: Payload, symbol: string, side: string, quant
     const executedAt = new Date().toISOString();
     await insertInvestmentTrade({
       account_id: rowString(account, "id"),
+      team_id: rowString(account, "id"),
       competition_id: rowString(account, "competition_id"),
       symbol: symbol || "UNKNOWN",
+      asset_name: null,
       side: side === "sell" ? "sell" : "buy",
       quantity: Number.isFinite(quantity) ? quantity : 0,
       price: null,
@@ -3523,10 +3574,12 @@ async function insertInvestmentTrade(payload: Payload) {
     return await insertRow("investment_trades", payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!/gross_value|fee_rate|net_value|price_date|price_source|price_timestamp|executed_at|schema cache|column/i.test(message)) {
+    if (!/team_id|asset_name|gross_value|fee_rate|net_value|price_date|price_source|price_timestamp|executed_at|schema cache|column/i.test(message)) {
       throw error;
     }
     const legacyPayload = { ...payload };
+    delete legacyPayload.team_id;
+    delete legacyPayload.asset_name;
     delete legacyPayload.gross_value;
     delete legacyPayload.fee_rate;
     delete legacyPayload.net_value;
@@ -3611,18 +3664,21 @@ function calculateMaxDrawdown(snapshots: Payload[], currentValue: number) {
 
 function mapLeaderboardRow(row: Payload, competition?: InvestmentCompetitionView): InvestmentLeaderboardRow {
   const startingCash = rowNumber(row, "starting_cash", INVESTMENT_STARTING_CASH);
-  const totalValue = rowNumber(row, "total_value");
+  const totalValue = rowNumber(row, "total_portfolio_value", rowNumber(row, "total_value"));
   return {
-    rank: rowNumber(row, "rank_position"),
+    rank: rowNumber(row, "rank", rowNumber(row, "rank_position")),
     accountId: rowString(row, "account_id"),
+    teamId: rowString(row, "team_id") || rowString(row, "account_id"),
     competitionId: rowString(row, "competition_id"),
     competitionCode: competition?.code,
     teamName: rowString(row, "team_name"),
     startingCash,
+    cashBalance: rowNumber(row, "cash_balance"),
+    holdingsValue: rowNumber(row, "holdings_value"),
     totalValue,
     profitLoss: rowNumber(row, "profit_loss", totalValue - startingCash),
-    totalReturn: rowNumber(row, "total_return"),
-    tradeCount: rowNumber(row, "trade_count"),
+    totalReturn: rowNumber(row, "return_percent", rowNumber(row, "total_return")),
+    tradeCount: rowNumber(row, "trades_count", rowNumber(row, "trade_count")),
     riskAdjustedScore: rowNumber(row, "risk_adjusted_score"),
     diversificationScore: rowNumber(row, "diversification_score"),
     riskScore: rowNumber(row, "risk_score"),
