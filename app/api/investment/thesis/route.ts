@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 
+import { requireInvestmentStudentAccess } from "@/lib/investment-access";
 import { saveInvestmentThesis } from "@/lib/server-investments";
 
 export async function POST(request: Request) {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   const body = (await request.json().catch(() => ({}))) as {
     accountId?: string;
     thesis?: string;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
+import { getInvestmentAccess } from "@/lib/investment-access";
 import { listInvestmentLeaderboard } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
@@ -17,12 +18,21 @@ export const metadata: Metadata = {
     url: "https://phronesia.org/investment-challenge/leaderboard",
     siteName: "Phronesia",
     type: "website"
+  },
+  robots: {
+    index: false,
+    follow: false
   }
 };
 
 export const dynamic = "force-dynamic";
 
 export default async function InvestmentChallengeLeaderboardPage() {
+  const access = await getInvestmentAccess();
+  if (!access.allowed) {
+    return <ProtectedLeaderboardGate title="Investment leaderboard" />;
+  }
+
   const leaderboard = await listInvestmentLeaderboard();
 
   return (
@@ -37,7 +47,10 @@ export default async function InvestmentChallengeLeaderboardPage() {
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/investment-challenge">
-              Open Challenge
+              Competition Access
+            </Link>
+            <Link className="button primary" href="/investment-challenge/app">
+              Open Student Area
             </Link>
             <Link className="button secondary" href="/investment-challenge/rules">
               Read Rules
@@ -105,6 +118,31 @@ export default async function InvestmentChallengeLeaderboardPage() {
           </table>
         </div>
       </section>
+    </section>
+  );
+}
+
+function ProtectedLeaderboardGate({ title }: { title: string }) {
+  return (
+    <section className="shell section stack-xl">
+      <div className="hero-band compact">
+        <div className="stack-sm">
+          <p className="eyebrow">Protected student area</p>
+          <h1 className="display compact">{title} is available after competition access.</h1>
+          <p className="lede compact-lede">
+            Portfolio values and rankings use market data, so they are shown only inside the password-protected student
+            competition area.
+          </p>
+          <div className="cta-row">
+            <Link className="button primary" href="/investment-challenge#join-investment-challenge">
+              Enter competition code
+            </Link>
+            <Link className="button secondary" href="/sign-in">
+              Sign in
+            </Link>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

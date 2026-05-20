@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireInvestmentStudentAccess } from "@/lib/investment-access";
 import {
   createOrGetInvestmentAccount,
   getInvestmentAccountView
@@ -7,6 +8,9 @@ import {
 import { supabaseConfigured } from "@/lib/supabase-rest";
 
 export async function GET(request: Request) {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   const { searchParams } = new URL(request.url);
   const accountId = searchParams.get("accountId")?.trim();
   if (!accountId) {
@@ -26,6 +30,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   const body = (await request.json().catch(() => ({}))) as {
     teamName?: string;
     participantLogin?: string;

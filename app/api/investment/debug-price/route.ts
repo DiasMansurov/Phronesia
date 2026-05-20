@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireResultsOrganizer } from "@/lib/server-results-auth";
 import { debugMarketDataAppPrice } from "@/lib/server-investments";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,9 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const organizer = await requireResultsOrganizer();
+  if (organizer.errorResponse) return organizer.errorResponse;
+
   const { searchParams } = new URL(request.url);
   const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase();
 

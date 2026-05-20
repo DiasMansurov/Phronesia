@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
+import { getInvestmentAccess } from "@/lib/investment-access";
 import { listInvestmentFinalResults } from "@/lib/server-investments";
 
 type PageProps = {
@@ -15,12 +16,42 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     description: "Final virtual portfolio competition results with rankings, portfolio values, returns, and trade counts.",
     alternates: {
       canonical: `https://phronesia.org/investment-challenge/results/${competitionCode}`
+    },
+    robots: {
+      index: false,
+      follow: false
     }
   };
 }
 
 export default async function InvestmentCompetitionResultsPage({ params }: PageProps) {
   const { competitionCode } = await params;
+  const access = await getInvestmentAccess();
+  if (!access.allowed) {
+    return (
+      <section className="shell section stack-xl">
+        <div className="hero-band compact">
+          <div className="stack-sm">
+            <p className="eyebrow">Protected student area</p>
+            <h1 className="display compact">Competition results are protected.</h1>
+            <p className="lede compact-lede">
+              Final rankings use portfolio values and market data, so they are shown only after sign-in or valid
+              competition code access.
+            </p>
+            <div className="cta-row">
+              <Link className="button primary" href="/investment-challenge#join-investment-challenge">
+                Enter competition code
+              </Link>
+              <Link className="button secondary" href="/sign-in">
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const results = await listInvestmentFinalResults(decodeURIComponent(competitionCode));
   const winner = results.rows[0];
 
@@ -40,7 +71,10 @@ export default async function InvestmentCompetitionResultsPage({ params }: PageP
               Open Leaderboard
             </Link>
             <Link className="button secondary" href="/investment-challenge">
-              Back to Challenge
+              Competition Access
+            </Link>
+            <Link className="button secondary" href="/investment-challenge/app">
+              Student Area
             </Link>
           </div>
         </div>

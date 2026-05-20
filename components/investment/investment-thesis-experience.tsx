@@ -118,7 +118,7 @@ export function InvestmentThesisExperience() {
           <p className="muted">
             This page saves the thesis to the portfolio stored on this device. No recent trade context is available yet.
           </p>
-          <Link className="button primary" href="/investment-challenge">
+          <Link className="button primary" href="/investment-challenge/app">
             Back to Investment Challenge
           </Link>
         </section>
@@ -130,7 +130,7 @@ export function InvestmentThesisExperience() {
                 <p className="eyebrow">Trade summary</p>
                 <h2>{tradeContext ? "Asset just bought" : "No recent buy trade found"}</h2>
               </div>
-              <Link className="button secondary" href="/investment-challenge#team-portfolio">
+              <Link className="button secondary" href="/investment-challenge/app#team-portfolio">
                 Return to portfolio
               </Link>
             </div>
@@ -148,7 +148,7 @@ export function InvestmentThesisExperience() {
             ) : (
               <div className="thesis-empty-context-note">
                 <p>No recent buy trade context exists in this browser session.</p>
-                <Link className="button secondary" href="/investment-challenge">
+                <Link className="button secondary" href="/investment-challenge/app">
                   Back to Investment Challenge
                 </Link>
               </div>
@@ -210,7 +210,7 @@ export function InvestmentThesisExperience() {
                   <button className="button primary thesis-save-button" type="submit" disabled={!account || busy || loading}>
                     {busy ? "Saving..." : "Save Thesis"}
                   </button>
-                  <Link className="button secondary" href="/investment-challenge#team-portfolio">
+                  <Link className="button secondary" href="/investment-challenge/app#team-portfolio">
                     Return to portfolio
                   </Link>
                 </div>

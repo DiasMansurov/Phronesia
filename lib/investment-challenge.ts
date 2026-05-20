@@ -94,7 +94,12 @@ export const INVESTMENT_ASSETS: InvestmentAsset[] = [
   { symbol: "V", name: "Visa Inc.", type: "Stock", theme: "Payments", referencePrice: 280, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
   { symbol: "MA", name: "Mastercard Incorporated", type: "Stock", theme: "Payments", referencePrice: 455, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
   { symbol: "PEP", name: "PepsiCo Inc.", type: "Stock", theme: "Consumer staples", referencePrice: 175, region: "United States", currency: "USD", exchange: "NASDAQ", featured: true },
-  { symbol: "MCD", name: "McDonald's Corporation", type: "Stock", theme: "Restaurants", referencePrice: 290, region: "United States", currency: "USD", exchange: "NYSE", featured: true }
+  { symbol: "MCD", name: "McDonald's Corporation", type: "Stock", theme: "Restaurants", referencePrice: 290, region: "United States", currency: "USD", exchange: "NYSE", featured: true },
+  { symbol: "ORCL", name: "Oracle Corporation", type: "Stock", theme: "Enterprise software", referencePrice: 140, region: "United States", currency: "USD", exchange: "NYSE", featured: false },
+  { symbol: "CRM", name: "Salesforce Inc.", type: "Stock", theme: "Cloud software", referencePrice: 260, region: "United States", currency: "USD", exchange: "NYSE", featured: false },
+  { symbol: "INTC", name: "Intel Corporation", type: "Stock", theme: "Semiconductors", referencePrice: 35, region: "United States", currency: "USD", exchange: "NASDAQ", featured: false },
+  { symbol: "BA", name: "The Boeing Company", type: "Stock", theme: "Aerospace", referencePrice: 180, region: "United States", currency: "USD", exchange: "NYSE", featured: false },
+  { symbol: "GE", name: "GE Aerospace", type: "Stock", theme: "Industrials", referencePrice: 160, region: "United States", currency: "USD", exchange: "NYSE", featured: false }
 ];
 
 export const INVESTMENT_EDUCATIONAL_CARDS: InvestmentEducationalCard[] = [

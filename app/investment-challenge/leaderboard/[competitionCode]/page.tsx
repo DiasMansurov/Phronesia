@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
+import { getInvestmentAccess } from "@/lib/investment-access";
 import { listInvestmentLeaderboard } from "@/lib/server-investments";
 
 type PageProps = {
@@ -16,12 +17,42 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     description: "Competition-specific virtual portfolio leaderboard for Phronesia Investment Challenge.",
     alternates: {
       canonical: `https://phronesia.org/investment-challenge/leaderboard/${competitionCode}`
+    },
+    robots: {
+      index: false,
+      follow: false
     }
   };
 }
 
 export default async function InvestmentCompetitionLeaderboardPage({ params }: PageProps) {
   const { competitionCode } = await params;
+  const access = await getInvestmentAccess();
+  if (!access.allowed) {
+    return (
+      <section className="shell section stack-xl">
+        <div className="hero-band compact">
+          <div className="stack-sm">
+            <p className="eyebrow">Protected student area</p>
+            <h1 className="display compact">Competition leaderboard is protected.</h1>
+            <p className="lede compact-lede">
+              Rankings use portfolio values and market data, so they are shown only after sign-in or valid competition
+              code access.
+            </p>
+            <div className="cta-row">
+              <Link className="button primary" href="/investment-challenge#join-investment-challenge">
+                Enter competition code
+              </Link>
+              <Link className="button secondary" href="/sign-in">
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const leaderboard = await listInvestmentLeaderboard(decodeURIComponent(competitionCode));
 
   return (
@@ -37,7 +68,10 @@ export default async function InvestmentCompetitionLeaderboardPage({ params }: P
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/investment-challenge">
-              Open Challenge
+              Competition Access
+            </Link>
+            <Link className="button primary" href="/investment-challenge/app">
+              Open Student Area
             </Link>
             <Link className="button secondary" href={`/investment-challenge/results/${competitionCode}`}>
               Final Results

@@ -1553,14 +1553,19 @@ async function resolveLatestClosePrice(
   calledMarketDataApp = true;
   marketDataAppStatus = marketData.ok ? "ok" : providerStatus(marketData);
   if (marketData.ok) {
-    await savePriceToCache(normalized, marketData.closePrice, marketData.priceDate, asset, marketData);
+    let cacheSaveError: string | null = null;
+    try {
+      await savePriceToCache(normalized, marketData.closePrice, marketData.priceDate, asset, marketData);
+    } catch (error) {
+      cacheSaveError = errorMessage(error);
+    }
     const quote = {
       latestClose: marketData.closePrice,
       priceDate: marketData.priceDate,
       provider: marketData.provider,
       priceAvailable: true,
       priceSource: "marketdata_app" as const,
-      priceMessage: marketData.message,
+      priceMessage: cacheSaveError ? `${marketData.message} Cache save failed, but the live price is shown for this session.` : marketData.message,
       fetchedAt: new Date().toISOString(),
       currency: asset?.currency ?? "USD",
       cacheStatus: "fresh" as const
@@ -1591,7 +1596,7 @@ async function resolveLatestClosePrice(
         tradingDay: marketData.priceDate,
         source: "marketdata_app" as const,
         responseTextPreview: marketData.responseTextPreview ?? null,
-        error: null
+        error: cacheSaveError
       } satisfies InvestmentPriceDebugResult
     };
   }

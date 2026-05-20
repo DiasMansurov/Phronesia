@@ -36,14 +36,14 @@ export default function InvestmentChallengeRulesPage() {
           <h1 className="display compact">Learn investing without real-money risk.</h1>
           <p className="lede compact-lede">
             Every team starts with $100,000 in virtual cash. Simulated orders are server validated, use cached stock
-            prices from the approved MarketData.app stock price endpoint, and are enabled only during regular US market hours.
+            prices only inside the protected student area, and are enabled only during regular US market hours.
           </p>
           <div className="cta-row">
             <Link className="button primary" href="/investment-challenge">
-              Start Challenge
+              Enter Competition Code
             </Link>
-            <Link className="button secondary" href="/investment-challenge/leaderboard">
-              View Leaderboard
+            <Link className="button secondary" href="/investment-challenge/app">
+              Student Area
             </Link>
             <Link className="button secondary" href="/investment-challenge/options">
               Learn Options
@@ -54,7 +54,7 @@ export default function InvestmentChallengeRulesPage() {
           <p className="eyebrow">Core rule</p>
           <p>
             Phronesia is free. This is an educational simulation only. No real money is used, this is not financial
-            advice, no brokerage execution happens, and market data is not resold as a standalone product.
+            advice, no brokerage execution happens, and market data is used only inside the student competition area.
           </p>
         </div>
       </div>
@@ -77,6 +77,10 @@ export default function InvestmentChallengeRulesPage() {
         <article className="panel stack-md">
           <p className="eyebrow">Allowed universe</p>
           <h2>US stocks and ETFs.</h2>
+          <p className="muted">
+            Featured tickers are shortcuts. Inside the protected student area, teams can search additional valid
+            US-listed stocks and ETFs supported by the market data provider.
+          </p>
           <div className="asset-symbol-cloud">
             {INVESTMENT_ASSETS.map((asset) => (
               <span className="pill" key={asset.symbol}>

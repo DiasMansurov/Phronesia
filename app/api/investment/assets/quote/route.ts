@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireInvestmentStudentAccess } from "@/lib/investment-access";
 import { getAssetQuote } from "@/lib/server-investments";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,9 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get("symbol") ?? "";
   if (!symbol.trim()) {

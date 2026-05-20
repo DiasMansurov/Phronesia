@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireInvestmentStudentAccess } from "@/lib/investment-access";
 import {
   listInvestmentAssetQuotes,
   recalculatePortfolios,
@@ -12,6 +13,9 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function POST() {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   try {
     const results = await refreshFeaturedAssetPrices();
     const portfolios = await recalculatePortfolios();

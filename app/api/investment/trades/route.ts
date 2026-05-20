@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireInvestmentStudentAccess } from "@/lib/investment-access";
 import { executeInvestmentTrade } from "@/lib/server-investments";
 import type { TradeSide } from "@/lib/investment-challenge";
 
@@ -8,6 +9,9 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const access = await requireInvestmentStudentAccess();
+  if (access.errorResponse) return access.errorResponse;
+
   const body = (await request.json().catch(() => ({}))) as {
     accountId?: string;
     symbol?: string;
