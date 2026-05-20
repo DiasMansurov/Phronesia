@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { Show } from "@clerk/nextjs";
 
 import { AuthControls } from "@/components/site/auth-controls";
 
@@ -11,15 +12,17 @@ const links = [
   { href: "/learn", label: "Learn" },
   { href: "/finance-lab", label: "Finance Lab" },
   { href: "/scenarios", label: "Scenarios" },
-  { href: "/investment-challenge", label: "Investment" },
   { href: "/articles", label: "Articles" },
   { href: "/rankings", label: "Rankings" },
   { href: "/progress", label: "Progress" },
   { href: "/olympiad", label: "Olympiad" }
 ];
 
+const investmentLink = { href: "/investment-challenge", label: "Investment" };
+
 export function SiteNav() {
   const pathname = usePathname();
+  const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
@@ -46,20 +49,30 @@ export function SiteNav() {
           <p className="nav-caption">Finance and economics education through simulation, markets, and decision feedback.</p>
           <nav className="nav-links" aria-label="Primary">
             {links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={[link.href === "/investment-challenge" ? "nav-cta" : "", isActive(link.href) ? "active" : ""]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                {link.label}
-              </Link>
+              <NavLink key={link.href} href={link.href} label={link.label} active={isActive(link.href)} />
             ))}
+            {hasClerk ? (
+              <Show when="signed-in">
+                <NavLink
+                  href={investmentLink.href}
+                  label={investmentLink.label}
+                  active={isActive(investmentLink.href)}
+                  cta
+                />
+              </Show>
+            ) : null}
           </nav>
         </div>
         <AuthControls />
       </div>
     </header>
+  );
+}
+
+function NavLink({ href, label, active, cta = false }: { href: string; label: string; active: boolean; cta?: boolean }) {
+  return (
+    <Link href={href} className={[cta ? "nav-cta" : "", active ? "active" : ""].filter(Boolean).join(" ")}>
+      {label}
+    </Link>
   );
 }
