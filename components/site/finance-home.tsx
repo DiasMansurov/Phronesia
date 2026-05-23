@@ -169,6 +169,7 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
   const nextScenario = useMemo(() => getNextScenario(userLevel, completedIds, SCENARIOS), [completedIds, userLevel]);
   const selectedLevel = getUserLevel(userLevel);
   const nextProfile = getScenarioLearningProfile(nextScenario);
+  const beginnerScenario = beginnerRecommendations[0] ?? nextScenario;
   const featuredArticle = featuredArticles[0];
 
   const dashboardCards = [
@@ -183,81 +184,83 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
 
   return (
     <section className="premium-home">
-      <div className="premium-orb orb-one" aria-hidden="true" />
-      <div className="premium-orb orb-two" aria-hidden="true" />
+      <div className="premium-hero-band">
+        <div className="premium-orb orb-one" aria-hidden="true" />
+        <div className="premium-orb orb-two" aria-hidden="true" />
 
-      <section className="premium-hero shell">
-        <div className="premium-hero-copy">
-          <p className="premium-eyebrow">Phronesia</p>
-          <h1>Learn finance by making decisions.</h1>
-          <p className="premium-lede">
-            Phronesia turns markets, policy, investing, and personal finance into interactive simulations where
-            students see the consequences of every choice.
-          </p>
-          <div className="premium-actions">
-            <Link className="button primary" href="/play/setup" prefetch={false}>
-              Start Learning
-            </Link>
-            <Link className="button secondary" href="/scenarios">
-              Explore Scenarios
-            </Link>
-          </div>
-          <p className="premium-disclaimer">
-            Educational simulation only. No real money is used. This is not financial advice.
-          </p>
-        </div>
-
-        <aside className="hero-dashboard" aria-label="Phronesia simulation dashboard preview">
-          <div className="dashboard-header">
-            <div>
-              <span>Simulation Preview</span>
-              <strong>{selectedLevel.label}</strong>
+        <section className="premium-hero shell">
+          <div className="premium-hero-copy">
+            <p className="premium-eyebrow">Phronesia</p>
+            <h1>Learn finance by making decisions.</h1>
+            <p className="premium-lede">
+              Phronesia turns markets, policy, investing, and personal finance into interactive simulations where
+              students see the consequences of every choice.
+            </p>
+            <div className="premium-actions">
+              <Link className="button primary" href="/play/setup" prefetch={false}>
+                Start Learning
+              </Link>
+              <Link className="button secondary" href="/scenarios">
+                Explore Scenarios
+              </Link>
             </div>
-            <div className="dashboard-status">Learning Mode</div>
+            <p className="premium-disclaimer">
+              Educational simulation only. No real money is used. This is not financial advice.
+            </p>
           </div>
 
-          <div className="dashboard-progress">
-            <div>
-              <span>Scenario</span>
-              <strong>Budget Balance</strong>
-            </div>
-            <div className="progress-ring" aria-hidden="true">
-              82%
-            </div>
-          </div>
-
-          <div className="dashboard-decision">
-            <span>Decision</span>
-            <strong>Balance the budget without hurting household demand.</strong>
-            <p>Recommended next: {nextScenario.title} · {nextProfile.difficulty}</p>
-          </div>
-
-          <div className="dashboard-card-grid">
-            {dashboardCards.map((card) => (
-              <div className="dashboard-metric-card" key={card.label}>
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-                <small>{card.detail}</small>
+          <aside className="hero-dashboard" aria-label="Phronesia simulation dashboard preview">
+            <div className="dashboard-header">
+              <div>
+                <span>Simulation Preview</span>
+                <strong>{selectedLevel.label}</strong>
               </div>
-            ))}
-          </div>
+              <div className="dashboard-status">Learning Mode</div>
+            </div>
 
-          <div className="dashboard-feedback">
-            <div className="mini-chart" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
+            <div className="dashboard-progress">
+              <div>
+                <span>Scenario</span>
+                <strong>Budget Balance</strong>
+              </div>
+              <div className="progress-ring" aria-hidden="true">
+                82%
+              </div>
             </div>
-            <div>
-              <span>Consequence</span>
-              <strong>Bond yields ease and market confidence improves.</strong>
-              <p>Household welfare risk stays visible, so the score rewards stability but warns about tradeoffs.</p>
+
+            <div className="dashboard-decision">
+              <span>Decision</span>
+              <strong>Balance the budget without hurting household demand.</strong>
+              <p>Recommended next: {nextScenario.title} · {nextProfile.difficulty}</p>
             </div>
-          </div>
-        </aside>
-      </section>
+
+            <div className="dashboard-card-grid">
+              {dashboardCards.map((card) => (
+                <div className="dashboard-metric-card" key={card.label}>
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <small>{card.detail}</small>
+                </div>
+              ))}
+            </div>
+
+            <div className="dashboard-feedback">
+              <div className="mini-chart" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div>
+                <span>Consequence</span>
+                <strong>Bond yields ease and market confidence improves.</strong>
+                <p>Household welfare risk stays visible, so the score rewards stability but warns about tradeoffs.</p>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
 
       <section className="premium-section shell benefit-strip">
         <div className="section-kicker">
@@ -368,36 +371,51 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
 
       <section className="premium-section shell recommended-section" id="recommended">
         <div className="section-kicker">
-          <p className="premium-eyebrow">Start here</p>
-          <h2>Try a focused preview, then open the full pages.</h2>
+          <div className="recommended-heading-copy">
+            <p className="premium-eyebrow">Start here</p>
+            <h2>Try a focused preview, then open the full pages.</h2>
+          </div>
           <Link className="button secondary" href="/scenarios">
             Browse All Scenarios
           </Link>
         </div>
 
         <div className="recommended-grid">
-          {beginnerRecommendations.map((scenario) => {
-            const profile = getScenarioLearningProfile(scenario);
-            return (
-              <article className="recommended-card" key={scenario.id}>
-                <div className="card-meta">
-                  <span>{profile.difficulty}</span>
-                  <span>{profile.estimatedMinutes} min</span>
-                  <span>{profile.concepts.slice(0, 2).join(", ")}</span>
-                </div>
-                <h3>{scenario.title}</h3>
-                <p>Start with a beginner simulation, make a decision, and use the feedback to understand the tradeoff.</p>
-                <div className="card-actions">
-                  <Link className="button primary" href={`/play/setup?scenario=${scenario.id}`} prefetch={false}>
-                    Start
-                  </Link>
-                  <Link className="text-link" href="/scenarios">
-                    View library
-                  </Link>
-                </div>
-              </article>
-            );
-          })}
+          <article className="recommended-card">
+            <div className="card-meta">
+              <span>Beginner</span>
+              <span>6-7 min</span>
+              <span>Budgeting &amp; saving</span>
+            </div>
+            <h3>Beginner Finance Simulation</h3>
+            <p>Start with a beginner simulation, make a decision, and use the feedback to understand the tradeoff.</p>
+            <div className="card-actions">
+              <Link className="button primary" href={`/play/setup?scenario=${beginnerScenario.id}`} prefetch={false}>
+                Start
+              </Link>
+              <Link className="text-link" href="/scenarios">
+                View library
+              </Link>
+            </div>
+          </article>
+
+          <article className="recommended-card">
+            <div className="card-meta">
+              <span>Olympiad</span>
+              <span>Challenge</span>
+              <span>Finance &amp; economics</span>
+            </div>
+            <h3>Olympiad Practice</h3>
+            <p>Choose an olympiad-style challenge and practice applying economic and financial reasoning under pressure.</p>
+            <div className="card-actions olympiad-card-actions">
+              <Link className="button primary" href="/olympiad">
+                Choose olympiad
+              </Link>
+              <Link className="text-link" href="/olympiad">
+                View olympiad page
+              </Link>
+            </div>
+          </article>
 
           {featuredArticle ? (
             <article className="recommended-card article-card">
@@ -408,7 +426,7 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
               <h3>{featuredArticle.title}</h3>
               <p>{featuredArticle.excerpt}</p>
               <div className="card-actions">
-                <Link className="button secondary" href={`/articles/${featuredArticle.slug}`}>
+                <Link className="button primary" href={`/articles/${featuredArticle.slug}`}>
                   Read article
                 </Link>
                 <Link className="text-link" href="/articles">

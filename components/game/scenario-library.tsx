@@ -40,94 +40,140 @@ export function ScenarioLibrary() {
     : scenarios.slice(0, 9);
 
   return (
-    <section className="scenario-library stack-lg">
-      <div className="hero-band compact market-page-hero">
-        <div className="stack-sm">
-          <p className="eyebrow">Scenario library</p>
-          <h1 className="display compact">Pick a finance challenge.</h1>
-          <p className="lede compact-lede">
-            Start with recommended cards or search by topic.
-          </p>
-          <Link className="button primary" href="/play/setup" prefetch={false}>
-            Get Recommendations
-          </Link>
-        </div>
-      </div>
-
-      <section className="scenario-filter-panel panel stack-md">
-        <div className="scenario-filter-bar">
-          <label>
-            <span>Search</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search bonds, savings, bank panic, currency..."
-            />
-          </label>
-          <label>
-            <span>Level</span>
-            <select value={level} onChange={(event) => setLevel(event.target.value)}>
-              <option value="All">All levels</option>
-              {FINANCE_PROGRESSION_LEVELS.map((item) => (
-                <option key={item.title} value={item.title}>{item.title}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Difficulty</span>
-            <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>
-              {difficultyOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Time</span>
-            <select value={time} onChange={(event) => setTime(event.target.value)}>
-              {timeOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <p className="muted small">
-          Showing {visibleScenarios.length} of {scenarios.length} scenarios.
-        </p>
-      </section>
-
-      <section className="scenario-grid">
-        {visibleScenarios.map(({ scenario, profile }) => (
-          <article key={scenario.id} className="scenario-card scenario-card-rich finance-scenario-card">
-            <div className="card-topline">
-              <span className="pill">{profile.difficulty}</span>
-              <span className="mini-status open">{profile.estimatedMinutes} min</span>
-            </div>
-            <h3>{scenario.title}</h3>
-            <p className="muted">{profile.concepts.slice(0, 3).join(" · ")}</p>
-            <div className="concept-row">
-              {profile.concepts.slice(0, 3).map((concept) => (
-                <span key={concept}>{concept}</span>
-              ))}
-            </div>
-            <div className="card-topline">
-              <small>{profile.track}</small>
-              <Link className="text-link" href={`/play/setup?scenario=${scenario.id}`} prefetch={false}>
-                Start
+    <section className="scenario-library">
+      <section className="scenario-library-hero-band">
+        <div className="shell scenario-library-hero">
+          <div className="scenario-library-hero-copy">
+            <p className="eyebrow">Scenario Library</p>
+            <h1 className="display compact">Find the right finance challenge.</h1>
+            <p className="lede compact-lede">
+              Search by topic, level, difficulty, or time and start with the scenario that fits your goal.
+            </p>
+            <div className="scenario-hero-actions">
+              <Link className="button primary" href="/play/setup" prefetch={false}>
+                Get Recommendations
               </Link>
+              {!showAll && !query && level === "All" && difficulty === "All" && time === "All" && scenarios.length > visibleScenarios.length ? (
+                <button className="button secondary" onClick={() => setShowAll(true)} type="button">
+                  Browse all scenarios
+                </button>
+              ) : null}
             </div>
-            <details className="compact-details">
-              <summary>Details</summary>
-              <p>{scenario.summary}</p>
-            </details>
-          </article>
-        ))}
+          </div>
+
+          <aside className="scenario-hero-card" aria-label="Scenario library overview">
+            <div>
+              <span>{SCENARIOS.length}</span>
+              <strong>Scenarios</strong>
+            </div>
+            <div>
+              <span>{FINANCE_PROGRESSION_LEVELS.length}</span>
+              <strong>Learning levels</strong>
+            </div>
+            <div>
+              <span>Beginner</span>
+              <strong>To advanced</strong>
+            </div>
+            <div>
+              <span>Finance</span>
+              <strong>Markets, policy, and risk</strong>
+            </div>
+          </aside>
+        </div>
       </section>
 
-      {!showAll && !query && level === "All" && difficulty === "All" && time === "All" && scenarios.length > visibleScenarios.length ? (
-        <button className="button secondary compact-show-more" onClick={() => setShowAll(true)} type="button">
-          Show all scenarios
-        </button>
-      ) : null}
+      <section className="scenario-catalog-band">
+        <div className="shell scenario-catalog-shell">
+          <section className="scenario-filter-panel scenario-search-panel">
+            <div className="scenario-filter-bar">
+              <label className="scenario-search-field">
+                <span>Search</span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search bonds, savings, bank panic, currency..."
+                />
+              </label>
+              <label>
+                <span>Level</span>
+                <select value={level} onChange={(event) => setLevel(event.target.value)}>
+                  <option value="All">All levels</option>
+                  {FINANCE_PROGRESSION_LEVELS.map((item) => (
+                    <option key={item.title} value={item.title}>{item.title}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Difficulty</span>
+                <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>
+                  {difficultyOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Time</span>
+                <select value={time} onChange={(event) => setTime(event.target.value)}>
+                  {timeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="scenario-filter-footer">
+              <p>
+                Showing {visibleScenarios.length} of {scenarios.length} scenarios.
+              </p>
+            </div>
+          </section>
+
+          <div className="scenario-catalog-header">
+            <div>
+              <p className="eyebrow">Catalog</p>
+              <h2>Finance challenges ready to launch.</h2>
+            </div>
+            <p>Showing {visibleScenarios.length} of {scenarios.length} scenarios.</p>
+          </div>
+
+          <section className="scenario-grid scenario-catalog-grid">
+            {visibleScenarios.map(({ scenario, profile }) => (
+              <article key={scenario.id} className="scenario-card scenario-card-rich finance-scenario-card scenario-catalog-card">
+                <div className="scenario-card-top">
+                  <span className="scenario-badge scenario-badge-primary">{profile.difficulty}</span>
+                  <span className="scenario-badge">{profile.estimatedMinutes} min</span>
+                </div>
+                <div className="scenario-card-body">
+                  <h3>{scenario.title}</h3>
+                  <p>{profile.concepts.slice(0, 3).join(" · ")}</p>
+                </div>
+                <div className="concept-row scenario-concept-row">
+                  {profile.concepts.slice(0, 3).map((concept) => (
+                    <span key={concept}>{concept}</span>
+                  ))}
+                </div>
+                <div className="scenario-card-level">
+                  <span>{profile.track}</span>
+                </div>
+                <div className="scenario-card-actions">
+                  <Link className="button primary" href={`/play/setup?scenario=${scenario.id}`} prefetch={false}>
+                    Start
+                  </Link>
+                  <details className="scenario-card-details">
+                    <summary>Details</summary>
+                    <p>{scenario.summary}</p>
+                  </details>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          {!showAll && !query && level === "All" && difficulty === "All" && time === "All" && scenarios.length > visibleScenarios.length ? (
+            <button className="button secondary compact-show-more scenario-show-more" onClick={() => setShowAll(true)} type="button">
+              Show all scenarios
+            </button>
+          ) : null}
+        </div>
+      </section>
     </section>
   );
 }

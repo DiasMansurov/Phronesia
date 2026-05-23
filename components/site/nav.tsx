@@ -34,10 +34,10 @@ export function SiteNav() {
       <div className="shell nav-shell">
         <Link href="/" className="brand-mark">
           <Image
-            src="/phronesia-logo.svg"
+            src="/phronesia-p-mark.svg"
             alt="Phronesia logo"
-            width={72}
-            height={72}
+            width={48}
+            height={48}
             className="brand-logo"
           />
           <span className="brand-copy">

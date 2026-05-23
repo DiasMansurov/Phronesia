@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Phronesia P mark</title>
+  <desc id="desc">A bold split-color P mark with an internal bar chart.</desc>
+  <defs>
+    <linearGradient id="pSplit" x1="24" x2="136" y1="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#050814"/>
+      <stop offset="0.52" stop-color="#07111f"/>
+      <stop offset="0.52" stop-color="#0b3f31"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#020617" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect width="160" height="160" rx="36" fill="#f8fafc"/>
+  <path
+    fill="url(#pSplit)"
+    fill-rule="evenodd"
+    filter="url(#softShadow)"
+    d="M36 132V28h56c15.7 0 28.5 4.2 38.1 12.6C139.4 48.7 144 59.4 144 72.8c0 13.3-4.6 24-13.9 32.2-9.6 8.4-22.4 12.6-38.1 12.6H71.5V132H36Zm35.5-45.5h20.3c6.3 0 11.2-1.2 14.5-3.7 3.5-2.5 5.2-5.9 5.2-10.1 0-4.3-1.7-7.7-5.2-10.2-3.3-2.5-8.2-3.7-14.5-3.7H71.5v27.7Z"
+  />
+  <path d="M82 80V68" stroke="#f8fafc" stroke-width="6" stroke-linecap="round"/>
+  <path d="M94 80V61" stroke="#f8fafc" stroke-width="6" stroke-linecap="round"/>
+  <path d="M106 80V72" stroke="#f8fafc" stroke-width="6" stroke-linecap="round"/>
+</svg>

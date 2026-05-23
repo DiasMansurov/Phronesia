@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 
 const miniLabs = [
   {
-    title: "Market Simulator",
+    title: "Stock Index",
+    topic: "Market reaction",
     signal: "Stock index",
     value: "104",
     scenario: "finance-market-stock-reaction",
@@ -19,7 +20,8 @@ const miniLabs = [
     explanation: "Stocks react to expected profits, interest rates, uncertainty, and investor confidence."
   },
   {
-    title: "Interest Rate Simulator",
+    title: "Loan Affordability",
+    topic: "Interest rates",
     signal: "Loan affordability",
     value: "62",
     scenario: "finance-policy-rate-markets",
@@ -27,7 +29,8 @@ const miniLabs = [
     explanation: "Higher rates can reduce inflation and support the currency, but borrowing becomes more expensive."
   },
   {
-    title: "Inflation and Savings",
+    title: "Real Savings",
+    topic: "Inflation",
     signal: "Real savings",
     value: "-4.1%",
     scenario: "finance-basics-inflation-savings",
@@ -35,7 +38,8 @@ const miniLabs = [
     explanation: "Savings need to be judged in real terms. If inflation is higher than the return, purchasing power falls."
   },
   {
-    title: "Bonds and Debt",
+    title: "Bond Yield",
+    topic: "Debt markets",
     signal: "Bond yield",
     value: "6.8%",
     scenario: "finance-market-bond-yield-pressure",
@@ -43,7 +47,8 @@ const miniLabs = [
     explanation: "Investors demand higher yields when debt, deficits, inflation, or credibility risk becomes too large."
   },
   {
-    title: "Loan and Household Debt",
+    title: "Default Risk",
+    topic: "Consumer credit",
     signal: "Default risk",
     value: "24",
     scenario: "finance-market-consumer-credit-boom",
@@ -51,7 +56,8 @@ const miniLabs = [
     explanation: "Easy credit can lift consumption now, but excessive borrowing raises default risk later."
   },
   {
-    title: "Risk and Diversification",
+    title: "Portfolio Risk",
+    topic: "Diversification",
     signal: "Portfolio risk",
     value: "Medium",
     scenario: "finance-basics-simple-investment",
@@ -80,138 +86,182 @@ const reactionMap = [
   ["Improve investor confidence", "Stocks and currency can recover, yields may fall, and investment becomes easier."]
 ];
 
+const testSignals = [
+  "Stock index reaction",
+  "Bond yield changes",
+  "Currency pressure",
+  "Debt and default risk",
+  "Portfolio diversification"
+];
+
 export default function FinanceLabPage() {
   return (
-    <section className="shell section stack-2xl">
-      <div className="market-hero market-page-hero">
-        <div className="market-hero-copy stack-lg">
-          <div className="stack-sm">
-            <p className="eyebrow">Finance Lab</p>
-            <h1 className="display market-display">Experiment with markets before the crisis starts.</h1>
-            <p className="lede market-lede">
-              Finance Lab is the place to understand savings, loans, stocks, bonds, currencies, banks, debt,
-              and risk before entering full simulations.
-            </p>
+    <section className="finance-lab-page">
+      <section className="finance-lab-hero-band">
+        <div className="shell finance-lab-hero">
+          <div className="finance-lab-hero-copy stack-md">
+            <div className="stack-sm">
+              <p className="eyebrow">Finance Lab</p>
+              <h1 className="display market-display">Experiment with markets before the crisis starts.</h1>
+              <p className="lede market-lede">
+                Finance Lab is the place to understand savings, loans, stocks, bonds, currencies, banks, debt,
+                and risk before entering full simulations.
+              </p>
+            </div>
+            <div className="cta-row">
+              <Link className="button primary" href="/play/setup?scenario=finance-basics-inflation-savings" prefetch={false}>
+                Start Beginner Lab
+              </Link>
+              <Link className="button secondary" href="/investment-challenge">
+                Open Investment Challenge
+              </Link>
+              <Link className="button secondary" href="/scenarios">
+                Browse Finance Cases
+              </Link>
+            </div>
           </div>
-          <div className="cta-row">
-            <Link className="button primary" href="/play/setup?scenario=finance-basics-inflation-savings" prefetch={false}>
-              Start Beginner Lab
-            </Link>
-            <Link className="button secondary" href="/investment-challenge">
-              Open Investment Challenge
-            </Link>
-            <Link className="button secondary" href="/scenarios">
-              Browse Finance Cases
-            </Link>
-          </div>
-        </div>
-        <aside className="market-terminal">
-          <div className="terminal-topline">
-            <span>Finance dashboard</span>
-            <strong>Live signals</strong>
-          </div>
-          <div className="mini-chart finance-chart" aria-hidden="true">
-            {[58, 46, 72, 64, 81, 55, 91, 76].map((height, index) => (
-              <span key={index} style={{ height: `${height}%` }} />
-            ))}
-          </div>
-          <div className="terminal-grid">
-            <div><span>Stocks</span><strong>104</strong></div>
-            <div><span>Yield</span><strong>5.2%</strong></div>
-            <div><span>Currency</span><strong>93</strong></div>
-            <div><span>Debt risk</span><strong>41</strong></div>
-          </div>
-        </aside>
-      </div>
 
-      <section className="finance-mini-lab-grid">
-        <article className="mini-lab-card investment-lab-card">
-          <div className="card-topline">
-            <span className="pill">Paper trading</span>
-            <span className="mini-status open">Virtual portfolio</span>
-          </div>
-          <div className="mini-lab-value">
-            <span>Starting cash</span>
-            <strong>$100k</strong>
-          </div>
-          <p>
-            Build a virtual portfolio with US stocks and ETFs, write an investment thesis, and compare your score on
-            return, risk, diversification, thesis quality, and drawdown control.
-          </p>
-          <Link className="text-link" href="/investment-challenge">
-            Launch Investment Challenge
-          </Link>
-        </article>
-        {miniLabs.map((lab, index) => (
-          <article key={lab.title} className="mini-lab-card">
-            <div className="card-topline">
-              <span className="pill">Mini-lab {index + 1}</span>
-              <span className="mini-status open">{lab.signal}</span>
-            </div>
-            <div className="mini-lab-value">
-              <span>{lab.signal}</span>
-              <strong>{lab.value}</strong>
-            </div>
-            <div className="mini-slider-stack" aria-hidden="true">
-              {lab.controls.map((control, controlIndex) => (
-                <div key={control} className="mini-slider">
-                  <span>{control}</span>
-                  <i style={{ width: `${52 + controlIndex * 13}%` }} />
+          <aside className="finance-lab-workflow-card">
+            <p className="eyebrow">What you can test</p>
+            <div className="finance-test-list">
+              {testSignals.map((signal, index) => (
+                <div key={signal} className="finance-test-item">
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{signal}</strong>
                 </div>
               ))}
             </div>
-            <p>{lab.explanation}</p>
-            <Link className="text-link" href={`/play/setup?scenario=${lab.scenario}`} prefetch={false}>
-              Try related scenario
+          </aside>
+        </div>
+      </section>
+
+      <section className="finance-lab-band finance-entry-band">
+        <div className="shell">
+          <article className="finance-feature-card">
+            <div className="finance-feature-copy">
+              <div className="card-topline">
+                <span className="pill">Paper trading</span>
+                <span className="mini-status open">Virtual portfolio</span>
+              </div>
+              <h2>Build a virtual portfolio</h2>
+              <p>
+                Start with $100,000 in virtual capital, compare risk and return, and write a simple investment thesis.
+              </p>
+            </div>
+            <div className="finance-feature-metrics" aria-label="Investment challenge highlights">
+              <div>
+                <span>Starting cash</span>
+                <strong>$100k</strong>
+              </div>
+              <div>
+                <span>Focus</span>
+                <strong>Risk & return</strong>
+              </div>
+            </div>
+            <Link className="button primary" href="/investment-challenge">
+              Launch Investment Challenge
             </Link>
           </article>
-        ))}
+        </div>
       </section>
 
-      <section className="panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Financial dashboard</p>
-            <h2>The signals students learn to read.</h2>
-            <p className="muted">
-              These indicators appear across simulations so finance does not feel separate from economics.
+      <section className="finance-lab-band finance-mini-band">
+        <div className="shell stack-lg">
+          <div className="finance-lab-section-header">
+            <p className="eyebrow">Mini-lab pathway</p>
+            <h2>Choose a mini-lab and test one market signal.</h2>
+            <p>
+              Each mini-lab focuses on one financial indicator, shows what moves it, and connects you to a related scenario.
             </p>
           </div>
-        </div>
-        <div className="finance-lab-grid">
-          {dashboards.map(([title, body]) => (
-            <article key={title} className="goal-item">
-              <strong>{title}</strong>
-              <p className="muted small">{body}</p>
-            </article>
-          ))}
+
+          <div className="finance-mini-intro">
+            <strong>Start with one signal.</strong>
+            <p>
+              Adjust the drivers, read the market reaction, then open the scenario that uses the same finance concept.
+            </p>
+          </div>
+
+          <div className="finance-mini-grid">
+            {miniLabs.map((lab, index) => (
+              <article key={lab.title} className="finance-mini-card">
+                <div className="card-topline">
+                  <span className="pill">Mini-lab {index + 1}</span>
+                  <span className="mini-status open">{lab.topic}</span>
+                </div>
+                <div className="finance-mini-copy">
+                  <h3>{lab.title}</h3>
+                  <p>{lab.explanation}</p>
+                </div>
+                <div className="finance-mini-metric">
+                  <span>{lab.signal}</span>
+                  <strong>{lab.value}</strong>
+                </div>
+                <div className="finance-driver-list" aria-label={`${lab.title} drivers`}>
+                  {lab.controls.map((control) => (
+                    <span key={control}>{control}</span>
+                  ))}
+                </div>
+                <div className="finance-card-cta">
+                  <Link className="text-link" href={`/play/setup?scenario=${lab.scenario}`} prefetch={false}>
+                    Try related scenario
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Cause and effect</p>
-            <h2>How decisions move financial markets.</h2>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table className="record-table">
-            <thead>
-              <tr>
-                <th>Decision</th>
-                <th>Likely finance reaction</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reactionMap.map(([decision, reaction]) => (
-                <tr key={decision}>
-                  <td>{decision}</td>
-                  <td>{reaction}</td>
-                </tr>
+      <section className="finance-lab-band finance-signals-band">
+        <div className="shell">
+          <section className="finance-reference-panel stack-md">
+            <div className="finance-lab-section-header">
+              <p className="eyebrow">Financial signals</p>
+              <h2>Signals students learn to read.</h2>
+              <p>
+                These indicators appear across simulations so finance does not feel separate from economics.
+              </p>
+            </div>
+            <div className="finance-signal-preview">
+              {dashboards.slice(0, 6).map(([title, body]) => (
+                <article key={title} className="finance-signal-card">
+                  <strong>{title}</strong>
+                  <p>{body}</p>
+                </article>
               ))}
-            </tbody>
-          </table>
+            </div>
+            <details className="finance-details-panel">
+              <summary>View all finance signals</summary>
+              <div className="finance-signal-list">
+                {dashboards.slice(6).map(([title, body]) => (
+                  <div key={title} className="finance-signal-row">
+                    <strong>{title}</strong>
+                    <p>{body}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </section>
+        </div>
+      </section>
+
+      <section className="finance-lab-band finance-reactions-band">
+        <div className="shell">
+          <section className="finance-reference-panel stack-md">
+            <div className="finance-lab-section-header">
+              <p className="eyebrow">Cause and effect</p>
+              <h2>How decisions move financial markets.</h2>
+            </div>
+            <div className="finance-reaction-list">
+              {reactionMap.map(([decision, reaction], index) => (
+                <details key={decision} className="finance-reaction-row" open={index < 3}>
+                  <summary>{decision}</summary>
+                  <p>{reaction}</p>
+                </details>
+              ))}
+            </div>
+          </section>
         </div>
       </section>
     </section>

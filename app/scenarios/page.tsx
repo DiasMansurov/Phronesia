@@ -11,9 +11,5 @@ export const metadata: Metadata = {
 };
 
 export default function ScenariosPage() {
-  return (
-    <section className="shell section">
-      <ScenarioLibrary />
-    </section>
-  );
+  return <ScenarioLibrary />;
 }
