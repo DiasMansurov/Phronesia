@@ -24,9 +24,9 @@ export default async function InvestmentChallengeAppPage() {
       redirect("/investment-challenge/join");
     }
     return (
-      <section className="shell section stack-xl">
-        <div className="hero-band compact">
-          <div className="stack-sm">
+      <section className="investment-section shell section stack-xl">
+        <div className="investment-dashboard-hero">
+          <div className="investment-hero-copy stack-sm">
             <p className="eyebrow">Protected student area</p>
             <h1 className="display compact">
               {access.reason === "missing_secret" ? "Team session secret is not configured." : "Enter your team access before opening the simulation."}
@@ -51,7 +51,7 @@ export default async function InvestmentChallengeAppPage() {
   }
 
   return (
-    <section className="shell section stack-xl">
+    <section className="investment-section investment-dashboard-page shell section stack-xl">
       <InvestmentChallengeDashboard
         initialCompetitionCode={access.competitionCode}
         initialAccountId={access.accountId}

@@ -507,16 +507,22 @@ export function InvestmentChallengeDashboard({
     : "Not available";
 
   return (
-    <div className="investment-app stack-xl">
-      <section className="investment-hero-v2">
+    <div className="investment-app investment-student-product stack-xl">
+      <section className="investment-hero-v2 investment-dashboard-hero">
         <div className="investment-hero-copy stack-lg">
           <div className="stack-sm">
-            <p className="eyebrow">Phronesia Investment Challenge</p>
+            <p className="eyebrow">Protected student area</p>
             <h1>Build a $100,000 virtual portfolio</h1>
             <p>
               Search US stocks and ETFs, use cached educational stock prices, write an investment thesis, and learn how return,
               risk, diversification, and market discipline work together.
             </p>
+            {account ? (
+              <div className="investment-hero-team-chip">
+                <span>{activeCompetition?.name ?? account.competition.name}</span>
+                <strong>Team: {account.account.teamName}</strong>
+              </div>
+            ) : null}
           </div>
           <div className="cta-row">
             <a className="button primary" href="#team-portfolio">
@@ -533,7 +539,7 @@ export function InvestmentChallengeDashboard({
             </Link>
           </div>
         </div>
-        <aside className="market-status-card-v2">
+        <aside className="market-status-card-v2 investment-hero-status-card">
           <div className="market-status-head">
             <span>US market</span>
             <strong className={marketStatus.isOpen ? "positive-text" : "negative-text"}>
@@ -551,10 +557,10 @@ export function InvestmentChallengeDashboard({
       </section>
 
       {activeCompetition ? (
-        <section className={`panel stack-md competition-banner ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
+        <section className={`panel stack-md competition-banner investment-team-banner ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
           <div className="section-header">
             <div>
-              <p className="eyebrow">Competition code: {activeCompetition.code}</p>
+              <p className="eyebrow">Team / competition header</p>
               <h2>{activeCompetition.welcomeMessage ?? activeCompetition.name}</h2>
               <p className="muted">{activeCompetition.description ?? "Educational portfolio competition with virtual cash only."}</p>
             </div>
@@ -579,10 +585,10 @@ export function InvestmentChallengeDashboard({
         <article className="panel stack-md portfolio-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Portfolio dashboard</p>
+              <p className="eyebrow">Portfolio summary</p>
               <h2>{account ? account.account.teamName : "Team access required"}</h2>
             </div>
-            <span className="pill">Virtual cash only</span>
+            <span className="pill">Protected student area</span>
           </div>
 
           {!account ? (
@@ -597,7 +603,7 @@ export function InvestmentChallengeDashboard({
             </div>
           ) : null}
 
-          <div className="portfolio-metric-grid">
+          <div className="portfolio-metric-grid investment-stat-grid">
             <MetricCard label="Starting balance" value={formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)} />
             <MetricCard label="Current cash" value={formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH)} />
             <MetricCard label="Portfolio value" value={formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH)} />
@@ -614,10 +620,10 @@ export function InvestmentChallengeDashboard({
       </section>
 
       <section className="investment-workspace-grid">
-        <aside className="panel stack-md investment-search-sidebar">
+        <aside className="panel stack-md investment-search-sidebar investment-asset-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Asset search</p>
+              <p className="eyebrow">Asset search / watchlist</p>
               <h2>Find a stock or ETF</h2>
             </div>
           </div>
@@ -702,10 +708,10 @@ export function InvestmentChallengeDashboard({
           ) : null}
         </aside>
 
-        <form className="panel stack-md trade-ticket-v2 investment-trade-dashboard" onSubmit={submitTrade}>
+        <form className="panel stack-md trade-ticket-v2 investment-trade-dashboard investment-trade-panel" onSubmit={submitTrade}>
           <div className="section-header">
             <div>
-              <p className="eyebrow">Investment dashboard</p>
+              <p className="eyebrow">Selected asset / trade panel</p>
               <h2>{hasSelectedAsset ? "Review and trade" : "Choose an asset to begin"}</h2>
             </div>
           </div>
@@ -887,7 +893,7 @@ export function InvestmentChallengeDashboard({
           )}
         </section>
 
-          <section className="panel stack-md portfolio-activity-panel">
+          <section className="panel stack-md portfolio-activity-panel investment-order-feed">
             <div className="section-header">
               <div>
                 <p className="eyebrow">Portfolio activity</p>
@@ -921,11 +927,11 @@ export function InvestmentChallengeDashboard({
             </div>
           </section>
 
-          <aside className="panel stack-md leaderboard-preview-panel">
+          <aside className="panel stack-md leaderboard-preview-panel investment-ranking-panel">
             <div className="section-header">
               <div>
-                <p className="eyebrow">Leaderboard preview</p>
-                <h2>Balanced score ranking</h2>
+                <p className="eyebrow">Rankings</p>
+                <h2>Competition leaderboard</h2>
               </div>
               <Link className="text-link" href="/investment-challenge/leaderboard">
                 Full leaderboard
