@@ -15,12 +15,21 @@ import {
   type UserLevelId
 } from "@/lib/game/curriculum";
 import { createRun } from "@/lib/game/engine";
-import { getLearningLevel, LEARNING_LEVELS, scenarioLearningLevel } from "@/lib/game/learning";
+import { getLearningLevel, scenarioLearningLevel } from "@/lib/game/learning";
 import { getProfile } from "@/lib/game/profile";
 import { getActiveRunId, loadRuns, saveProfile, saveRun, setActiveRunId } from "@/lib/game/storage";
 import type { DifficultyId, LearningLevelId, LearningMode, PlayerProfile, PolicyComplexity, RunState } from "@/lib/game/types";
 
 type SetupStep = "level" | "toolkit" | "scenario" | "difficulty";
+
+const SETUP_STEPS: Array<{ id: SetupStep; number: string; label: string; title: string }> = [
+  { id: "level", number: "01", label: "Level", title: "Choose level" },
+  { id: "toolkit", number: "02", label: "Mode", title: "Pick mode" },
+  { id: "scenario", number: "03", label: "Scenario", title: "Choose case" },
+  { id: "difficulty", number: "04", label: "Start", title: "Review and start" }
+];
+
+const SETUP_LEARNING_ORDER: LearningLevelId[] = ["tutorial", "basic", "finance", "policy", "crisis", "competitive"];
 
 const POLICY_TOOLSETS: Array<{
   id: PolicyComplexity;
@@ -177,6 +186,11 @@ export function SetupExperience() {
   const selectedScenarioProfile = getScenarioLearningProfile(selectedScenario);
   const recommendedScenarios = getRecommendedScenarios(userLevel, SCENARIOS, 4);
   const scenarioList = showAllScenarios || scenarioQuery || difficultyFilter !== "All" ? filteredScenarios : filteredScenarios.slice(0, 6);
+  const recommendedScenario = recommendedScenarios[0] ?? selectedScenario;
+  const currentStepIndex = SETUP_STEPS.findIndex((setupStep) => setupStep.id === step);
+  const orderedLearningLevels = SETUP_LEARNING_ORDER.map((levelId) => getLearningLevel(levelId));
+  const caseLibraryLevel = getLearningLevel("historical");
+  const selectedDifficulty = DIFFICULTIES.find((difficulty) => difficulty.id === selectedDifficultyId) ?? DIFFICULTIES[0];
 
   function chooseUserLevel(id: UserLevelId) {
     setUserLevel(id);
@@ -190,371 +204,460 @@ export function SetupExperience() {
   }
 
   return (
-    <section className="shell section stack-lg setup-flow">
-      <div className="hero-band compact setup-hero-compact">
-        <div className="stack-sm">
-          <p className="eyebrow">Simulation Setup</p>
-          <h1 className="display compact">Start in 4 quick steps.</h1>
-          <p className="lede">
-            Pick level, choose mode, select a scenario, start.
-          </p>
-        </div>
-        <div className="panel stack-sm setup-mini-profile">
-          <p className="eyebrow">Profile</p>
-          <label className="stack-xs">
-            <span>Display name</span>
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              onBlur={persistDisplayName}
-              placeholder="Policy Strategist"
-            />
-          </label>
-          <div className="setup-profile-stats">
-            <span>{profile.completedRuns} runs</span>
-            <span>{profile.streakCount} streak</span>
-            <span>Level {profile.level}</span>
+    <section className="setup-wizard-page">
+      <section className="setup-wizard-hero-band">
+        <div className="shell setup-wizard-hero">
+          <p className="setup-wizard-eyebrow">Simulation Setup</p>
+          <h1>Start in 4 quick steps.</h1>
+          <p>Pick your level, choose a mode, select a scenario, and begin.</p>
+          <div className="setup-current-strip" aria-label="Current setup">
+            <span>Level: {selectedUserLevel.label}</span>
+            <span>Mode: {selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
+            <span>Scenario: {selectedScenario ? selectedScenario.title : "Not selected yet"}</span>
           </div>
-          {activeRun ? (
-            <Link className="button secondary" href={`/play?run=${activeRun.runId}`}>
-              Continue {activeRun.scenarioTitle}
-            </Link>
-          ) : null}
         </div>
-      </div>
+      </section>
 
-      <section className="panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">
-              Step {step === "level" ? "1" : step === "toolkit" ? "2" : step === "scenario" ? "3" : "4"} of 4
-            </p>
-              <h2>
-              {step === "level"
-                ? "What is your current level?"
-                : step === "toolkit"
-                  ? "Pick mode and tools"
-                : step === "scenario"
-                  ? "Choose a scenario"
-                  : "Pick pressure"}
-            </h2>
-            <p className="muted">
-              {step === "level"
-                ? "One tap is enough. You can change it later."
-                : step === "toolkit"
-                  ? "Learning gives hints. Challenge is for rankings."
-                : step === "scenario"
-                  ? "Only a few cards show first. Search if you need more."
-                  : "Choose how hard the simulation should feel."}
-            </p>
-          </div>
-          {step !== "level" ? (
-            <button
-              className="button secondary"
-              onClick={() => setStep(step === "difficulty" ? "scenario" : step === "scenario" ? "toolkit" : "level")}
-              type="button"
-            >
-              {step === "difficulty" ? "Back To Scenarios" : step === "scenario" ? "Back To Mode" : "Back To Level"}
-            </button>
-          ) : null}
-        </div>
+      <section className="setup-wizard-content-band">
+        <div className="shell setup-wizard-content">
+          <section className="setup-wizard-profile-card">
+            <div>
+              <p className="setup-wizard-eyebrow">Profile</p>
+              <label className="setup-profile-field">
+                <span>Display name</span>
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  onBlur={persistDisplayName}
+                  placeholder="Policy Strategist"
+                />
+              </label>
+            </div>
+            <div className="setup-profile-stats" aria-label="Profile stats">
+              <span>{profile.completedRuns} runs</span>
+              <span>{profile.streakCount} streak</span>
+              <span>Level {profile.level}</span>
+            </div>
+            {activeRun ? (
+              <Link className="button secondary" href={`/play?run=${activeRun.runId}`}>
+                Continue {activeRun.scenarioTitle}
+              </Link>
+            ) : null}
+          </section>
 
-        {step === "level" ? (
-          <div className="level-choice-grid setup-level-grid">
-            {USER_LEVELS.map((level) => (
+          <section className="setup-stepper-card" aria-label="Simulation setup progress">
+            {SETUP_STEPS.map((setupStep, index) => (
               <button
-                key={level.id}
-                className={`level-choice-card ${userLevel === level.id ? "selected" : ""}`}
-                onClick={() => chooseUserLevel(level.id)}
+                key={setupStep.id}
+                className={`setup-step-pill ${index < currentStepIndex ? "complete" : ""} ${index === currentStepIndex ? "current" : ""}`}
+                onClick={() => {
+                  if (index <= currentStepIndex) setStep(setupStep.id);
+                }}
                 type="button"
+                disabled={index > currentStepIndex}
               >
-                <span>{level.label}</span>
-                <strong>{level.title}</strong>
-                <small>{level.summary}</small>
+                <span>{setupStep.number}</span>
+                <strong>{setupStep.label}</strong>
+                <small>{setupStep.title}</small>
               </button>
             ))}
-          </div>
-        ) : step === "toolkit" ? (
-          <>
-            <section className="next-challenge-panel setup-recommendation">
-              <div className="stack-sm">
-                <p className="eyebrow">Recommended for {selectedUserLevel.label}</p>
-                <h2>{recommendedScenarios[0]?.title ?? selectedScenario.title}</h2>
-                <p>{recommendedScenarios[0]?.summary ?? selectedScenario.summary}</p>
+          </section>
+
+          <section className="setup-wizard-panel">
+            <div className="setup-wizard-section-header">
+              <div>
+                <p className="setup-wizard-eyebrow">
+                  Step {currentStepIndex + 1} of 4
+                </p>
+                <h2>
+                  {step === "level"
+                    ? "What is your current level?"
+                    : step === "toolkit"
+                      ? "Pick mode and tools"
+                      : step === "scenario"
+                        ? "Choose a scenario"
+                        : "Ready to start"}
+                </h2>
+                <p>
+                  {step === "level"
+                    ? "One tap is enough. You can change it later."
+                    : step === "toolkit"
+                      ? "Learning mode gives hints. Challenge mode is for rankings."
+                      : step === "scenario"
+                        ? "Start with a recommended scenario or search by topic."
+                        : "Review your setup, choose pressure, and start the simulation."}
+                </p>
               </div>
-              <button className="button secondary" onClick={() => setStep("scenario")} type="button">
-                See All Recommendations
-              </button>
-            </section>
-            <div className="grid two learning-mode-grid">
-              {[
-                {
-                  id: "learning" as const,
-                  title: "Learning Mode",
-                  body: "Theory cards, explanations, glossary links, and a more forgiving learning path.",
-                  meta: "Best for first-time players"
-                },
-                {
-                  id: "challenge" as const,
-                  title: "Challenge Mode",
-                  body: "Fewer hints, standardized pressure, and scores intended for competitive ranking.",
-                  meta: "Best after practice"
-                }
-              ].map((mode) => (
+              {step !== "level" ? (
                 <button
-                  key={mode.id}
-                  className={`scenario-card compact-choice learning-mode-card ${selectedMode === mode.id ? "selected" : ""}`}
-                  onClick={() => setSelectedMode(mode.id)}
+                  className="button secondary"
+                  onClick={() => setStep(step === "difficulty" ? "scenario" : step === "scenario" ? "toolkit" : "level")}
                   type="button"
                 >
-                  <div className="card-topline">
-                    <span className="pill">{mode.title}</span>
-                    <span className="mini-status open">{selectedMode === mode.id ? "Selected" : mode.meta}</span>
-                  </div>
-                  <p>{mode.body}</p>
+                  {step === "difficulty" ? "Back to Scenario" : step === "scenario" ? "Back to Mode" : "Back to Level"}
                 </button>
-              ))}
+              ) : null}
             </div>
 
-            <div className="grid two toolkit-grid">
-              {POLICY_TOOLSETS.map((toolkit) => (
-                <button
-                  key={toolkit.id}
-                  className={`scenario-card compact-choice ${selectedComplexity === toolkit.id ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedComplexity(toolkit.id);
-                    setStep("scenario");
-                  }}
-                  type="button"
-                >
-                  <div className="stack-sm">
-                    <div className="card-topline">
-                      <span className="pill">{toolkit.label}</span>
-                      <span className="mini-status open">{selectedComplexity === toolkit.id ? "Selected" : "Available"}</span>
-                    </div>
-                    <div className="stack-xs">
-                      <h3>{toolkit.summary}</h3>
-                      <p className="muted">
-                        {toolkit.id === "advanced"
-                          ? "Best for deeper solo play or advanced classes."
-                          : "Designed to keep the decision board focused and readable."}
-                      </p>
-                    </div>
-                    <div className="goal-list compact-list">
-                      {toolkit.details.map((detail) => (
-                        <div key={detail} className="goal-item">
-                          {detail}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : step === "scenario" ? (
-          <div className="stack-md">
-            <div className="stack-sm">
-              <p className="eyebrow">Finance learning path</p>
-              <div className="level-path-grid" role="tablist" aria-label="Learning path">
-                {LEARNING_LEVELS.map((level) => (
+            {step === "level" ? (
+              <div className="setup-level-grid">
+                {USER_LEVELS.map((level) => (
                   <button
                     key={level.id}
-                    className={`level-path-card ${selectedLevelId === level.id ? "active" : ""}`}
-                    onClick={() => setSelectedLevelId(level.id)}
+                    className={`setup-choice-card setup-level-card ${userLevel === level.id ? "selected" : ""}`}
+                    onClick={() => chooseUserLevel(level.id)}
                     type="button"
                   >
-                    <span>{level.label}</span>
-                    <strong>{level.title}</strong>
-                    <small>{level.summary}</small>
+                    <div className="setup-card-topline">
+                      <span>{level.label}</span>
+                      {userLevel === level.id ? <strong>Selected</strong> : null}
+                    </div>
+                    <h3>{level.title}</h3>
+                    <p>{level.summary}</p>
+                    <small>{level.recommendation}</small>
                   </button>
                 ))}
               </div>
-            </div>
+            ) : step === "toolkit" ? (
+              <div className="setup-toolkit-step">
+                <section className="setup-recommendation-banner">
+                  <div>
+                    <p className="setup-wizard-eyebrow">Recommended for {selectedUserLevel.label}</p>
+                    <h3>{recommendedScenario.title}</h3>
+                    <p>{recommendedScenario.summary}</p>
+                  </div>
+                  <div className="setup-recommendation-actions">
+                    <button
+                      className="button primary"
+                      onClick={() => {
+                        setSelectedScenarioId(recommendedScenario.id);
+                        setSelectedLevelId(scenarioLearningLevel(recommendedScenario));
+                        setStep("scenario");
+                      }}
+                      type="button"
+                    >
+                      Use recommendation
+                    </button>
+                    <button className="button secondary" onClick={() => setStep("scenario")} type="button">
+                      See all recommendations
+                    </button>
+                  </div>
+                </section>
 
-            <div className="scenario-filter-bar">
-              <label>
-                <span>Search</span>
-                <input
-                  value={scenarioQuery}
-                  onChange={(event) => setScenarioQuery(event.target.value)}
-                  placeholder="Search inflation, bonds, banks, currency..."
-                />
-              </label>
-              <label>
-                <span>Difficulty</span>
-                <select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)}>
-                  {["All", "Beginner", "Basic", "Intermediate", "Advanced", "Expert"].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                <section className="setup-subsection">
+                  <div className="setup-subsection-heading">
+                    <span>A</span>
+                    <div>
+                      <h3>Choose mode</h3>
+                      <p>Hints and feedback change based on the mode you choose.</p>
+                    </div>
+                  </div>
+                  <div className="setup-mode-grid">
+                    {[
+                      {
+                        id: "learning" as const,
+                        title: "Learning Mode",
+                        body: "Theory cards, explanations, glossary links, and a more forgiving learning path.",
+                        meta: "Best for first-time players"
+                      },
+                      {
+                        id: "challenge" as const,
+                        title: "Challenge Mode",
+                        body: "Fewer hints, standardized pressure, and scores intended for competitive ranking.",
+                        meta: "Best after practice"
+                      }
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        className={`setup-choice-card setup-mode-card ${selectedMode === mode.id ? "selected" : ""}`}
+                        onClick={() => setSelectedMode(mode.id)}
+                        type="button"
+                      >
+                        <div className="setup-card-topline">
+                          <span>{mode.title}</span>
+                          <strong>{selectedMode === mode.id ? "Selected" : mode.meta}</strong>
+                        </div>
+                        <p>{mode.body}</p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
 
-            <section className="panel compact-panel stack-sm">
-              <div className="section-header">
-                <div>
-                  <p className="eyebrow">{selectedLevel.label}</p>
-                  <h2>{selectedLevel.title}</h2>
-                  <p className="muted">{selectedLevel.summary}</p>
-                </div>
-                <div className="pill-row">
-                  {selectedLevel.concepts.slice(0, 4).map((concept) => (
-                    <span key={concept} className="pill">{concept}</span>
-                  ))}
-                </div>
+                <section className="setup-subsection">
+                  <div className="setup-subsection-heading">
+                    <span>B</span>
+                    <div>
+                      <h3>Choose toolkit</h3>
+                      <p>Toolkits control how many policy levers appear during the run.</p>
+                    </div>
+                  </div>
+                  <div className="setup-toolkit-grid">
+                    {POLICY_TOOLSETS.map((toolkit) => (
+                      <button
+                        key={toolkit.id}
+                        className={`setup-choice-card setup-toolkit-card ${selectedComplexity === toolkit.id ? "selected" : ""}`}
+                        onClick={() => {
+                          setSelectedComplexity(toolkit.id);
+                          setStep("scenario");
+                        }}
+                        type="button"
+                      >
+                        <div className="setup-card-topline">
+                          <span>{toolkit.label}</span>
+                          <strong>{selectedComplexity === toolkit.id ? "Selected" : "Available"}</strong>
+                        </div>
+                        <p>{toolkit.summary}</p>
+                        <div className="setup-chip-row">
+                          {toolkit.details.map((detail) => (
+                            <span key={detail}>{detail}</span>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               </div>
-            </section>
-
-            <div className="scenario-grid">
-              {scenarioList.map((scenario) => {
-                const selected = selectedScenarioId === scenario.id;
-                const profile = getScenarioLearningProfile(scenario);
-                return (
-                  <button
-                    key={scenario.id}
-                    className={`scenario-card compact-choice ${selected ? "selected" : ""}`}
-                    onClick={() => {
-                      setSelectedScenarioId(scenario.id);
-                      setStep("difficulty");
-                    }}
-                    type="button"
-                  >
-                    <div className="card-topline">
-                      <span className="pill">{profile.difficulty}</span>
-                      <span className="mini-status open">{profile.estimatedMinutes} min</span>
+            ) : step === "scenario" ? (
+              <div className="setup-scenario-layout">
+                <div className="setup-scenario-main">
+                  <section className="setup-subsection">
+                    <div className="setup-subsection-heading">
+                      <span>1</span>
+                      <div>
+                        <h3>Finance learning path</h3>
+                        <p>Levels are ordered from foundations to expert simulation.</p>
+                      </div>
                     </div>
-                    <h3>{scenario.title}</h3>
-                    <p className="muted">{profile.concepts.slice(0, 3).join(" · ")}</p>
-                    <div className="concept-row">
-                      {profile.concepts.slice(0, 3).map((concept) => <span key={concept}>{concept}</span>)}
+                    <div className="setup-level-path-grid" role="tablist" aria-label="Learning path">
+                      {orderedLearningLevels.map((level) => (
+                        <button
+                          key={level.id}
+                          className={`setup-path-card ${selectedLevelId === level.id ? "active" : ""}`}
+                          onClick={() => setSelectedLevelId(level.id)}
+                          type="button"
+                        >
+                          <span>{level.label}</span>
+                          <strong>{level.title}</strong>
+                          <small>{level.summary}</small>
+                        </button>
+                      ))}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                    <button
+                      className={`setup-path-card setup-case-library-card ${selectedLevelId === caseLibraryLevel.id ? "active" : ""}`}
+                      onClick={() => setSelectedLevelId(caseLibraryLevel.id)}
+                      type="button"
+                    >
+                      <span>Case Library</span>
+                      <strong>{caseLibraryLevel.title}</strong>
+                      <small>{caseLibraryLevel.summary}</small>
+                    </button>
+                  </section>
 
-            {!showAllScenarios && !scenarioQuery && difficultyFilter === "All" && filteredScenarios.length > scenarioList.length ? (
-              <button className="button secondary compact-show-more" onClick={() => setShowAllScenarios(true)} type="button">
-                Show {filteredScenarios.length - scenarioList.length} more scenarios
-              </button>
-            ) : null}
+                  <section className="setup-filter-panel">
+                    <label>
+                      <span>Search</span>
+                      <input
+                        value={scenarioQuery}
+                        onChange={(event) => setScenarioQuery(event.target.value)}
+                        placeholder="Search inflation, bonds, banks, currency..."
+                      />
+                    </label>
+                    <label>
+                      <span>Difficulty</span>
+                      <select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)}>
+                        {["All", "Beginner", "Basic", "Intermediate", "Advanced", "Expert"].map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </section>
 
-            <section className="panel compact-panel stack-md">
-              <div className="section-header">
-                <div>
-                  <p className="eyebrow">Selected Scenario</p>
-                  <h2>{selectedScenario.title}</h2>
-                  <details className="compact-details" open>
+                  <section className="setup-level-context-card">
+                    <div>
+                      <p className="setup-wizard-eyebrow">{selectedLevel.label}</p>
+                      <h3>{selectedLevel.title}</h3>
+                      <p>{selectedLevel.summary}</p>
+                    </div>
+                    <div className="setup-chip-row">
+                      {selectedLevel.concepts.slice(0, 4).map((concept) => (
+                        <span key={concept}>{concept}</span>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className="setup-scenario-grid">
+                    {scenarioList.map((scenario) => {
+                      const selected = selectedScenarioId === scenario.id;
+                      const profile = getScenarioLearningProfile(scenario);
+                      return (
+                        <button
+                          key={scenario.id}
+                          className={`setup-choice-card setup-scenario-card ${selected ? "selected" : ""}`}
+                          onClick={() => {
+                            setSelectedScenarioId(scenario.id);
+                            setStep("difficulty");
+                          }}
+                          type="button"
+                        >
+                          <div className="setup-card-topline">
+                            <span>{profile.difficulty}</span>
+                            <strong>{profile.estimatedMinutes} min</strong>
+                          </div>
+                          <h3>{scenario.title}</h3>
+                          <p>{profile.concepts.slice(0, 3).join(" | ")}</p>
+                          <div className="setup-chip-row">
+                            {profile.concepts.slice(0, 3).map((concept) => <span key={concept}>{concept}</span>)}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {scenarioList.length === 0 ? (
+                    <div className="setup-empty-state">
+                      <strong>No scenarios match these filters.</strong>
+                      <p>Try a broader search or set difficulty back to All.</p>
+                    </div>
+                  ) : null}
+
+                  {!showAllScenarios && !scenarioQuery && difficultyFilter === "All" && filteredScenarios.length > scenarioList.length ? (
+                    <button className="button secondary compact-show-more" onClick={() => setShowAllScenarios(true)} type="button">
+                      Show {filteredScenarios.length - scenarioList.length} more scenarios
+                    </button>
+                  ) : null}
+                </div>
+
+                <aside className="setup-selected-summary" aria-label="Selected scenario summary">
+                  <p className="setup-wizard-eyebrow">Selected scenario</p>
+                  <h3>{selectedScenario.title}</h3>
+                  <details className="setup-details" open>
                     <summary>Scenario details</summary>
                     <p>{selectedScenario.summary}</p>
                     <p>{selectedScenario.mechanics.summary}</p>
                   </details>
-                </div>
-                <div className="pill-row">
-                  <span className="pill">{selectedScenario.country}</span>
-                  <span className="pill">{selectedScenario.startingYear}</span>
-                  <span className="pill">{selectedToolkit.label}</span>
-                  <span className="pill">{selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
-                  <span className="pill">{selectedScenarioProfile.difficulty}</span>
-                </div>
+                  <div className="setup-chip-row">
+                    <span>{selectedScenario.country}</span>
+                    <span>{selectedScenario.startingYear}</span>
+                    <span>{selectedToolkit.label}</span>
+                    <span>{selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
+                    <span>{selectedScenarioProfile.difficulty}</span>
+                  </div>
+                  <button className="button primary" onClick={() => setStep("difficulty")} type="button">
+                    Continue to start
+                  </button>
+                </aside>
               </div>
-            </section>
-          </div>
-        ) : (
-          <div className="stack-md">
-            <section className="panel compact-panel stack-md">
-              <div className="section-header">
-                <div>
-                  <p className="eyebrow">Selected Scenario</p>
-                  <h2>{selectedScenario.title}</h2>
-                  <p className="muted">{selectedScenarioProfile.concepts.slice(0, 4).join(" · ")}</p>
-                </div>
-                <div className="pill-row">
-                  <span className="pill">{selectedScenario.country}</span>
-                  <span className="pill">{selectedScenario.startingYear}</span>
-                  <span className="pill">{selectedToolkit.label}</span>
-                  <span className="pill">{selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"}</span>
-                  <span className="pill">{selectedScenarioProfile.estimatedMinutes} min</span>
-                </div>
-              </div>
+            ) : (
+              <div className="setup-review-step">
+                <section className="setup-review-card">
+                  <div className="setup-review-header">
+                    <div>
+                      <p className="setup-wizard-eyebrow">Ready to start</p>
+                      <h3>{selectedScenario.title}</h3>
+                      <p>{selectedScenarioProfile.concepts.slice(0, 4).join(" | ")}</p>
+                    </div>
+                    <div className="setup-chip-row">
+                      <span>{selectedScenario.country}</span>
+                      <span>{selectedScenario.startingYear}</span>
+                      <span>{selectedScenarioProfile.estimatedMinutes} min</span>
+                    </div>
+                  </div>
 
-              <div className="stack-sm">
-                <p className="eyebrow">Pressure Level</p>
-                <div className="difficulty-picker" role="tablist" aria-label="Difficulty">
-                  {DIFFICULTIES.map((difficulty) => (
+                  <div className="setup-review-grid">
+                    {[
+                      ["Level", selectedUserLevel.label],
+                      ["Mode", selectedMode === "challenge" ? "Challenge Mode" : "Learning Mode"],
+                      ["Toolkit", selectedToolkit.label],
+                      ["Pressure", selectedDifficulty.label]
+                    ].map(([label, value]) => (
+                      <div key={label} className="setup-review-tile">
+                        <span>{label}</span>
+                        <strong>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="setup-pressure-panel">
+                    <div>
+                      <p className="setup-wizard-eyebrow">Pressure Level</p>
+                      <h4>Choose how hard the simulation should feel.</h4>
+                    </div>
+                    <div className="difficulty-picker" role="tablist" aria-label="Difficulty">
+                      {DIFFICULTIES.map((difficulty) => (
+                        <button
+                          key={difficulty.id}
+                          className={`toggle-chip ${selectedDifficultyId === difficulty.id ? "active" : ""}`}
+                          onClick={() => setSelectedDifficultyId(difficulty.id)}
+                          type="button"
+                        >
+                          {difficulty.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="setup-goal-grid">
+                    {selectedScenario.goals.map((goal) => (
+                      <div key={goal.label} className="setup-goal-item">
+                        {goal.label}
+                      </div>
+                    ))}
+                    {selectedScenario.mechanics.notes.slice(0, 3).map((note) => (
+                      <div key={note} className="setup-goal-item">
+                        {note}
+                      </div>
+                    ))}
+                    <div className="setup-goal-item setup-data-source-note">
+                      <span>Data Source</span>
+                      <small>{scenarioDataSource(selectedScenario)}</small>
+                    </div>
+                  </div>
+
+                  <div className="wizard-actions">
+                    <button className="button secondary" onClick={() => setStep("scenario")} type="button">
+                      Back to Scenario
+                    </button>
                     <button
-                      key={difficulty.id}
-                      className={`toggle-chip ${selectedDifficultyId === difficulty.id ? "active" : ""}`}
-                      onClick={() => setSelectedDifficultyId(difficulty.id)}
+                      className="button primary"
+                      onClick={() => startRun({ scenarioId: selectedScenarioId, difficultyId: selectedDifficultyId })}
                       type="button"
                     >
-                      {difficulty.label}
+                      Start Simulation
                     </button>
-                  ))}
+                  </div>
+                </section>
+              </div>
+            )}
+          </section>
+
+          {recentRuns.length ? (
+            <section className="setup-recent-section">
+              <div className="setup-wizard-section-header">
+                <div>
+                  <p className="setup-wizard-eyebrow">Recent Runs</p>
+                  <h2>Your latest scenario history</h2>
                 </div>
               </div>
-
-              <div className="goal-list compact-list">
-                {selectedScenario.goals.map((goal) => (
-                  <div key={goal.label} className="goal-item">
-                    {goal.label}
-                  </div>
+              <div className="recent-run-list">
+                {recentRuns.map((run) => (
+                  <article key={run.runId} className="timeline-item stack-xs recent-run-card">
+                    <div className="stat-row">
+                      <strong>{run.scenarioTitle}</strong>
+                      <span>{run.complete ? "Complete" : "In progress"}</span>
+                    </div>
+                    <p className="muted small">
+                      {new Date(run.updatedAt).toLocaleDateString()} | {run.rankTitle} | {run.difficultyId}
+                    </p>
+                    <Link className="text-link" href={run.complete ? `/play/results/${run.runId}` : `/play?run=${run.runId}`}>
+                      {run.complete ? "Open result" : "Continue run"}
+                    </Link>
+                  </article>
                 ))}
-                {selectedScenario.mechanics.notes.slice(0, 3).map((note) => (
-                  <div key={note} className="goal-item">
-                    {note}
-                  </div>
-                ))}
-                <div className="goal-item data-source-note">
-                  <span className="eyebrow">Data Source</span>
-                  <span>{scenarioDataSource(selectedScenario)}</span>
-                </div>
-              </div>
-
-              <div className="wizard-actions">
-                <button className="button secondary" onClick={() => setStep("scenario")} type="button">
-                  Back To Scenarios
-                </button>
-                <button
-                  className="button primary"
-                  onClick={() => startRun({ scenarioId: selectedScenarioId, difficultyId: selectedDifficultyId })}
-                  type="button"
-                >
-                  Start Simulation
-                </button>
               </div>
             </section>
-          </div>
-        )}
+          ) : null}
+        </div>
       </section>
-
-      {recentRuns.length ? (
-        <section className="panel stack-md">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Recent Runs</p>
-              <h2>Your latest scenario history</h2>
-            </div>
-          </div>
-          <div className="recent-run-list">
-            {recentRuns.map((run) => (
-              <article key={run.runId} className="timeline-item stack-xs recent-run-card">
-                <div className="stat-row">
-                  <strong>{run.scenarioTitle}</strong>
-                  <span>{run.complete ? "Complete" : "In progress"}</span>
-                </div>
-                <p className="muted small">
-                  {new Date(run.updatedAt).toLocaleDateString()} · {run.rankTitle} · {run.difficultyId}
-                </p>
-                <Link className="text-link" href={run.complete ? `/play/results/${run.runId}` : `/play?run=${run.runId}`}>
-                  {run.complete ? "Open result" : "Continue run"}
-                </Link>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </section>
   );
 }
