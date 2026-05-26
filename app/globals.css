@@ -15998,7 +15998,9 @@ iframe {
 .site-header .nav-dropdown {
   position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
+  width: max-content;
 }
 
 .site-header .nav-dropdown::after {
@@ -16007,7 +16009,7 @@ iframe {
   top: 100%;
   left: 50%;
   z-index: 119;
-  width: min(22rem, 82vw);
+  width: 100%;
   height: 1.05rem;
   background: transparent;
   pointer-events: auto;
