@@ -72,6 +72,13 @@ const processSteps = [
   }
 ];
 
+const activeCompetitionStats = [
+  { label: "Prize fund", value: "2.5M KZT" },
+  { label: "Format", value: "Online" },
+  { label: "Dates", value: "June 22 - July 10" },
+  { label: "Teams", value: "2-5 students" }
+];
+
 const platformLinks = [
   {
     title: "Finance Lab",
@@ -188,6 +195,17 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
         <div className="premium-orb orb-one" aria-hidden="true" />
         <div className="premium-orb orb-two" aria-hidden="true" />
 
+        <div className="shell olympiad-announcement-bar">
+          <Link href="/olympiad">
+            <span>Live now</span>
+            <strong>Teenvestor Investment Olympiad</strong>
+            <span>2.5M KZT prize fund</span>
+            <span>Online</span>
+            <span>June 22 - July 10</span>
+            <em>View details -&gt;</em>
+          </Link>
+        </div>
+
         <section className="premium-hero shell">
           <div className="premium-hero-copy">
             <p className="premium-eyebrow">Phronesia</p>
@@ -261,6 +279,36 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
           </aside>
         </section>
       </div>
+
+      <section className="premium-section shell active-competition-section" aria-labelledby="active-competition-title">
+        <article className="active-competition-card">
+          <div className="active-competition-copy">
+            <p className="premium-eyebrow">Active Competition</p>
+            <h2 id="active-competition-title">Teenvestor Investment Olympiad</h2>
+            <p>
+              An international student finance and investment challenge where teams build virtual portfolios, analyze
+              markets, and compete under the same conditions.
+            </p>
+            <div className="active-competition-actions">
+              <Link className="button primary" href="/olympiad">
+                View Olympiad
+              </Link>
+              <Link className="button secondary" href="/olympiad#team-access">
+                Enter Competition
+              </Link>
+            </div>
+            <small>Supported by Teenvestor, QOS Education, and partners.</small>
+          </div>
+          <div className="active-competition-stats" aria-label="Teenvestor Investment Olympiad facts">
+            {activeCompetitionStats.map((stat) => (
+              <div key={stat.label}>
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
 
       <section className="premium-section shell benefit-strip">
         <div className="section-kicker">

@@ -10778,6 +10778,70 @@ label span {
   left: 2%;
 }
 
+.olympiad-announcement-bar {
+  padding-top: clamp(0.9rem, 2vw, 1.25rem);
+}
+
+.olympiad-announcement-bar a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(103, 232, 249, 0.2);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.68);
+  color: rgba(226, 232, 240, 0.82);
+  box-shadow:
+    0 18px 50px rgba(2, 6, 23, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px);
+}
+
+.olympiad-announcement-bar span,
+.olympiad-announcement-bar strong,
+.olympiad-announcement-bar em {
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.olympiad-announcement-bar span:first-child {
+  padding: 0.28rem 0.52rem;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.13);
+  color: #67e8f9;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.olympiad-announcement-bar strong {
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.olympiad-announcement-bar span:not(:first-child)::before,
+.olympiad-announcement-bar em::before {
+  content: "";
+  display: inline-block;
+  width: 0.28rem;
+  height: 0.28rem;
+  margin-right: 0.7rem;
+  border-radius: 999px;
+  background: rgba(103, 232, 249, 0.48);
+  vertical-align: 0.12rem;
+}
+
+.olympiad-announcement-bar em {
+  color: #67e8f9;
+  font-style: normal;
+  font-weight: 950;
+}
+
 .premium-hero {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
   align-items: center;
@@ -10835,6 +10899,98 @@ label span {
   text-shadow: 0 0 28px rgba(34, 211, 238, 0.12);
 }
 
+.active-competition-section {
+  padding-block: clamp(1.25rem, 4vw, 3rem) clamp(1.75rem, 4vw, 3.6rem);
+}
+
+.active-competition-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr);
+  gap: clamp(1rem, 3vw, 2rem);
+  align-items: center;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.13), transparent 24rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 241, 0.95)),
+    #ffffff;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.09);
+}
+
+.active-competition-copy {
+  display: grid;
+  gap: 0.78rem;
+  min-width: 0;
+}
+
+.active-competition-card h2 {
+  max-width: none;
+  color: #111827;
+  font-size: clamp(1.7rem, 3vw, 2.55rem);
+  line-height: 1.02;
+}
+
+.active-competition-card p {
+  max-width: 54rem;
+  margin: 0;
+  color: #5b6472;
+  line-height: 1.68;
+}
+
+.active-competition-card small {
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.active-competition-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+  margin-top: 0.2rem;
+}
+
+.active-competition-card .button.secondary {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: none;
+}
+
+.active-competition-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.active-competition-stats div {
+  display: grid;
+  gap: 0.28rem;
+  min-height: 6.7rem;
+  align-content: center;
+  padding: 0.9rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.active-competition-stats span {
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.active-competition-stats strong {
+  color: #111827;
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  line-height: 1.18;
+}
+
 @media (max-width: 1180px) {
   .premium-hero {
     grid-template-columns: minmax(0, 1fr);
@@ -10844,11 +11000,20 @@ label span {
   .hero-dashboard {
     justify-self: start;
   }
+
+  .active-competition-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 820px) {
   .premium-hero {
     padding-block: clamp(3rem, 10vw, 4.25rem);
+  }
+
+  .olympiad-announcement-bar a {
+    width: 100%;
+    border-radius: 22px;
   }
 }
 
@@ -10865,6 +11030,19 @@ label span {
 
   .hero-dashboard {
     max-width: none;
+  }
+
+  .active-competition-actions,
+  .active-competition-actions .button {
+    width: 100%;
+  }
+
+  .active-competition-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .active-competition-stats div {
+    min-height: 0;
   }
 }
 
@@ -14704,6 +14882,40 @@ iframe {
   color: #f8fafc;
 }
 
+.olympiad-hero-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: min(100%, 760px);
+  margin-top: 0.45rem;
+}
+
+.olympiad-hero-facts div {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+}
+
+.olympiad-hero-facts span {
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.olympiad-hero-facts strong {
+  color: #ffffff;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
 .olympiad-portal-content-band {
   width: 100%;
   padding-block: clamp(3rem, 7vw, 5.5rem);
@@ -14868,6 +15080,40 @@ iframe {
   background: rgba(255, 255, 255, 0.54);
 }
 
+.olympiad-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.olympiad-fact-card {
+  display: grid;
+  align-content: start;
+  gap: 0.38rem;
+  min-height: 8.6rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.76)),
+    #ffffff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.045);
+}
+
+.olympiad-fact-card span {
+  color: var(--olympiad-accent-strong);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.olympiad-fact-card strong {
+  color: var(--olympiad-ink);
+  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
+  line-height: 1.18;
+}
+
 .olympiad-timeline {
   position: relative;
   display: grid;
@@ -14928,6 +15174,39 @@ iframe {
   line-height: 1.55;
 }
 
+.olympiad-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.olympiad-activity-card {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 9.4rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.76)),
+    #ffffff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.045);
+}
+
+.olympiad-activity-card span {
+  width: 2rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--olympiad-accent), rgba(20, 184, 166, 0.36));
+}
+
+.olympiad-activity-card strong {
+  color: var(--olympiad-ink);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
 .olympiad-criteria-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -14952,6 +15231,66 @@ iframe {
   height: 0.2rem;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--olympiad-accent), rgba(20, 184, 166, 0.35));
+}
+
+.olympiad-info-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.86fr);
+  gap: 1rem;
+}
+
+.olympiad-info-card {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: clamp(1.1rem, 2.8vw, 1.6rem);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.1), transparent 20rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 247, 241, 0.9)),
+    #ffffff;
+  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.07);
+}
+
+.olympiad-info-card h2 {
+  margin: 0;
+  color: var(--olympiad-ink);
+  font-size: clamp(1.45rem, 2.5vw, 2.15rem);
+  font-weight: 950;
+  line-height: 1.06;
+}
+
+.olympiad-info-card p:not(.olympiad-portal-eyebrow) {
+  margin: 0;
+  color: var(--olympiad-muted);
+  line-height: 1.65;
+}
+
+.olympiad-partner-card {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(20, 184, 166, 0.1), transparent 18rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 247, 241, 0.9)),
+    #ffffff;
+}
+
+.olympiad-partner-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.olympiad-partner-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.6rem;
+  padding: 0.58rem 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.84);
+  color: #334155;
+  font-weight: 900;
 }
 
 .olympiad-completion-section {
@@ -14995,20 +15334,39 @@ iframe {
 }
 
 @media (max-width: 1120px) {
+  .olympiad-activity-grid,
   .olympiad-criteria-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
-  .olympiad-timeline {
+  .olympiad-hero-facts,
+  .olympiad-facts-grid,
+  .olympiad-info-split {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .olympiad-timeline::before {
-    display: none;
+  .olympiad-timeline {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 1rem;
   }
 
+  .olympiad-timeline::before {
+    display: block;
+    top: 1.1rem;
+    right: auto;
+    bottom: 1.1rem;
+    left: 0.08rem;
+    width: 1px;
+    height: auto;
+  }
+
+  .olympiad-step-card {
+    min-height: 0;
+  }
+
+  .olympiad-activity-grid,
   .olympiad-criteria-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -15024,7 +15382,10 @@ iframe {
   }
 
   .olympiad-form-grid,
-  .olympiad-timeline,
+  .olympiad-hero-facts,
+  .olympiad-facts-grid,
+  .olympiad-activity-grid,
+  .olympiad-info-split,
   .olympiad-criteria-grid {
     grid-template-columns: minmax(0, 1fr);
   }

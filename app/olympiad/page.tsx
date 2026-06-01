@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import { OlympiadPortal } from "@/components/olympiad/olympiad-portal";
 
 export const metadata: Metadata = {
-  title: "Olympiad Portal",
-  description: "Enter a Phronesia olympiad login, join as a team, and open the official competition case.",
+  title: "Teenvestor Investment Olympiad",
+  description:
+    "Official Teenvestor Investment Olympiad landing page and Phronesia team access portal for registered competition teams.",
   alternates: {
     canonical: "/olympiad"
   }
