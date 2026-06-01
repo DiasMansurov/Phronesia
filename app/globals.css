@@ -10843,14 +10843,46 @@ label span {
 }
 
 .premium-hero {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
+  justify-items: start;
   min-height: auto;
-  padding-block: clamp(4rem, 7vw, 6.5rem);
+  padding-block: clamp(2.8rem, 5.5vw, 4.75rem) clamp(3.3rem, 6vw, 5.25rem);
 }
 
 .premium-hero-copy {
   align-content: center;
+  max-width: 56rem;
+}
+
+.premium-hero h1 {
+  max-width: 12.2ch;
+}
+
+.premium-lede {
+  max-width: 48rem;
+}
+
+.hero-support-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  max-width: 48rem;
+  margin-top: 0.1rem;
+}
+
+.hero-support-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.35rem;
+  padding: 0.48rem 0.72rem;
+  border: 1px solid rgba(103, 232, 249, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.44);
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .hero-dashboard {
@@ -10993,7 +11025,6 @@ label span {
 
 @media (max-width: 1180px) {
   .premium-hero {
-    grid-template-columns: minmax(0, 1fr);
     gap: clamp(1.5rem, 4vw, 2.5rem);
   }
 
@@ -11008,7 +11039,7 @@ label span {
 
 @media (max-width: 820px) {
   .premium-hero {
-    padding-block: clamp(3rem, 10vw, 4.25rem);
+    padding-block: clamp(2.7rem, 9vw, 4rem) clamp(3rem, 9vw, 4.5rem);
   }
 
   .olympiad-announcement-bar a {

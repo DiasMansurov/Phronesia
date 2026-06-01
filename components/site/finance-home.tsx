@@ -8,8 +8,6 @@ import { SCENARIOS } from "@/lib/game/content";
 import {
   getNextScenario,
   getRecommendedScenarios,
-  getScenarioLearningProfile,
-  getUserLevel,
   USER_LEVELS,
   type UserLevelId
 } from "@/lib/game/curriculum";
@@ -79,6 +77,8 @@ const activeCompetitionStats = [
   { label: "Starts", value: "June 22" },
   { label: "Eligibility", value: "Grades 7–12" }
 ];
+
+const heroSupportItems = ["Simulations", "Finance Lab", "Scenario Library", "Investment Challenge"];
 
 const platformLinks = [
   {
@@ -175,20 +175,8 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
 
   const beginnerRecommendations = useMemo(() => getRecommendedScenarios("beginner", SCENARIOS, 2), []);
   const nextScenario = useMemo(() => getNextScenario(userLevel, completedIds, SCENARIOS), [completedIds, userLevel]);
-  const selectedLevel = getUserLevel(userLevel);
-  const nextProfile = getScenarioLearningProfile(nextScenario);
   const beginnerScenario = beginnerRecommendations[0] ?? nextScenario;
   const featuredArticle = featuredArticles[0];
-
-  const dashboardCards = [
-    { label: "Simulation Progress", value: "82%", detail: selectedLevel.label },
-    { label: "Portfolio Result", value: "$100,000", detail: "Virtual starting capital" },
-    { label: "Decision Score", value: "Feedback", detail: "Theory cards after choices" },
-    { label: "Scenario Feedback", value: nextProfile.difficulty, detail: nextScenario.title },
-    { label: "Learning Streak", value: "Progress", detail: "Saved on your learning path" },
-    { label: "Ranking Position", value: "Compare", detail: "Scenario and challenge boards" },
-    { label: "Investment Thesis Status", value: "Draft", detail: "Explain strategy and risk" }
-  ];
 
   return (
     <section className="premium-home">
@@ -198,7 +186,7 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
 
         <div className="shell olympiad-announcement-bar">
           <Link href="/olympiad">
-            <span>Live now</span>
+            <span>Live now:</span>
             <strong>Teenvestor Investment Competition</strong>
             <span>₸3,000,000 prize fund</span>
             <span>Starts June 22</span>
@@ -226,58 +214,12 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
             <p className="premium-disclaimer">
               Educational simulation only. No real money is used. This is not financial advice.
             </p>
-          </div>
-
-          <aside className="hero-dashboard" aria-label="Phronesia simulation dashboard preview">
-            <div className="dashboard-header">
-              <div>
-                <span>Simulation Preview</span>
-                <strong>{selectedLevel.label}</strong>
-              </div>
-              <div className="dashboard-status">Learning Mode</div>
-            </div>
-
-            <div className="dashboard-progress">
-              <div>
-                <span>Scenario</span>
-                <strong>Budget Balance</strong>
-              </div>
-              <div className="progress-ring" aria-hidden="true">
-                82%
-              </div>
-            </div>
-
-            <div className="dashboard-decision">
-              <span>Decision</span>
-              <strong>Balance the budget without hurting household demand.</strong>
-              <p>Recommended next: {nextScenario.title} · {nextProfile.difficulty}</p>
-            </div>
-
-            <div className="dashboard-card-grid">
-              {dashboardCards.map((card) => (
-                <div className="dashboard-metric-card" key={card.label}>
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                  <small>{card.detail}</small>
-                </div>
+            <div className="hero-support-row" aria-label="Phronesia learning areas">
+              {heroSupportItems.map((item) => (
+                <span key={item}>{item}</span>
               ))}
             </div>
-
-            <div className="dashboard-feedback">
-              <div className="mini-chart" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div>
-                <span>Consequence</span>
-                <strong>Bond yields ease and market confidence improves.</strong>
-                <p>Household welfare risk stays visible, so the score rewards stability but warns about tradeoffs.</p>
-              </div>
-            </div>
-          </aside>
+          </div>
         </section>
       </div>
 
