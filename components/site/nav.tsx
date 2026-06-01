@@ -147,6 +147,7 @@ function NavDropdown({
         <span>{label}</span>
         <span className="nav-chevron" aria-hidden="true" />
       </button>
+      <span className="nav-dropdown-bridge" aria-hidden="true" />
       <div className="nav-dropdown-menu">
         {items.map((item) => (
           <Link key={item.href} href={item.href} className={`nav-dropdown-item ${isActive(item.href) ? "active" : ""}`}>
