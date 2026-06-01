@@ -73,10 +73,11 @@ const processSteps = [
 ];
 
 const activeCompetitionStats = [
-  { label: "Prize fund", value: "2.5M KZT" },
-  { label: "Format", value: "Online" },
-  { label: "Dates", value: "June 22 - July 10" },
-  { label: "Teams", value: "2-5 students" }
+  { label: "Prize fund", value: "₸3,000,000" },
+  { label: "Teams", value: "2–5 students" },
+  { label: "Format", value: "Online investment simulation" },
+  { label: "Starts", value: "June 22" },
+  { label: "Eligibility", value: "Grades 7–12" }
 ];
 
 const platformLinks = [
@@ -123,10 +124,10 @@ const platformLinks = [
     action: "Open Progress"
   },
   {
-    title: "Olympiad Practice",
+    title: "Competition Access",
     body: "Run competition cases where teams submit decisions and organizers review results.",
     href: "/olympiad",
-    action: "Open Olympiad"
+    action: "Open Competition"
   }
 ];
 
@@ -198,10 +199,10 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
         <div className="shell olympiad-announcement-bar">
           <Link href="/olympiad">
             <span>Live now</span>
-            <strong>Teenvestor Investment Olympiad</strong>
-            <span>2.5M KZT prize fund</span>
-            <span>Online</span>
-            <span>June 22 - July 10</span>
+            <strong>Teenvestor Investment Competition</strong>
+            <span>₸3,000,000 prize fund</span>
+            <span>Starts June 22</span>
+            <span>Grades 7–12</span>
             <em>View details -&gt;</em>
           </Link>
         </div>
@@ -284,22 +285,22 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
         <article className="active-competition-card">
           <div className="active-competition-copy">
             <p className="premium-eyebrow">Active Competition</p>
-            <h2 id="active-competition-title">Teenvestor Investment Olympiad</h2>
+            <h2 id="active-competition-title">Teenvestor Investment Competition</h2>
             <p>
-              An international student finance and investment challenge where teams build virtual portfolios, analyze
-              markets, and compete under the same conditions.
+              An international investment competition designed to develop financial thinking, analytical skills, and
+              practical investing knowledge among students.
             </p>
             <div className="active-competition-actions">
               <Link className="button primary" href="/olympiad">
-                View Olympiad
+                View Competition
               </Link>
-              <Link className="button secondary" href="/olympiad#team-access">
-                Enter Competition
+              <Link className="button secondary" href="/olympiad#registration">
+                Register
               </Link>
             </div>
-            <small>Supported by Teenvestor, QOS Education, and partners.</small>
+            <small>Follow @teenvestor.school and @phronesia_ for updates.</small>
           </div>
-          <div className="active-competition-stats" aria-label="Teenvestor Investment Olympiad facts">
+          <div className="active-competition-stats" aria-label="Teenvestor Investment Competition facts">
             {activeCompetitionStats.map((stat) => (
               <div key={stat.label}>
                 <span>{stat.label}</span>
@@ -449,18 +450,18 @@ export function FinanceHome({ featuredArticles = [] }: { featuredArticles?: Arti
 
           <article className="recommended-card">
             <div className="card-meta">
-              <span>Olympiad</span>
+              <span>Competition</span>
               <span>Challenge</span>
               <span>Finance &amp; economics</span>
             </div>
-            <h3>Olympiad Practice</h3>
-            <p>Choose an olympiad-style challenge and practice applying economic and financial reasoning under pressure.</p>
+            <h3>Competition Practice</h3>
+            <p>Open a competition-style challenge and practice applying economic and financial reasoning under pressure.</p>
             <div className="card-actions olympiad-card-actions">
               <Link className="button primary" href="/olympiad">
-                Choose olympiad
+                View competition
               </Link>
               <Link className="text-link" href="/olympiad">
-                View olympiad page
+                Open competition page
               </Link>
             </div>
           </article>

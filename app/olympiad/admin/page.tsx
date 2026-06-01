@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Organizer Results",
-  description: "Redirect to the organizer results dashboard for Phronesia olympiad team scores, rankings, and policy decisions.",
+  description: "Redirect to the organizer results dashboard for Phronesia competition team scores, rankings, and decisions.",
   alternates: {
     canonical: "/results"
   }

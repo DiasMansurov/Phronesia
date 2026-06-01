@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { OlympiadPortal } from "@/components/olympiad/olympiad-portal";
 
 export const metadata: Metadata = {
-  title: "Teenvestor Investment Olympiad",
+  title: "Teenvestor Investment Competition",
   description:
-    "Official Teenvestor Investment Olympiad landing page and Phronesia team access portal for registered competition teams.",
+    "An international investment competition for students in Grades 7–12, focused on virtual portfolio management, company analysis, strategic investing, and financial thinking.",
   alternates: {
     canonical: "/olympiad"
   }

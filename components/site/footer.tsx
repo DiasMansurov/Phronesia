@@ -46,7 +46,7 @@ export function SiteFooter() {
             <Link href="/investment-challenge">Investment Challenge</Link>
             <Link href="/investment-challenge/options">Options Simulator</Link>
             <Link href="/rankings">Rankings</Link>
-            <Link href="/olympiad">Olympiad Portal</Link>
+            <Link href="/olympiad">Competition Portal</Link>
           </div>
           <div className="footer-link-column">
             <p className="footer-heading">Company</p>

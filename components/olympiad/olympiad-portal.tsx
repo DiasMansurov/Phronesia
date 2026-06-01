@@ -19,51 +19,57 @@ type ResolveResponse = {
 const olympiadSteps = [
   {
     number: "01",
-    title: "Register your team",
-    body: "Submit your team information through the official registration process."
+    title: "Form a team",
+    body: "Join with a team of 2–5 students."
   },
   {
     number: "02",
-    title: "Build a virtual portfolio",
-    body: "Use the platform to make investment decisions with virtual capital."
+    title: "Build your portfolio",
+    body: "Take part in an online investment simulation and manage your team portfolio."
   },
   {
     number: "03",
-    title: "Analyze your strategy",
-    body: "Explain your investment thesis, risk, diversification, and market reasoning."
+    title: "Analyze companies",
+    body: "Study real companies and make strategic investment decisions."
   },
   {
     number: "04",
-    title: "Compete for ranking",
-    body: "Teams are compared under the same conditions, and top performers advance to the final stage."
+    title: "Compete and learn",
+    body: "Gain international-level competition experience, certificates, cash prizes, and networking opportunities."
   }
 ];
 
 const heroFacts = [
-  { label: "Prize fund", value: "2.5M KZT" },
-  { label: "Dates", value: "June 22 - July 10" },
-  { label: "Format", value: "Online" },
-  { label: "Team size", value: "2-5 students" }
+  { label: "Prize fund", value: "₸3,000,000" },
+  { label: "Starts", value: "June 22" },
+  { label: "Format", value: "Online investment simulation" },
+  { label: "Team size", value: "2–5 students" }
 ];
 
 const competitionFacts = [
-  { label: "Prize fund", value: "2.5M KZT" },
-  { label: "Format", value: "Online" },
-  { label: "Dates", value: "June 22 - July 10" },
-  { label: "Participants", value: "Grades 8-12 and first-year students" },
-  { label: "Team size", value: "2-5 students" },
-  { label: "Focus", value: "Stocks, portfolio strategy, market analysis" }
+  { label: "Prize fund", value: "₸3,000,000" },
+  { label: "Format", value: "Online investment simulation" },
+  { label: "Starts", value: "June 22" },
+  { label: "Team size", value: "2–5 students" },
+  { label: "Eligibility", value: "Grades 7–12" },
+  { label: "Focus", value: "Financial thinking, analytical skills, practical investing knowledge" }
 ];
 
 const teamActivities = [
-  "Build a virtual stock portfolio",
-  "Analyze companies and market conditions",
-  "Manage risk and diversification",
-  "Prepare an investment thesis",
-  "Compete on ranking and final results"
+  "Build and manage a team portfolio",
+  "Analyze real companies",
+  "Make strategic investment decisions",
+  "Practice real investing logic",
+  "Compete with motivated students"
 ];
 
-const partners = ["Teenvestor", "QOS Education", "Phronesia"];
+const competitionBenefits = [
+  "International-level competition experience",
+  "Certificates and cash prizes",
+  "Prize fund: ₸3,000,000",
+  "Real investment practice",
+  "Networking with motivated students and finance experts"
+];
 
 const resultOutputs = [
   "Final score",
@@ -85,12 +91,12 @@ export function OlympiadPortal() {
     const cleanLogin = login.trim();
     const cleanTeam = teamName.trim();
     if (!cleanLogin || !cleanTeam) {
-      setStatus("Enter the olympiad login and your team name.");
+      setStatus("Enter the competition login and your team name.");
       return;
     }
 
     setLoading(true);
-    setStatus("Checking olympiad login...");
+    setStatus("Checking competition login...");
     try {
       const response = await fetch("/api/olympiads/resolve", {
         method: "POST",
@@ -99,7 +105,7 @@ export function OlympiadPortal() {
       });
       const data = (await response.json()) as ResolveResponse;
       if (!response.ok || !data.olympiad) {
-        throw new Error(data.error ?? "Olympiad login was not found.");
+        throw new Error(data.error ?? "Competition login was not found.");
       }
 
       saveOlympiadSession({
@@ -113,7 +119,7 @@ export function OlympiadPortal() {
       });
       router.push(`/olympiad/${data.olympiad.slug}`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to open olympiad.");
+      setStatus(error instanceof Error ? error.message : "Unable to open competition.");
     } finally {
       setLoading(false);
     }
@@ -123,13 +129,16 @@ export function OlympiadPortal() {
     <section className="olympiad-portal-page">
       <section className="olympiad-portal-hero-band">
         <div className="shell olympiad-portal-hero">
-          <p className="olympiad-portal-eyebrow">Olympiad Portal</p>
-          <h1>Teenvestor Investment Olympiad</h1>
+          <p className="olympiad-portal-eyebrow">Competition Portal</p>
+          <h1>Teenvestor Investment Competition</h1>
           <p>
-            An international finance and investment competition where student teams build virtual portfolios, analyze
-            companies, and compete through Phronesia's simulation platform.
+            An international investment competition where student teams build and manage virtual portfolios, analyze
+            real companies, and make strategic investment decisions.
           </p>
-          <div className="olympiad-hero-actions" aria-label="Olympiad portal actions">
+          <div className="olympiad-hero-actions" aria-label="Competition portal actions">
+            <a className="button secondary" href="#registration">
+              Register
+            </a>
             <a className="button secondary" href="#competition-at-a-glance">
               View Details
             </a>
@@ -137,7 +146,7 @@ export function OlympiadPortal() {
               Enter Competition Case
             </a>
           </div>
-          <div className="olympiad-hero-facts" aria-label="Teenvestor Investment Olympiad facts">
+          <div className="olympiad-hero-facts" aria-label="Teenvestor Investment Competition facts">
             {heroFacts.map((fact) => (
               <div key={fact.label}>
                 <span>{fact.label}</span>
@@ -186,7 +195,7 @@ export function OlympiadPortal() {
             <div className="olympiad-section-header">
               <p className="olympiad-portal-eyebrow">Competition tasks</p>
               <h2>What teams will do</h2>
-              <p>Teams work with the same competition conditions and explain their reasoning.</p>
+              <p>Teams work through a shared investment simulation and explain their decisions.</p>
             </div>
             <div className="olympiad-activity-grid">
               {teamActivities.map((activity) => (
@@ -198,24 +207,36 @@ export function OlympiadPortal() {
             </div>
           </section>
 
+          <section className="olympiad-dashboard-section">
+            <div className="olympiad-section-header">
+              <p className="olympiad-portal-eyebrow">Participant benefits</p>
+              <h2>What you get</h2>
+            </div>
+            <div className="olympiad-activity-grid">
+              {competitionBenefits.map((benefit) => (
+                <article className="olympiad-activity-card" key={benefit}>
+                  <span aria-hidden="true" />
+                  <strong>{benefit}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+
           <section className="olympiad-info-split">
             <article className="olympiad-info-card">
               <p className="olympiad-portal-eyebrow">Eligibility</p>
               <h2>Who can participate</h2>
-              <p>
-                Students from grades 8-12 and first-year university students can participate in teams of 2-5 people.
-                The competition is international and held online.
-              </p>
+              <p>Students in Grades 7–12 can participate in teams of 2–5 students.</p>
             </article>
 
-            <article className="olympiad-info-card olympiad-partner-card">
-              <p className="olympiad-portal-eyebrow">Partners</p>
-              <h2>Supported by</h2>
-              <div className="olympiad-partner-list" aria-label="Competition partners">
-                {partners.map((partner) => (
-                  <span key={partner}>{partner}</span>
-                ))}
-              </div>
+            <article className="olympiad-info-card olympiad-partner-card" id="registration">
+              <p className="olympiad-portal-eyebrow">Registration</p>
+              <h2>To register</h2>
+              <p>
+                Fill out the registration form in bio, follow @teenvestor.school and @phronesia_, and repost the
+                competition post to your story.
+              </p>
+              <p>Questions: Instagram @phronesia_.</p>
             </article>
           </section>
 
@@ -223,7 +244,7 @@ export function OlympiadPortal() {
             <div className="olympiad-section-header centered">
               <p className="olympiad-portal-eyebrow">Team Access</p>
               <h2>Already registered?</h2>
-              <p>Enter your olympiad login and team name to open the assigned competition case.</p>
+              <p>Enter your competition login and team name to open the assigned competition case.</p>
             </div>
 
             <form className="olympiad-access-panel" onSubmit={onSubmit}>
@@ -234,11 +255,11 @@ export function OlympiadPortal() {
 
               <div className="olympiad-form-grid">
                 <label className="olympiad-field">
-                  <span>Olympiad login</span>
+                  <span>Competition login</span>
                   <input
                     value={login}
                     onChange={(event) => setLogin(event.target.value)}
-                    placeholder="Qazfinance"
+                    placeholder="Competition login"
                   />
                 </label>
                 <label className="olympiad-field">
@@ -254,7 +275,7 @@ export function OlympiadPortal() {
               <div className="olympiad-access-helper">
                 <span>Before you start</span>
                 <ul>
-                  <li>Use the code provided by the organizer.</li>
+                  <li>Use the login provided by the organizer.</li>
                   <li>Enter your team name exactly.</li>
                   <li>Results are saved after completion.</li>
                 </ul>
@@ -274,7 +295,7 @@ export function OlympiadPortal() {
               <p>Your submitted result helps the organizer compare teams under the same conditions.</p>
             </div>
             <div className="olympiad-completion-card">
-              <div className="olympiad-output-list" aria-label="Olympiad result outputs">
+              <div className="olympiad-output-list" aria-label="Competition result outputs">
                 {resultOutputs.map((output) => (
                   <span key={output}>{output}</span>
                 ))}

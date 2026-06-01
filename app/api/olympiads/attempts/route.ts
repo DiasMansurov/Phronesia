@@ -34,12 +34,12 @@ export async function POST(request: Request) {
     !body.scenarioTitle ||
     !body.difficultyId
   ) {
-    return NextResponse.json({ error: "Missing required olympiad attempt fields." }, { status: 400 });
+    return NextResponse.json({ error: "Missing required competition attempt fields." }, { status: 400 });
   }
 
   const olympiad = getOlympiadByAccessCode(body.accessCode);
   if (!olympiad || olympiad.slug !== body.olympiadSlug) {
-    return NextResponse.json({ error: "Invalid olympiad login for this attempt." }, { status: 403 });
+    return NextResponse.json({ error: "Invalid competition login for this attempt." }, { status: 403 });
   }
 
   if (!olympiadBackendConfigured()) {

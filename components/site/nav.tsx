@@ -27,7 +27,7 @@ const dropdownGroups = [
     label: "Compete",
     items: [
       { href: "/rankings", label: "Rankings", description: "Compare scores and challenge results." },
-      { href: "/olympiad", label: "Olympiad", description: "Enter official competition cases." }
+      { href: "/olympiad", label: "Competition", description: "View the Teenvestor Investment Competition." }
     ]
   }
 ];

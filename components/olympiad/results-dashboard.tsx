@@ -149,7 +149,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
         return {
           slug,
           title: config?.title ?? fallback?.olympiadTitle ?? slug,
-          partner: config?.partner ?? fallback?.participantLogin ?? "Olympiad",
+          partner: config?.partner ?? fallback?.participantLogin ?? "Competition",
           status: config?.status ?? "active",
           scenarioId: config?.scenarioId ?? fallback?.scenarioTitle ?? "scenario",
           attempts,
@@ -217,7 +217,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
   }
 
   const statusText = initialData.persisted
-    ? "Choose an olympiad folder to inspect rankings and team decisions."
+    ? "Choose a competition folder to inspect rankings and team decisions."
     : initialData.loadError ?? "Results opened, but Supabase persistence is not configured yet.";
 
   return (
@@ -227,7 +227,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
           <p className="eyebrow">Organizer Results</p>
           <h1 className="display compact">Results</h1>
           <p className="lede compact-lede">
-            Open an olympiad folder, review its team ranking, then inspect any team attempt and policy decision.
+            Open a competition folder, review its team ranking, then inspect any team attempt and decision.
           </p>
         </div>
         <div className="panel stack-md olympiad-login-card">
@@ -244,7 +244,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
       </div>
 
       <section className="stats-grid compact-stats olympiad-admin-stats">
-        <div className="stat-card"><span>Olympiads</span><strong>{olympiadSummaries.length}</strong></div>
+        <div className="stat-card"><span>Competitions</span><strong>{olympiadSummaries.length}</strong></div>
         <div className="stat-card"><span>Teams</span><strong>{new Set(initialData.attempts.map(teamKey)).size}</strong></div>
         <div className="stat-card"><span>Completed</span><strong>{completedAttempts.length}</strong></div>
         <div className="stat-card"><span>Leader</span><strong>{topAttempt?.teamName ?? "n/a"}</strong></div>
@@ -254,8 +254,8 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
         <section className="panel stack-md results-workspace">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Olympiads</p>
-              <h2>Choose an olympiad folder.</h2>
+              <p className="eyebrow">Competitions</p>
+              <h2>Choose a competition folder.</h2>
             </div>
           </div>
           {olympiadSummaries.length ? (
@@ -267,7 +267,7 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
                   type="button"
                   onClick={() => openOlympiad(olympiad.slug)}
                 >
-                  <span className="result-folder-mark">Olympiad</span>
+                  <span className="result-folder-mark">Competition</span>
                   <strong>{olympiad.partner}</strong>
                   <span>{olympiad.title}</span>
                   <div className="result-card-metrics">
@@ -280,14 +280,14 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
             </div>
           ) : (
             <div className="empty-state">
-              <p>No olympiads are configured yet.</p>
+              <p>No competitions are configured yet.</p>
             </div>
           )}
         </section>
       ) : !selectedTeam ? (
         <section className="panel stack-md results-workspace">
           <div className="results-breadcrumb">
-            <button type="button" onClick={backToOlympiads}>Olympiads</button>
+            <button type="button" onClick={backToOlympiads}>Competitions</button>
             <span>/</span>
             <strong>{selectedOlympiad.partner}</strong>
           </div>
@@ -321,14 +321,14 @@ export function ResultsDashboard({ initialData }: { initialData: ResultsInitialD
             </div>
           ) : (
             <div className="empty-state">
-              <p>No teams have started this olympiad yet.</p>
+              <p>No teams have started this competition yet.</p>
             </div>
           )}
         </section>
       ) : (
         <section className="panel stack-md results-workspace">
           <div className="results-breadcrumb">
-            <button type="button" onClick={backToOlympiads}>Olympiads</button>
+            <button type="button" onClick={backToOlympiads}>Competitions</button>
             <span>/</span>
             <button type="button" onClick={backToTeams}>{selectedOlympiad.partner}</button>
             <span>/</span>

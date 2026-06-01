@@ -5,8 +5,8 @@ import { OlympiadCase } from "@/components/olympiad/olympiad-case";
 import { getOlympiadBySlug } from "@/lib/olympiads";
 
 export const metadata: Metadata = {
-  title: "Olympiad Case",
-  description: "Open the official Phronesia olympiad simulation case.",
+  title: "Competition Case",
+  description: "Open the official Phronesia competition simulation case.",
   alternates: {
     canonical: "/olympiad"
   }
@@ -20,11 +20,11 @@ export default async function OlympiadCasePage({ params }: { params: Promise<{ s
     return (
       <section className="shell section">
         <div className="panel stack-md">
-          <p className="eyebrow">Olympiad</p>
+          <p className="eyebrow">Competition</p>
           <h1>Case not found</h1>
-          <p className="muted">This olympiad is not active or the link is incorrect.</p>
+          <p className="muted">This competition is not active or the link is incorrect.</p>
           <Link className="button primary" href="/olympiad">
-            Back To Olympiad Login
+            Back To Competition Login
           </Link>
         </div>
       </section>

@@ -640,7 +640,7 @@ export function PlayExperience() {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.error ?? "Unable to save olympiad decision.");
+      throw new Error(data.error ?? "Unable to save competition decision.");
     }
     return data;
   }
@@ -709,7 +709,7 @@ export function PlayExperience() {
       classroomContext
         ? "Saving your prediction for your teacher..."
         : olympiadContext
-          ? "Saving your olympiad decision..."
+          ? "Saving your competition decision..."
           : "Simulating the year..."
     );
 
@@ -728,7 +728,7 @@ export function PlayExperience() {
         await postClassroomDecision("complete", run, submittedPrediction, nextRun);
       }
       if (olympiadContext) {
-        setPredictionStatus("Saving the olympiad outcome...");
+        setPredictionStatus("Saving the competition outcome...");
         await postOlympiadDecision("complete", run, submittedPrediction, nextRun);
       }
 
@@ -919,7 +919,7 @@ export function PlayExperience() {
           <div className="presidency-header">
             <div className="stack-sm presidency-copy">
               <p className="eyebrow">
-                {olympiadContext ? `${olympiadContext.teamName} · olympiad attempt` : `${profileName}'s finance simulation`}
+                {olympiadContext ? `${olympiadContext.teamName} · competition attempt` : `${profileName}'s finance simulation`}
               </p>
               <h1 className="display compact">{scenario.title}</h1>
               <p className="lede compact-lede">{scenario.summary}</p>

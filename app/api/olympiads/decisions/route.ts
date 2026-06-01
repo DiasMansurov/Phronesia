@@ -49,12 +49,12 @@ export async function POST(request: Request) {
     !body.policies ||
     !body.beforeState
   ) {
-    return NextResponse.json({ error: "Missing required olympiad decision fields." }, { status: 400 });
+    return NextResponse.json({ error: "Missing required competition decision fields." }, { status: 400 });
   }
 
   const olympiad = getOlympiadByAccessCode(body.accessCode);
   if (!olympiad || olympiad.slug !== body.olympiadSlug) {
-    return NextResponse.json({ error: "Invalid olympiad login for this decision." }, { status: 403 });
+    return NextResponse.json({ error: "Invalid competition login for this decision." }, { status: 403 });
   }
 
   if (!olympiadBackendConfigured()) {
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
   });
 
   if (!attempt) {
-    return NextResponse.json({ error: "Unable to create olympiad attempt." }, { status: 500 });
+    return NextResponse.json({ error: "Unable to create competition attempt." }, { status: 500 });
   }
 
   const decision = await upsertOlympiadDecision({

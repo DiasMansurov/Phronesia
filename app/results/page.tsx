@@ -9,7 +9,7 @@ import { listOlympiadAttemptsWithDecisions, olympiadBackendConfigured } from "@/
 
 export const metadata: Metadata = {
   title: "Results",
-  description: "Organizer results dashboard for Phronesia olympiad teams, scores, rankings, and decisions.",
+  description: "Organizer results dashboard for Phronesia competition teams, scores, rankings, and decisions.",
   alternates: {
     canonical: "/results"
   }
@@ -73,7 +73,7 @@ export default async function ResultsPage() {
     try {
       data = await listOlympiadAttemptsWithDecisions();
     } catch {
-      loadError = "Results database is not ready yet. Apply the olympiad Supabase migration and check Supabase environment variables.";
+      loadError = "Results database is not ready yet. Apply the competition Supabase migration and check Supabase environment variables.";
     }
   }
 

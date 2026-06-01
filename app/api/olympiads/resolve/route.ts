@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const olympiad = body.login ? getOlympiadByAccessCode(body.login) : null;
 
   if (!olympiad) {
-    return NextResponse.json({ error: "Olympiad login was not found or is not active." }, { status: 404 });
+    return NextResponse.json({ error: "Competition login was not found or is not active." }, { status: 404 });
   }
 
   const scenario = getOlympiadScenario(olympiad);

@@ -23,7 +23,7 @@ export function OlympiadCase({ olympiad }: { olympiad: OlympiadConfig }) {
       setParticipantLogin(session.participantLogin);
       return;
     }
-    setStatus("Login first to attach your team name to the olympiad attempt.");
+    setStatus("Login first to attach your team name to the competition attempt.");
   }, [olympiad.slug]);
 
   async function startOlympiadRun() {
@@ -80,14 +80,14 @@ export function OlympiadCase({ olympiad }: { olympiad: OlympiadConfig }) {
         <div className="panel stack-sm olympiad-team-card">
           <p className="eyebrow">Team</p>
           <h2>{teamName || "Not logged in"}</h2>
-          <p className="muted small">{participantLogin || "Open the olympiad portal and enter your official login."}</p>
+          <p className="muted small">{participantLogin || "Open the competition page and enter your official login."}</p>
           {teamName ? (
             <button className="button primary" onClick={startOlympiadRun} type="button">
               Start Official Attempt
             </button>
           ) : (
             <Link className="button primary" href="/olympiad">
-              Login To Olympiad
+              Login To Competition
             </Link>
           )}
           {status ? <p className="muted small">{status}</p> : null}
