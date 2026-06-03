@@ -11,10 +11,13 @@ export function InvestmentTeamJoin() {
   const router = useRouter();
   const [competitionCode, setCompetitionCode] = useState("");
   const [competition, setCompetition] = useState<InvestmentCompetitionView | null>(null);
-  const [teamName, setTeamName] = useState("");
-  const [password, setPassword] = useState("");
+  const [createTeamName, setCreateTeamName] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loginTeamName, setLoginTeamName] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"code" | "create" | "login" | null>(null);
 
   async function checkCompetition(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,7 +28,7 @@ export function InvestmentTeamJoin() {
       return;
     }
 
-    setBusy(true);
+    setBusyAction("code");
     setStatus("Checking competition code...");
     try {
       const response = await fetch(`/api/investment/competitions/resolve?code=${encodeURIComponent(code)}`, {
@@ -41,16 +44,18 @@ export function InvestmentTeamJoin() {
     } catch {
       setStatus("Competition lookup is temporarily unavailable.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
-  async function enterTeam(event: React.FormEvent<HTMLFormElement>) {
+  async function submitTeam(mode: "create" | "login", event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!competition) {
       setStatus("Enter a valid competition code first.");
       return;
     }
+    const teamName = mode === "create" ? createTeamName : loginTeamName;
+    const password = mode === "create" ? createPassword : loginPassword;
     if (!teamName.trim()) {
       setStatus("Team name is required.");
       return;
@@ -59,9 +64,13 @@ export function InvestmentTeamJoin() {
       setStatus("Team password is required.");
       return;
     }
+    if (mode === "create" && password !== confirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
 
-    setBusy(true);
-    setStatus("Opening team portfolio...");
+    setBusyAction(mode);
+    setStatus(mode === "create" ? "Creating team portfolio..." : "Opening team portfolio...");
     try {
       const response = await fetch("/api/investment/teams/session", {
         method: "POST",
@@ -69,7 +78,9 @@ export function InvestmentTeamJoin() {
         body: JSON.stringify({
           competitionCode: competition.code,
           teamName,
-          password
+          password,
+          confirmPassword: mode === "create" ? confirmPassword : undefined,
+          mode
         })
       });
       const data = (await response.json()) as {
@@ -90,7 +101,7 @@ export function InvestmentTeamJoin() {
     } catch {
       setStatus("Team access is temporarily unavailable.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -108,8 +119,8 @@ export function InvestmentTeamJoin() {
         <div className={`investment-join-step ${competition ? "active" : ""}`}>
           <span>02</span>
           <div>
-            <strong>Enter team portfolio</strong>
-            <small>New teams are created, existing teams are verified.</small>
+            <strong>Choose team action</strong>
+            <small>Create a new team or log in to an existing portfolio.</small>
           </div>
         </div>
         <div className="investment-join-step">
@@ -144,15 +155,15 @@ export function InvestmentTeamJoin() {
               required
             />
           </label>
-          <button className="button primary" type="submit" disabled={busy}>
-            {busy ? "Checking..." : "Check competition code"}
+          <button className="button primary" type="submit" disabled={Boolean(busyAction)}>
+            {busyAction === "code" ? "Checking..." : "Check competition code"}
           </button>
         </form>
 
-        <form className="investment-access-card stack-md" onSubmit={enterTeam}>
+        <div className="investment-access-card stack-md">
           <div className="investment-card-header">
             <span>Step 2</span>
-            <h2>Create or enter team portfolio</h2>
+            <h2>Choose how to enter</h2>
             {competition ? (
               <div className={`competition-mini-card ${competition.isTeenvestor ? "teenvestor" : ""}`}>
                 <strong>{competition.welcomeMessage ?? `Welcome to ${competition.name}.`}</strong>
@@ -160,34 +171,88 @@ export function InvestmentTeamJoin() {
                 <span>Status: {competition.runtimeStatus === "active" ? "Active" : competition.runtimeStatus}</span>
               </div>
             ) : (
-              <p>After the code is verified, enter your team name and team password.</p>
+              <p>After the code is verified, choose whether you are creating a new team or returning to an existing one.</p>
             )}
           </div>
-          <div className="investment-team-fields">
-            <label className="form-field investment-field">
-              <span>Team name</span>
-              <input value={teamName} onChange={(event) => setTeamName(event.target.value)} autoComplete="organization" required />
-            </label>
-            <label className="form-field investment-field">
-              <span>Team password</span>
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </label>
+
+          <div className="investment-team-action-grid">
+            <form className="investment-team-action-card" onSubmit={(event) => submitTeam("create", event)}>
+              <div className="investment-team-action-header">
+                <span>Create Team</span>
+                <h3>Create new team</h3>
+                <p>Only create a new team if your team has not registered before. Existing teams should use Log In.</p>
+              </div>
+              <label className="form-field investment-field">
+                <span>Team name</span>
+                <input
+                  value={createTeamName}
+                  onChange={(event) => setCreateTeamName(event.target.value)}
+                  autoComplete="organization"
+                  required
+                />
+              </label>
+              <label className="form-field investment-field">
+                <span>Team password</span>
+                <input
+                  value={createPassword}
+                  onChange={(event) => setCreatePassword(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <label className="form-field investment-field">
+                <span>Confirm team password</span>
+                <input
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <button className="button primary" type="submit" disabled={Boolean(busyAction) || !competition}>
+                {busyAction === "create" ? "Creating..." : "Create team"}
+              </button>
+            </form>
+
+            <form className="investment-team-action-card" onSubmit={(event) => submitTeam("login", event)}>
+              <div className="investment-team-action-header">
+                <span>Log In</span>
+                <h3>Log in to existing team</h3>
+                <p>Use this if your team has already registered. A typo will not create a duplicate team.</p>
+              </div>
+              <label className="form-field investment-field">
+                <span>Team name</span>
+                <input
+                  value={loginTeamName}
+                  onChange={(event) => setLoginTeamName(event.target.value)}
+                  autoComplete="organization"
+                  required
+                />
+              </label>
+              <label className="form-field investment-field">
+                <span>Team password</span>
+                <input
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <button className="button secondary" type="submit" disabled={Boolean(busyAction) || !competition}>
+                {busyAction === "login" ? "Opening..." : "Log in to team portfolio"}
+              </button>
+            </form>
           </div>
+
           <div className="investment-form-actions">
-            <button className="button primary" type="submit" disabled={busy || !competition}>
-              {busy ? "Opening..." : "Create or enter team portfolio"}
-            </button>
             <Link className="button secondary" href="/investment-challenge/rules">
               Read rules first
             </Link>
           </div>
-        </form>
+        </div>
       </div>
 
       {status ? <p className="investment-status-card">{status}</p> : null}

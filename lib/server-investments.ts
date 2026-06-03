@@ -351,6 +351,14 @@ function normalizeSymbol(symbol: string) {
   return symbol.trim().toUpperCase();
 }
 
+function normalizeInvestmentTeamDisplayName(teamName: string) {
+  return teamName.trim().replace(/\s+/g, " ").slice(0, 96);
+}
+
+function normalizeInvestmentTeamNameKey(teamName: string) {
+  return normalizeInvestmentTeamDisplayName(teamName).toLowerCase();
+}
+
 function competitionCodeToSlug(code: string) {
   const trimmed = code.trim();
   if (!trimmed) return DEFAULT_INVESTMENT_COMPETITION_SLUG;
@@ -2426,41 +2434,84 @@ export async function createOrGetInvestmentAccount(input: {
   const competition = await ensureDefaultCompetition(input.competitionCode || input.competitionSlug);
   if (!competition) return null;
 
-  const teamName = input.teamName.trim().slice(0, 96);
+  const teamName = normalizeInvestmentTeamDisplayName(input.teamName);
+  const normalizedTeamName = normalizeInvestmentTeamNameKey(teamName);
   if (!teamName) throw new Error("Team name is required.");
 
-  const existing = await selectRows("investment_accounts", {
-    select: "*",
-    competition_id: `eq.${competition.id}`,
-    team_name: `eq.${teamName}`,
-    limit: "1"
-  });
-  if (Array.isArray(existing) && existing[0]) {
-    return buildInvestmentAccountView(rowString(existing[0], "id"));
+  const existing = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
+  if (existing) {
+    await updateInvestmentAccountNormalizedName(existing, normalizedTeamName);
+    return buildInvestmentAccountView(rowString(existing, "id"));
   }
 
-  const rows = await upsertRow(
-    "investment_accounts",
-    {
-      competition_id: competition.id,
-      team_name: teamName,
-      participant_login: input.participantLogin?.trim().slice(0, 96) || null,
-      starting_cash: competition.startingCash,
-      cash: competition.startingCash,
-      updated_at: new Date().toISOString()
-    },
-    "competition_id,team_name"
-  );
+  const accountPayload = {
+    competition_id: competition.id,
+    team_name: teamName,
+    normalized_team_name: normalizedTeamName,
+    participant_login: input.participantLogin?.trim().slice(0, 96) || null,
+    starting_cash: competition.startingCash,
+    cash: competition.startingCash,
+    updated_at: new Date().toISOString()
+  };
+  let rows: Payload[] | { ok: boolean; reason: "missing_env" };
+  try {
+    rows = await upsertRow("investment_accounts", accountPayload, "competition_id,team_name");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/normalized_team_name|schema cache|column/i.test(message)) throw error;
+    const { normalized_team_name: _normalizedTeamName, ...legacyPayload } = accountPayload;
+    rows = await upsertRow("investment_accounts", legacyPayload, "competition_id,team_name");
+  }
   if (!Array.isArray(rows) || !rows[0]) return null;
   const accountId = rowString(rows[0], "id");
+  await updateInvestmentAccountNormalizedName(rows[0], normalizedTeamName);
   await recalculatePortfolios();
   return buildInvestmentAccountView(accountId);
+}
+
+async function findInvestmentAccountByNormalizedTeamName(competitionId: string, normalizedTeamName: string) {
+  if (!normalizedTeamName) return null;
+
+  try {
+    const rows = await selectRows("investment_accounts", {
+      select: "*",
+      competition_id: `eq.${competitionId}`,
+      normalized_team_name: `eq.${normalizedTeamName}`,
+      limit: "1"
+    });
+    if (Array.isArray(rows) && rows[0]) return rows[0];
+  } catch {
+    // Older Supabase schemas may not have normalized_team_name yet.
+  }
+
+  try {
+    const rows = await selectRows("investment_accounts", {
+      select: "*",
+      competition_id: `eq.${competitionId}`,
+      limit: "1000"
+    });
+    if (!Array.isArray(rows)) return null;
+    return rows.find((row) => normalizeInvestmentTeamNameKey(rowString(row, "team_name")) === normalizedTeamName) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function updateInvestmentAccountNormalizedName(accountRow: Payload, normalizedTeamName: string) {
+  const accountId = rowString(accountRow, "id");
+  if (!accountId || !normalizedTeamName || rowNullableString(accountRow, "normalized_team_name")) return;
+  await updateRows(
+    "investment_accounts",
+    { id: `eq.${accountId}` },
+    { normalized_team_name: normalizedTeamName, updated_at: new Date().toISOString() }
+  ).catch(() => null);
 }
 
 export async function createOrEnterInvestmentTeam(input: {
   competitionCode: string;
   teamName: string;
   password: string;
+  mode: "create" | "login";
 }): Promise<
   | { ok: true; session: InvestmentTeamSessionView }
   | { ok: false; status: number; reason: string }
@@ -2470,28 +2521,27 @@ export async function createOrEnterInvestmentTeam(input: {
   }
 
   const competitionCode = input.competitionCode.trim();
-  const teamName = input.teamName.trim().slice(0, 96);
+  const teamName = normalizeInvestmentTeamDisplayName(input.teamName);
+  const normalizedTeamName = normalizeInvestmentTeamNameKey(teamName);
   const password = input.password;
+  const mode = input.mode;
 
   if (!competitionCode) return { ok: false, status: 400, reason: "Competition code is required." };
   if (!teamName) return { ok: false, status: 400, reason: "Team name is required." };
   if (!password) return { ok: false, status: 400, reason: "Team password is required." };
+  if (mode !== "create" && mode !== "login") return { ok: false, status: 400, reason: "Choose whether to create a team or log in." };
 
   const competition = await resolveExistingInvestmentCompetition(competitionCode);
   if (!competition) return { ok: false, status: 404, reason: "Competition not found." };
 
-  const existing = await selectRows("investment_accounts", {
-    select: "*",
-    competition_id: `eq.${competition.id}`,
-    team_name: `eq.${teamName}`,
-    limit: "1"
-  });
+  let accountRow = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
+  const created = mode === "create";
+  const message = created ? "Team created successfully." : "Welcome back to your team portfolio.";
 
-  let accountRow: Payload | null = Array.isArray(existing) && existing[0] ? existing[0] : null;
-  let created = false;
-  let message = "Welcome back to your team portfolio.";
-
-  if (accountRow) {
+  if (mode === "login") {
+    if (!accountRow) {
+      return { ok: false, status: 404, reason: "Team not found. Please check the spelling or create a new team." };
+    }
     const storedPasswordHash = rowNullableString(accountRow, "password_hash");
     if (storedPasswordHash) {
       const passwordMatches = verifyTeamPassword(password, storedPasswordHash);
@@ -2509,11 +2559,17 @@ export async function createOrEnterInvestmentTeam(input: {
         return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
       }
     }
+    await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
   } else {
-    let rows: Payload[] | { ok: boolean; reason: "missing_env" };
+    if (accountRow) {
+      await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
+      return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+    }
+
     const accountPayload = {
       competition_id: competition.id,
       team_name: teamName,
+      normalized_team_name: normalizedTeamName,
       participant_login: null,
       starting_cash: competition.startingCash,
       cash: competition.startingCash,
@@ -2523,29 +2579,31 @@ export async function createOrEnterInvestmentTeam(input: {
       updated_at: new Date().toISOString()
     };
     try {
-      rows = await upsertRow(
-        "investment_accounts",
-        accountPayload,
-        "competition_id,team_name"
-      );
+      await insertRow("investment_accounts", accountPayload);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      if (!/cash_balance|schema cache|column/i.test(message)) {
+      if (/duplicate|unique|409|23505/i.test(message)) {
+        return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+      }
+      if (!/normalized_team_name|cash_balance|schema cache|column/i.test(message)) {
         return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
       }
-      const { cash_balance: _cashBalance, ...legacyPayload } = accountPayload;
+      const { cash_balance: _cashBalance, normalized_team_name: _normalizedTeamName, ...legacyPayload } = accountPayload;
       try {
-        rows = await upsertRow("investment_accounts", legacyPayload, "competition_id,team_name");
-      } catch {
+        await insertRow("investment_accounts", legacyPayload);
+      } catch (legacyError) {
+        const legacyMessage = legacyError instanceof Error ? legacyError.message : "";
+        if (/duplicate|unique|409|23505/i.test(legacyMessage)) {
+          return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+        }
         return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
       }
     }
-    if (!Array.isArray(rows) || !rows[0]) {
+    accountRow = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
+    if (!accountRow) {
       return { ok: false, status: 500, reason: "Could not create team portfolio." };
     }
-    accountRow = rows[0];
-    created = true;
-    message = "Team created successfully.";
+    await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
   }
 
   await updateRows(

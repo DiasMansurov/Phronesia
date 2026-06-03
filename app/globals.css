@@ -17342,6 +17342,62 @@ iframe {
   gap: 0.8rem;
 }
 
+.investment-team-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.investment-team-action-card {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+  padding: clamp(1rem, 2.4vw, 1.25rem);
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.13), transparent 12rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 247, 241, 0.96)),
+    #ffffff;
+  box-shadow: 0 14px 44px rgba(15, 23, 42, 0.07);
+}
+
+.investment-team-action-card .button {
+  margin-top: 0.25rem;
+}
+
+.investment-team-action-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.investment-team-action-header span {
+  width: fit-content;
+  padding: 0.34rem 0.56rem;
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  border-radius: 999px;
+  background: #eafffb;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.investment-team-action-header h3 {
+  margin: 0;
+  color: var(--investment-ink);
+  font-size: clamp(1.18rem, 2vw, 1.55rem);
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.investment-team-action-header p {
+  margin: 0;
+  color: var(--investment-muted);
+}
+
 .investment-field {
   display: grid;
   gap: 0.42rem;
@@ -17705,6 +17761,7 @@ iframe {
   .investment-topic-grid,
   .investment-stat-grid,
   .investment-team-fields,
+  .investment-team-action-grid,
   .investment-hero-status-card .market-status-grid,
   .investment-feature-band,
   .investment-final-split,

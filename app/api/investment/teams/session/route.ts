@@ -31,12 +31,23 @@ export async function POST(request: Request) {
     competitionCode?: string;
     teamName?: string;
     password?: string;
+    confirmPassword?: string;
+    mode?: "create" | "login";
   };
+
+  if (body.mode !== "create" && body.mode !== "login") {
+    return NextResponse.json({ ok: false, reason: "Choose whether to create a team or log in." }, { status: 400 });
+  }
+
+  if (body.mode === "create" && body.password !== body.confirmPassword) {
+    return NextResponse.json({ ok: false, reason: "Passwords do not match." }, { status: 400 });
+  }
 
   const result = await createOrEnterInvestmentTeam({
     competitionCode: body.competitionCode ?? "",
     teamName: body.teamName ?? "",
-    password: body.password ?? ""
+    password: body.password ?? "",
+    mode: body.mode
   });
 
   if (!result.ok) {
