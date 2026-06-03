@@ -8,5 +8,5 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const access = await checkInvestmentAdminAccess();
-  return NextResponse.json({ ok: true, isAdmin: access.ok });
+  return NextResponse.json({ ok: true, isAdmin: access.ok, reason: access.reason });
 }

@@ -12,6 +12,12 @@ function configuredInvestmentAdminEmails() {
     .filter(Boolean);
 }
 
+export function isInvestmentAdminEmail(email: string | null | undefined) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return configuredInvestmentAdminEmails().includes(normalized);
+}
+
 export async function checkInvestmentAdminAccess() {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
     return { ok: false as const, reason: "auth_unconfigured" as const, userEmail: null };
@@ -40,7 +46,7 @@ export async function checkInvestmentAdminAccess() {
     return { ok: false as const, reason: "missing_email" as const, userEmail: null };
   }
 
-  if (!adminEmails.includes(userEmail)) {
+  if (!isInvestmentAdminEmail(userEmail)) {
     return { ok: false as const, reason: "not_admin" as const, userEmail };
   }
 

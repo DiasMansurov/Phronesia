@@ -94,25 +94,50 @@ export function SiteNav() {
 }
 
 function AdminResultsNavLink({ active }: { active: boolean }) {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const [showAdminResults, setShowAdminResults] = useState(false);
+  const adminEmail = user?.primaryEmailAddress?.emailAddress ?? "";
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
+    if (!isLoaded || !isSignedIn || !adminEmail) {
       setShowAdminResults(false);
       return;
     }
 
     const controller = new AbortController();
-    fetch("/api/investment/admin/access", { cache: "no-store", signal: controller.signal })
+    let retryTimer: number | null = null;
+
+    function checkAdminAccess(attempt = 0) {
+      fetch("/api/investment/admin/access", {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+        signal: controller.signal
+      })
       .then((response) => (response.ok ? response.json() : { isAdmin: false }))
-      .then((data) => setShowAdminResults(Boolean(data?.isAdmin)))
+      .then((data) => {
+        if (data?.isAdmin) {
+          setShowAdminResults(true);
+          return;
+        }
+        if ((data?.reason === "signed_out" || data?.reason === "missing_email") && attempt < 3) {
+          retryTimer = window.setTimeout(() => checkAdminAccess(attempt + 1), 450);
+          return;
+        }
+        setShowAdminResults(false);
+      })
       .catch(() => {
         if (!controller.signal.aborted) setShowAdminResults(false);
       });
+    }
 
-    return () => controller.abort();
-  }, [isLoaded, isSignedIn]);
+    checkAdminAccess();
+
+    return () => {
+      controller.abort();
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [isLoaded, isSignedIn, adminEmail]);
 
   if (!showAdminResults) return null;
   return <NavLink href="/results" label="Results" active={active} />;

@@ -2973,7 +2973,7 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
 
   const priceMap = new Map(
     quotes
-      .filter((quote) => quote.priceAvailable && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
+      .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
       .map((quote) => [quote.symbol, quote])
   );
 
@@ -3071,7 +3071,7 @@ export async function getInvestmentAdminTeamDetail(
 
   const priceMap = new Map(
     quotes
-      .filter((quote) => quote.priceAvailable && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
+      .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
       .map((quote) => [quote.symbol, quote])
   );
   const totalValue = overviewBase?.totalPortfolioValue ?? rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
@@ -3169,19 +3169,55 @@ function groupRowsByTeam(rows: Payload[]) {
   return grouped;
 }
 
+function storedPriceRawPayload(row: Payload | null | undefined): Payload | null {
+  const raw = row?.raw_source ?? row?.raw;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Payload) : null;
+}
+
+function resolveStoredInvestmentPrice(row: Payload | null | undefined, referencePrice = 0) {
+  const raw = storedPriceRawPayload(row);
+  const bidPrice = raw ? parsePositiveNumber(marketDataArrayField(raw, "bid")) : null;
+  const lastPrice = raw ? parsePositiveNumber(marketDataArrayField(raw, "last")) : null;
+  const cachedPrice = row ? parsePositiveNumber(row.price) ?? parsePositiveNumber(row.close_price) : null;
+  const fallbackPrice = parsePositiveNumber(referencePrice);
+  const price = bidPrice ?? lastPrice ?? cachedPrice ?? fallbackPrice;
+  const priceDate = row ? rowString(row, "trading_day") || rowString(row, "price_date") : null;
+  const fetchedAt = row ? rowNullableString(row, "fetched_at") ?? rowNullableString(row, "updated_at") : null;
+  const source = bidPrice
+    ? "bid"
+    : lastPrice
+      ? "last"
+      : cachedPrice
+        ? "cache"
+        : fallbackPrice
+          ? "reference"
+          : "unavailable";
+
+  return { price, priceDate, fetchedAt, source };
+}
+
 export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[]> {
   const assets = await listInvestmentAssets();
   let storedRows: Payload[] = [];
   if (supabaseConfigured()) {
     try {
       const rows = await selectRows("investment_daily_prices", {
-        select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
+        select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at,raw,raw_source",
         order: "fetched_at.desc,price_date.desc",
         limit: "400"
       });
       storedRows = Array.isArray(rows) ? rows : [];
     } catch {
-      storedRows = [];
+      try {
+        const rows = await selectRows("investment_daily_prices", {
+          select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
+          order: "fetched_at.desc,price_date.desc",
+          limit: "400"
+        });
+        storedRows = Array.isArray(rows) ? rows : [];
+      } catch {
+        storedRows = [];
+      }
     }
   }
   const latestBySymbol = new Map<string, Payload>();
@@ -3192,21 +3228,20 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
 
   return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
-    const storedDate = stored ? rowString(stored, "trading_day") || rowString(stored, "price_date") : null;
-    const fetchedAt = stored ? rowNullableString(stored, "fetched_at") ?? rowNullableString(stored, "updated_at") : null;
-    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt, priceDate: storedDate }) : false;
+    const resolvedPrice = resolveStoredInvestmentPrice(stored, asset.referencePrice);
+    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt: resolvedPrice.fetchedAt, priceDate: resolvedPrice.priceDate }) : false;
     return {
       ...asset,
-      latestClose: stored ? rowNumber(stored, "price", rowNumber(stored, "close_price", asset.referencePrice)) : asset.referencePrice,
-      priceDate: storedDate,
+      latestClose: resolvedPrice.price ?? asset.referencePrice,
+      priceDate: resolvedPrice.priceDate,
       provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
       priceAvailable: Boolean(stored),
       priceSource: stored ? ("cache" as const) : ("reference" as const),
-      fetchedAt,
+      fetchedAt: resolvedPrice.fetchedAt,
       currency: stored ? rowString(stored, "currency") || "USD" : asset.currency ?? "USD",
       cacheStatus: stored ? (cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
-      priceMessage: storedDate
-        ? `Using saved price from ${fetchedAt ? new Date(fetchedAt).toLocaleString("en-US") : storedDate}.`
+      priceMessage: resolvedPrice.priceDate
+        ? `Using saved ${resolvedPrice.source} price from ${resolvedPrice.fetchedAt ? new Date(resolvedPrice.fetchedAt).toLocaleString("en-US") : resolvedPrice.priceDate}.`
         : "No saved price yet. Select the asset to fetch the latest price."
     };
   });
