@@ -59,6 +59,9 @@ export default async function InvestmentChallengeAdminPage() {
             Prices are fetched only through MarketData.app /stocks/quotes for selected, held, traded, or manually refreshed assets to save API credits.
           </p>
           <div className="cta-row">
+            <Link className="button primary" href="/investment-challenge/admin/results">
+              Results
+            </Link>
             <Link className="button primary" href="/api/investment/admin?format=csv">
               Export leaderboard CSV
             </Link>
@@ -139,6 +142,9 @@ export default async function InvestmentChallengeAdminPage() {
                 <div className="cta-row">
                   <Link className="text-link" href={`/investment-challenge/leaderboard/${competition.slug}`}>Leaderboard</Link>
                   <Link className="text-link" href={`/investment-challenge/results/${competition.slug}`}>Results</Link>
+                  {competition.isTeenvestor ? (
+                    <Link className="text-link" href="/investment-challenge/admin/results">Admin results</Link>
+                  ) : null}
                   <form action="/api/investment/admin/finalize" method="post">
                     <input type="hidden" name="code" value={competition.code} />
                     <button className="text-link" type="submit">Finalize</button>

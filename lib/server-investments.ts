@@ -130,6 +130,66 @@ export type InvestmentTradeView = {
   rejectReason: string | null;
 };
 
+export type InvestmentAdminTeamResult = {
+  rank: number;
+  teamId: string;
+  competitionId: string;
+  competitionCode: string;
+  teamName: string;
+  startingCash: number;
+  cashBalance: number;
+  holdingsValue: number;
+  totalPortfolioValue: number;
+  profitLoss: number;
+  returnPercent: number;
+  tradesCount: number;
+  holdingsCount: number;
+  lastActivity: string | null;
+  status: string;
+};
+
+export type InvestmentAdminHoldingResult = {
+  symbol: string;
+  assetName: string;
+  quantity: number;
+  averageBuyPrice: number;
+  latestPrice: number | null;
+  priceDate: string | null;
+  marketValue: number | null;
+  unrealizedProfitLoss: number | null;
+  allocationPercent: number;
+};
+
+export type InvestmentAdminTradeResult = InvestmentTradeView & {
+  teamName: string;
+};
+
+export type InvestmentAdminResultsBundle = {
+  persisted: boolean;
+  competition: InvestmentCompetitionView | null;
+  teams: InvestmentAdminTeamResult[];
+  stats: {
+    totalTeams: number;
+    totalTrades: number;
+    averageReturn: number;
+    bestTeam: string;
+    totalSimulatedPortfolioValue: number;
+    competitionStatus: string;
+  };
+};
+
+export type InvestmentAdminTeamDetail = {
+  persisted: boolean;
+  competition: InvestmentCompetitionView | null;
+  overview: (InvestmentAdminTeamResult & {
+    createdAt: string | null;
+    lastLoginAt: string | null;
+    updatedAt: string | null;
+  }) | null;
+  holdings: InvestmentAdminHoldingResult[];
+  trades: InvestmentAdminTradeResult[];
+};
+
 export type InvestmentTeamSessionView = {
   account: InvestmentAccountView;
   competition: InvestmentCompetitionView;
@@ -250,6 +310,19 @@ function rowNumber(row: Payload, key: string, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
+}
+
+function latestIso(...values: Array<string | null | undefined>) {
+  let latest: string | null = null;
+  let latestTime = 0;
+  for (const value of values) {
+    if (!value) continue;
+    const time = Date.parse(value);
+    if (!Number.isFinite(time) || time <= latestTime) continue;
+    latest = value;
+    latestTime = time;
+  }
+  return latest;
 }
 
 function hashTeamPassword(password: string) {
@@ -2787,6 +2860,255 @@ export async function listInvestmentAdminBundle() {
     },
     persisted: true
   };
+}
+
+export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVESTOR_CODE): Promise<InvestmentAdminResultsBundle> {
+  if (!supabaseConfigured()) {
+    return {
+      persisted: false,
+      competition: null,
+      teams: [],
+      stats: {
+        totalTeams: 0,
+        totalTrades: 0,
+        averageReturn: 0,
+        bestTeam: "n/a",
+        totalSimulatedPortfolioValue: 0,
+        competitionStatus: "not_configured"
+      }
+    };
+  }
+
+  const competition = await resolveInvestmentCompetition(competitionCodeOrSlug);
+  if (!competition) {
+    return {
+      persisted: true,
+      competition: null,
+      teams: [],
+      stats: {
+        totalTeams: 0,
+        totalTrades: 0,
+        averageReturn: 0,
+        bestTeam: "n/a",
+        totalSimulatedPortfolioValue: 0,
+        competitionStatus: "missing"
+      }
+    };
+  }
+
+  await updateInvestmentLeaderboard(competition.code);
+
+  const accounts = await selectRows("investment_accounts", {
+    select: "*",
+    competition_id: `eq.${competition.id}`,
+    order: "created_at.asc",
+    limit: "1000"
+  });
+
+  const accountRows = Array.isArray(accounts) ? accounts : [];
+  const accountIds = new Set(accountRows.map((row) => rowString(row, "id")));
+  const [holdingRows, tradeRows, quotes] = await Promise.all([
+    listInvestmentHoldingsForCompetition(competition.id, accountIds),
+    listInvestmentTradesForCompetition(competition.id, accountIds),
+    listInvestmentAssetQuotes()
+  ]);
+
+  const priceMap = new Map(
+    quotes
+      .filter((quote) => quote.priceAvailable && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
+      .map((quote) => [quote.symbol, quote])
+  );
+
+  const holdingsByAccount = groupRowsByTeam(holdingRows);
+  const tradesByAccount = groupRowsByTeam(tradeRows);
+
+  const teams = accountRows.map((account) => {
+    const accountId = rowString(account, "id");
+    const startingCash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
+    const cashBalance = rowNumber(account, "cash", rowNumber(account, "cash_balance", startingCash));
+    const teamHoldings = (holdingsByAccount.get(accountId) ?? []).filter((row) => rowNumber(row, "quantity") > 0);
+    const holdingsValue = teamHoldings.reduce((sum, holding) => {
+      const symbol = rowString(holding, "symbol");
+      const quote = priceMap.get(symbol);
+      const latestPrice = quote?.latestClose ?? null;
+      return latestPrice ? sum + rowNumber(holding, "quantity") * latestPrice : sum;
+    }, 0);
+    const totalPortfolioValue = cashBalance + holdingsValue;
+    const profitLoss = totalPortfolioValue - startingCash;
+    const teamTrades = (tradesByAccount.get(accountId) ?? []).filter((row) => !row.rejected);
+    const lastHoldingActivity = latestIso(...teamHoldings.map((row) => rowNullableString(row, "updated_at")));
+    const lastTradeActivity = latestIso(...(tradesByAccount.get(accountId) ?? []).map((row) => rowNullableString(row, "created_at")));
+    const lastActivity = latestIso(
+      rowNullableString(account, "last_login_at"),
+      rowNullableString(account, "updated_at"),
+      rowNullableString(account, "created_at"),
+      lastHoldingActivity,
+      lastTradeActivity
+    );
+
+    return {
+      rank: 0,
+      teamId: accountId,
+      competitionId: competition.id,
+      competitionCode: competition.code,
+      teamName: rowString(account, "team_name"),
+      startingCash,
+      cashBalance,
+      holdingsValue,
+      totalPortfolioValue,
+      profitLoss,
+      returnPercent: startingCash > 0 ? (profitLoss / startingCash) * 100 : 0,
+      tradesCount: teamTrades.length,
+      holdingsCount: teamHoldings.length,
+      lastActivity,
+      status: competition.runtimeStatus === "closed" ? "closed" : teamTrades.length || teamHoldings.length ? "active" : "registered"
+    } satisfies InvestmentAdminTeamResult;
+  });
+
+  teams.sort((a, b) => b.totalPortfolioValue - a.totalPortfolioValue || b.returnPercent - a.returnPercent || a.teamName.localeCompare(b.teamName));
+  teams.forEach((team, index) => {
+    team.rank = index + 1;
+  });
+
+  const totalTrades = teams.reduce((sum, team) => sum + team.tradesCount, 0);
+  const totalSimulatedPortfolioValue = teams.reduce((sum, team) => sum + team.totalPortfolioValue, 0);
+  const averageReturn = teams.length ? teams.reduce((sum, team) => sum + team.returnPercent, 0) / teams.length : 0;
+
+  return {
+    persisted: true,
+    competition,
+    teams,
+    stats: {
+      totalTeams: teams.length,
+      totalTrades,
+      averageReturn,
+      bestTeam: teams[0]?.teamName ?? "n/a",
+      totalSimulatedPortfolioValue,
+      competitionStatus: competition.runtimeStatus
+    }
+  };
+}
+
+export async function getInvestmentAdminTeamDetail(
+  teamId: string,
+  competitionCodeOrSlug = TEENVESTOR_CODE
+): Promise<InvestmentAdminTeamDetail> {
+  if (!supabaseConfigured()) return { persisted: false, competition: null, overview: null, holdings: [], trades: [] };
+
+  const competition = await resolveInvestmentCompetition(competitionCodeOrSlug);
+  if (!competition) return { persisted: true, competition: null, overview: null, holdings: [], trades: [] };
+
+  const account = await getAccountRow(teamId);
+  if (!account || rowString(account, "competition_id") !== competition.id) {
+    return { persisted: true, competition, overview: null, holdings: [], trades: [] };
+  }
+
+  const results = await listInvestmentAdminResults(competition.code);
+  const overviewBase = results.teams.find((team) => team.teamId === teamId) ?? null;
+  const [holdingRows, tradeRows, quotes] = await Promise.all([
+    selectRows("investment_holdings", { select: "*", account_id: `eq.${teamId}`, order: "symbol.asc", limit: "1000" }),
+    selectRows("investment_trades", { select: "*", account_id: `eq.${teamId}`, order: "created_at.desc", limit: "3000" }),
+    listInvestmentAssetQuotes()
+  ]);
+
+  const priceMap = new Map(
+    quotes
+      .filter((quote) => quote.priceAvailable && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
+      .map((quote) => [quote.symbol, quote])
+  );
+  const totalValue = overviewBase?.totalPortfolioValue ?? rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
+
+  const holdings = (Array.isArray(holdingRows) ? holdingRows : [])
+    .filter((row) => rowNumber(row, "quantity") > 0)
+    .map((row) => {
+      const symbol = rowString(row, "symbol");
+      const quote = priceMap.get(symbol);
+      const latestPrice = quote?.latestClose ?? null;
+      const quantity = rowNumber(row, "quantity");
+      const averageBuyPrice = rowNumber(row, "average_buy_price");
+      const marketValue = latestPrice ? latestPrice * quantity : null;
+      return {
+        symbol,
+        assetName: rowNullableString(row, "asset_name") ?? getInvestmentAsset(symbol)?.name ?? symbol,
+        quantity,
+        averageBuyPrice,
+        latestPrice,
+        priceDate: quote?.priceDate ?? null,
+        marketValue,
+        unrealizedProfitLoss: latestPrice ? (latestPrice - averageBuyPrice) * quantity : null,
+        allocationPercent: marketValue && totalValue > 0 ? (marketValue / totalValue) * 100 : 0
+      } satisfies InvestmentAdminHoldingResult;
+    });
+
+  const trades = (Array.isArray(tradeRows) ? tradeRows : []).map((row) => ({
+    ...mapTradeRow(row),
+    teamName: overviewBase?.teamName ?? rowString(account, "team_name")
+  }));
+
+  return {
+    persisted: true,
+    competition,
+    overview: overviewBase
+      ? {
+          ...overviewBase,
+          createdAt: rowNullableString(account, "created_at"),
+          lastLoginAt: rowNullableString(account, "last_login_at"),
+          updatedAt: rowNullableString(account, "updated_at")
+        }
+      : null,
+    holdings,
+    trades
+  };
+}
+
+async function listInvestmentHoldingsForCompetition(competitionId: string, accountIds: Set<string>) {
+  try {
+    const rows = await selectRows("investment_holdings", {
+      select: "*",
+      competition_id: `eq.${competitionId}`,
+      order: "updated_at.desc",
+      limit: "5000"
+    });
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    const allRows = await Promise.all(
+      Array.from(accountIds).map((accountId) =>
+        selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "updated_at.desc", limit: "1000" }).catch(() => [])
+      )
+    );
+    return allRows.flat().filter((row): row is Payload => Boolean(row && typeof row === "object"));
+  }
+}
+
+async function listInvestmentTradesForCompetition(competitionId: string, accountIds: Set<string>) {
+  try {
+    const rows = await selectRows("investment_trades", {
+      select: "*",
+      competition_id: `eq.${competitionId}`,
+      order: "created_at.desc",
+      limit: "10000"
+    });
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    const allRows = await Promise.all(
+      Array.from(accountIds).map((accountId) =>
+        selectRows("investment_trades", { select: "*", account_id: `eq.${accountId}`, order: "created_at.desc", limit: "3000" }).catch(() => [])
+      )
+    );
+    return allRows.flat().filter((row): row is Payload => Boolean(row && typeof row === "object"));
+  }
+}
+
+function groupRowsByTeam(rows: Payload[]) {
+  const grouped = new Map<string, Payload[]>();
+  for (const row of rows) {
+    const teamId = rowString(row, "team_id") || rowString(row, "account_id");
+    if (!teamId) continue;
+    const list = grouped.get(teamId) ?? [];
+    list.push(row);
+    grouped.set(teamId, list);
+  }
+  return grouped;
 }
 
 export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[]> {

@@ -6,7 +6,7 @@ import { DEFAULT_RESULTS_ADMIN_EMAIL, normalizeEmail } from "@/lib/results-acces
 type ClaimMap = Record<string, unknown>;
 
 function configuredResultsAdminEmails() {
-  const configured = process.env.RESULTS_ADMIN_EMAILS;
+  const configured = [process.env.RESULTS_ADMIN_EMAILS, process.env.INVESTMENT_ADMIN_EMAILS].filter(Boolean).join(",");
   if (!configured) return [DEFAULT_RESULTS_ADMIN_EMAIL];
 
   const emails = configured

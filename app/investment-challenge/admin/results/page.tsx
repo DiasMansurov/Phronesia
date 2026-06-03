@@ -1,0 +1,202 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { formatPercent, formatUsd } from "@/lib/investment-challenge";
+import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { listInvestmentAdminResults, type InvestmentAdminTeamResult } from "@/lib/server-investments";
+
+export const metadata: Metadata = {
+  title: "Teenvestor Investment Results Admin",
+  description: "Private admin results dashboard for the Teenvestor.school Investment Competition.",
+  robots: {
+    index: false,
+    follow: false
+  }
+};
+
+type ResultsPageProps = {
+  searchParams?: Promise<{
+    q?: string;
+    sort?: string;
+  }>;
+};
+
+export default async function InvestmentAdminResultsPage({ searchParams }: ResultsPageProps) {
+  const organizer = await requireResultsOrganizer();
+  if (!organizer.ok && organizer.reason === "signed_out") {
+    redirect("/sign-in?redirect_url=/investment-challenge/admin/results");
+  }
+  if (organizer.errorResponse) {
+    return <AdminBlocked />;
+  }
+
+  const params = (await searchParams) ?? {};
+  const query = (params.q ?? "").trim().toLowerCase();
+  const sort = params.sort ?? "rank";
+  const bundle = await listInvestmentAdminResults("Teenvestor.school");
+  const teams = sortTeams(
+    bundle.teams.filter((team) => !query || team.teamName.toLowerCase().includes(query)),
+    sort
+  );
+
+  return (
+    <section className="shell section stack-xl investment-admin-results-page">
+      <div className="hero-band compact investment-admin-hero">
+        <div className="stack-sm">
+          <p className="eyebrow">Private Admin Results</p>
+          <h1 className="display compact">Teenvestor.school teams, balances, rankings, and trades.</h1>
+          <p className="lede compact-lede">
+            Admin-only view for monitoring every team portfolio in the Teenvestor.school Investment Competition.
+          </p>
+          <div className="cta-row">
+            <Link className="button secondary" href="/investment-challenge/admin">
+              Admin Home
+            </Link>
+            <Link className="button primary" href="/api/investment/admin/export?type=leaderboard&competitionCode=Teenvestor.school">
+              Export leaderboard CSV
+            </Link>
+            <Link className="button secondary" href="/api/investment/admin/export?type=trades&competitionCode=Teenvestor.school">
+              Export trades CSV
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {!bundle.persisted ? (
+        <section className="panel stack-sm">
+          <p className="eyebrow">Database</p>
+          <h2>Supabase is not configured.</h2>
+          <p className="muted">Investment results need Supabase service-role access.</p>
+        </section>
+      ) : null}
+
+      <section className="grid six investment-admin-summary">
+        <Metric label="Total teams" value={bundle.stats.totalTeams.toString()} />
+        <Metric label="Total trades" value={bundle.stats.totalTrades.toString()} />
+        <Metric label="Average return" value={formatPercent(bundle.stats.averageReturn)} tone={bundle.stats.averageReturn >= 0 ? "positive" : "negative"} />
+        <Metric label="Best team" value={bundle.stats.bestTeam} />
+        <Metric label="Total simulated value" value={formatUsd(bundle.stats.totalSimulatedPortfolioValue)} />
+        <Metric label="Competition status" value={bundle.stats.competitionStatus} />
+      </section>
+
+      <section className="panel stack-md investment-admin-results-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Results</p>
+            <h2>{bundle.competition?.name ?? "Teenvestor.school Investment Competition"}</h2>
+            <p className="muted small">Click a team to inspect holdings, cash, rank, and full transaction history.</p>
+          </div>
+          <form className="investment-results-filter" action="/investment-challenge/admin/results">
+            <label className="form-field compact-field">
+              <span>Search team</span>
+              <input name="q" defaultValue={params.q ?? ""} placeholder="Team Alpha" />
+            </label>
+            <label className="form-field compact-field">
+              <span>Sort</span>
+              <select name="sort" defaultValue={sort}>
+                <option value="rank">Portfolio value</option>
+                <option value="return">Return %</option>
+                <option value="trades">Trades count</option>
+                <option value="activity">Last activity</option>
+              </select>
+            </label>
+            <button className="button secondary" type="submit">
+              Apply
+            </button>
+          </form>
+        </div>
+
+        <div className="table-wrap">
+          <table className="record-table investment-table investment-admin-results-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Team</th>
+                <th>Cash balance</th>
+                <th>Holdings value</th>
+                <th>Total portfolio</th>
+                <th>P/L</th>
+                <th>Return</th>
+                <th>Trades</th>
+                <th>Holdings</th>
+                <th>Last activity</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.map((team) => (
+                <tr key={team.teamId}>
+                  <td>#{team.rank}</td>
+                  <td>
+                    <Link className="admin-team-link" href={`/investment-challenge/admin/results/${team.teamId}`}>
+                      {team.teamName}
+                    </Link>
+                  </td>
+                  <td>{formatUsd(team.cashBalance)}</td>
+                  <td>{formatUsd(team.holdingsValue)}</td>
+                  <td>{formatUsd(team.totalPortfolioValue)}</td>
+                  <td className={team.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(team.profitLoss)}</td>
+                  <td className={team.returnPercent >= 0 ? "positive-text" : "negative-text"}>{formatPercent(team.returnPercent)}</td>
+                  <td>{team.tradesCount}</td>
+                  <td>{team.holdingsCount}</td>
+                  <td>{formatDateTime(team.lastActivity)}</td>
+                  <td><span className="pill">{team.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {!teams.length ? (
+          <div className="investment-empty-state">
+            <strong>No teams found.</strong>
+            <p className="muted small">Teams will appear here after they join the Teenvestor.school competition.</p>
+          </div>
+        ) : null}
+      </section>
+    </section>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
+  return (
+    <article className="stat-card investment-admin-result-stat">
+      <span>{label}</span>
+      <strong className={tone === "positive" ? "positive-text" : tone === "negative" ? "negative-text" : undefined}>{value}</strong>
+    </article>
+  );
+}
+
+function sortTeams(teams: InvestmentAdminTeamResult[], sort: string) {
+  const sorted = [...teams];
+  if (sort === "return") return sorted.sort((a, b) => b.returnPercent - a.returnPercent || a.rank - b.rank);
+  if (sort === "trades") return sorted.sort((a, b) => b.tradesCount - a.tradesCount || a.rank - b.rank);
+  if (sort === "activity") {
+    return sorted.sort((a, b) => Date.parse(b.lastActivity ?? "") - Date.parse(a.lastActivity ?? "") || a.rank - b.rank);
+  }
+  return sorted.sort((a, b) => a.rank - b.rank);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "n/a";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
+function AdminBlocked() {
+  return (
+    <section className="shell section auth-page">
+      <div className="panel stack-md">
+        <p className="eyebrow">Investment Results</p>
+        <h1>Admin access required.</h1>
+        <p className="muted">Only the organizer account can view all team balances, rankings, and transactions.</p>
+        <Link className="button primary" href="/investment-challenge">
+          Back to Investment Challenge
+        </Link>
+      </div>
+    </section>
+  );
+}
