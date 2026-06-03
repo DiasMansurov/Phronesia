@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
@@ -32,8 +32,44 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
   }
 
   const { teamId } = await params;
-  const detail = await getInvestmentAdminTeamDetail(teamId, "Teenvestor.school");
-  if (!detail.overview) notFound();
+  const { detail, errorMessage } = await loadTeamDetailSafely(teamId);
+  if (!detail.overview) {
+    return (
+      <section className="shell section stack-xl investment-admin-results-page">
+        <div className="investment-admin-hero">
+          <div className="investment-admin-hero-copy">
+            <p className="eyebrow">Team Detail</p>
+            <h1>Team details unavailable</h1>
+            <p>{errorMessage ? `Failed to load team details: ${errorMessage}` : "Team was not found in the Teenvestor.school competition."}</p>
+            <div className="investment-admin-actions">
+              <Link className="button secondary" href="/investment-challenge/admin/results">
+                Back to all results
+              </Link>
+            </div>
+          </div>
+        </div>
+        <section className="panel stack-sm investment-admin-error-state">
+          <p className="eyebrow">Error state</p>
+          <h2>{errorMessage ? "Failed to load team details." : "Team was not found."}</h2>
+          <p className="muted">{errorMessage ?? "This team does not belong to the Teenvestor.school competition or no longer exists."}</p>
+        </section>
+        <AdminDebugPanel
+          debug={{
+            currentRoute: `/investment-challenge/admin/results/${teamId}`,
+            adminEmail: organizer.userEmail ?? "n/a",
+            isInvestmentAdmin: organizer.ok,
+            envEmailsLoaded: Boolean(process.env.INVESTMENT_ADMIN_EMAILS?.trim()),
+            competitionFound: Boolean(detail.competition),
+            competitionId: detail.competition?.id ?? "n/a",
+            teamFound: Boolean(detail.overview),
+            tradesLoadedCount: detail.trades.length,
+            holdingsLoadedCount: detail.holdings.length,
+            errorMessage
+          }}
+        />
+      </section>
+    );
+  }
 
   const overview = detail.overview;
 
@@ -197,8 +233,36 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           </div>
         ) : null}
       </section>
+      <AdminDebugPanel
+        debug={{
+          currentRoute: `/investment-challenge/admin/results/${teamId}`,
+          adminEmail: organizer.userEmail ?? "n/a",
+          isInvestmentAdmin: organizer.ok,
+          envEmailsLoaded: Boolean(process.env.INVESTMENT_ADMIN_EMAILS?.trim()),
+          competitionFound: Boolean(detail.competition),
+          competitionId: detail.competition?.id ?? "n/a",
+          teamFound: Boolean(detail.overview),
+          tradesLoadedCount: detail.trades.length,
+          holdingsLoadedCount: detail.holdings.length,
+          errorMessage
+        }}
+      />
     </section>
   );
+}
+
+async function loadTeamDetailSafely(teamId: string) {
+  try {
+    return {
+      detail: await getInvestmentAdminTeamDetail(teamId, "Teenvestor.school"),
+      errorMessage: null
+    };
+  } catch (error) {
+    return {
+      detail: { persisted: true, competition: null, overview: null, holdings: [], trades: [] },
+      errorMessage: error instanceof Error ? error.message : String(error ?? "Unknown error")
+    };
+  }
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
@@ -229,6 +293,42 @@ function AdminBlocked() {
           Back to Investment Challenge
         </Link>
       </div>
+    </section>
+  );
+}
+
+function AdminDebugPanel({
+  debug
+}: {
+  debug: {
+    currentRoute: string;
+    adminEmail: string;
+    isInvestmentAdmin: boolean;
+    envEmailsLoaded: boolean;
+    competitionFound: boolean;
+    competitionId: string;
+    teamFound: boolean;
+    tradesLoadedCount: number;
+    holdingsLoadedCount: number;
+    errorMessage: string | null;
+  };
+}) {
+  return (
+    <section className="panel stack-sm investment-admin-debug-panel">
+      <p className="eyebrow">Admin debug</p>
+      <h2>Production diagnostics</h2>
+      <dl className="investment-admin-debug-grid">
+        <div><dt>Current route</dt><dd>{debug.currentRoute}</dd></div>
+        <div><dt>Admin email</dt><dd>{debug.adminEmail}</dd></div>
+        <div><dt>isInvestmentAdmin</dt><dd>{String(debug.isInvestmentAdmin)}</dd></div>
+        <div><dt>Env emails loaded</dt><dd>{String(debug.envEmailsLoaded)}</dd></div>
+        <div><dt>Competition found</dt><dd>{String(debug.competitionFound)}</dd></div>
+        <div><dt>Competition id</dt><dd>{debug.competitionId}</dd></div>
+        <div><dt>Team found</dt><dd>{String(debug.teamFound)}</dd></div>
+        <div><dt>Trades loaded count</dt><dd>{debug.tradesLoadedCount}</dd></div>
+        <div><dt>Holdings loaded count</dt><dd>{debug.holdingsLoadedCount}</dd></div>
+        <div className="full-span"><dt>Error message</dt><dd>{debug.errorMessage ?? "none"}</dd></div>
+      </dl>
     </section>
   );
 }

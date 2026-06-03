@@ -2937,7 +2937,7 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
     };
   }
 
-  const competition = await resolveInvestmentCompetition(competitionCodeOrSlug);
+  const competition = await resolveInvestmentAdminCompetition(competitionCodeOrSlug);
   if (!competition) {
     return {
       persisted: true,
@@ -2954,7 +2954,7 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
     };
   }
 
-  await updateInvestmentLeaderboard(competition.code);
+  await updateInvestmentLeaderboard(competition.code).catch(() => null);
 
   const accounts = await selectRows("investment_accounts", {
     select: "*",
@@ -3045,6 +3045,29 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
       competitionStatus: competition.runtimeStatus
     }
   };
+}
+
+async function resolveInvestmentAdminCompetition(codeOrSlug = TEENVESTOR_CODE) {
+  if (!supabaseConfigured()) return null;
+  const code = displayCompetitionCode(codeOrSlug);
+  const slug = competitionCodeToSlug(code);
+  const lookupAttempts: Array<Record<string, string>> = [
+    { select: "*", code: `eq.${code}`, limit: "1" },
+    { select: "*", slug: `eq.${slug}`, limit: "1" },
+    { select: "*", title: "ilike.*Teenvestor*", limit: "1" },
+    { select: "*", name: "ilike.*Teenvestor*", limit: "1" }
+  ];
+
+  for (const query of lookupAttempts) {
+    try {
+      const rows = await selectRows("investment_competitions", query);
+      if (Array.isArray(rows) && rows[0]) return mapCompetitionRow(rows[0]);
+    } catch {
+      // Some production schemas may not have code/name/title columns yet. Try the next lookup shape.
+    }
+  }
+
+  return null;
 }
 
 export async function getInvestmentAdminTeamDetail(

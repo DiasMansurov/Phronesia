@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
-import { listInvestmentAdminResults, type InvestmentAdminTeamResult } from "@/lib/server-investments";
+import { listInvestmentAdminResults, type InvestmentAdminResultsBundle, type InvestmentAdminTeamResult } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
   title: "Competition Results Admin",
@@ -37,11 +37,22 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
   const params = (await searchParams) ?? {};
   const query = (params.q ?? "").trim().toLowerCase();
   const sort = params.sort ?? "rank";
-  const bundle = await listInvestmentAdminResults("Teenvestor.school");
+  const { bundle, errorMessage } = await loadAdminResultsSafely();
   const teams = sortTeams(
     bundle.teams.filter((team) => !query || team.teamName.toLowerCase().includes(query)),
     sort
   );
+  const debug = {
+    currentRoute: "/investment-challenge/admin/results",
+    adminEmail: organizer.userEmail ?? "n/a",
+    isInvestmentAdmin: organizer.ok,
+    envEmailsLoaded: Boolean(process.env.INVESTMENT_ADMIN_EMAILS?.trim()),
+    apiStatus: errorMessage ? "server-helper-error" : "server-helper-ok",
+    competitionFound: Boolean(bundle.competition),
+    competitionId: bundle.competition?.id ?? "n/a",
+    teamsLoadedCount: bundle.teams.length,
+    errorMessage
+  };
 
   return (
     <section className="shell section stack-xl investment-admin-results-page">
@@ -71,6 +82,16 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
           <p className="eyebrow">Database</p>
           <h2>Supabase is not configured.</h2>
           <p className="muted">Investment results need Supabase service-role access.</p>
+        </section>
+      ) : null}
+
+      {errorMessage || !bundle.competition ? (
+        <section className="panel stack-sm investment-admin-error-state">
+          <p className="eyebrow">Error state</p>
+          <h2>{bundle.competition ? "Failed to load admin results." : "Teenvestor.school competition was not found in Supabase."}</h2>
+          <p className="muted">
+            {errorMessage ? `Failed to load admin results: ${errorMessage}` : "Teenvestor.school competition was not found in Supabase."}
+          </p>
         </section>
       ) : null}
 
@@ -159,13 +180,39 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
 
         {!teams.length ? (
           <div className="investment-empty-state">
-            <strong>No teams found.</strong>
+            <strong>No teams have joined this competition yet.</strong>
             <p className="muted small">Teams will appear here after they join the Teenvestor.school competition.</p>
           </div>
         ) : null}
       </section>
+
+      <AdminDebugPanel debug={debug} />
     </section>
   );
+}
+
+async function loadAdminResultsSafely(): Promise<{ bundle: InvestmentAdminResultsBundle; errorMessage: string | null }> {
+  try {
+    return { bundle: await listInvestmentAdminResults("Teenvestor.school"), errorMessage: null };
+  } catch (error) {
+    return { bundle: emptyAdminResultsBundle(), errorMessage: errorMessageFromUnknown(error) };
+  }
+}
+
+function emptyAdminResultsBundle(): InvestmentAdminResultsBundle {
+  return {
+    persisted: true,
+    competition: null,
+    teams: [],
+    stats: {
+      totalTeams: 0,
+      totalTrades: 0,
+      averageReturn: 0,
+      bestTeam: "n/a",
+      totalSimulatedPortfolioValue: 0,
+      competitionStatus: "error"
+    }
+  };
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
@@ -193,6 +240,45 @@ function formatDateTime(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function errorMessageFromUnknown(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error ?? "Unknown error");
+}
+
+function AdminDebugPanel({
+  debug
+}: {
+  debug: {
+    currentRoute: string;
+    adminEmail: string;
+    isInvestmentAdmin: boolean;
+    envEmailsLoaded: boolean;
+    apiStatus: string;
+    competitionFound: boolean;
+    competitionId: string;
+    teamsLoadedCount: number;
+    errorMessage: string | null;
+  };
+}) {
+  return (
+    <section className="panel stack-sm investment-admin-debug-panel">
+      <p className="eyebrow">Admin debug</p>
+      <h2>Production diagnostics</h2>
+      <dl className="investment-admin-debug-grid">
+        <div><dt>Current route</dt><dd>{debug.currentRoute}</dd></div>
+        <div><dt>Admin email</dt><dd>{debug.adminEmail}</dd></div>
+        <div><dt>isInvestmentAdmin</dt><dd>{String(debug.isInvestmentAdmin)}</dd></div>
+        <div><dt>Env emails loaded</dt><dd>{String(debug.envEmailsLoaded)}</dd></div>
+        <div><dt>API status</dt><dd>{debug.apiStatus}</dd></div>
+        <div><dt>Competition found</dt><dd>{String(debug.competitionFound)}</dd></div>
+        <div><dt>Competition id</dt><dd>{debug.competitionId}</dd></div>
+        <div><dt>Teams loaded count</dt><dd>{debug.teamsLoadedCount}</dd></div>
+        <div className="full-span"><dt>Error message</dt><dd>{debug.errorMessage ?? "none"}</dd></div>
+      </dl>
+    </section>
+  );
 }
 
 function AdminBlocked() {
