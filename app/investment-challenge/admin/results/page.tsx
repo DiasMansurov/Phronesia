@@ -42,14 +42,14 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
 
   return (
     <section className="shell section stack-xl investment-admin-results-page">
-      <div className="hero-band compact investment-admin-hero">
-        <div className="stack-sm">
+      <div className="investment-admin-hero">
+        <div className="investment-admin-hero-copy">
           <p className="eyebrow">Competition Results Admin</p>
-          <h1 className="display compact">Teenvestor.school teams, balances, rankings, and trades.</h1>
-          <p className="lede compact-lede">
-            Admin-only view for monitoring every team portfolio in the Teenvestor.school Investment Competition.
+          <h1>Teenvestor.school Investment Competition</h1>
+          <p>
+            Private admin dashboard for monitoring teams, balances, rankings, and transaction activity.
           </p>
-          <div className="cta-row">
+          <div className="investment-admin-actions">
             <Link className="button secondary" href="/investment-challenge/admin">
               Admin Home
             </Link>
@@ -84,8 +84,8 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
         <div className="section-header">
           <div>
             <p className="eyebrow">Results</p>
-            <h2>{bundle.competition?.name ?? "Teenvestor.school Investment Competition"}</h2>
-            <p className="muted small">Click a team to inspect holdings, cash, rank, and full transaction history.</p>
+            <h2>Private view of Teenvestor.school teams</h2>
+            <p className="muted small">Search teams, scan balances, and open details for holdings and full transaction history.</p>
           </div>
           <form className="investment-results-filter" action="/investment-challenge/admin/results">
             <label className="form-field compact-field">
@@ -122,6 +122,7 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
                 <th>Holdings</th>
                 <th>Last activity</th>
                 <th>Status</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
@@ -142,6 +143,11 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
                   <td>{team.holdingsCount}</td>
                   <td>{formatDateTime(team.lastActivity)}</td>
                   <td><span className="pill">{team.status}</span></td>
+                  <td>
+                    <Link className="button secondary investment-admin-row-action" href={`/investment-challenge/admin/results/${team.teamId}`}>
+                      Open
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

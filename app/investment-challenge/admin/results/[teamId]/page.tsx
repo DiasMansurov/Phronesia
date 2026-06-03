@@ -36,14 +36,14 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
 
   return (
     <section className="shell section stack-xl investment-admin-results-page">
-      <div className="hero-band compact investment-admin-hero">
-        <div className="stack-sm">
+      <div className="investment-admin-hero">
+        <div className="investment-admin-hero-copy">
           <p className="eyebrow">Team Detail</p>
-          <h1 className="display compact">{overview.teamName}</h1>
-          <p className="lede compact-lede">
+          <h1>{overview.teamName}</h1>
+          <p>
             Full admin view for team balances, holdings, rank, and server-validated transaction history.
           </p>
-          <div className="cta-row">
+          <div className="investment-admin-actions">
             <Link className="button secondary" href="/investment-challenge/admin/results">
               Back to all results
             </Link>
@@ -62,7 +62,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
       </section>
 
       <section className="grid two investment-admin-detail-grid">
-        <article className="panel stack-md">
+        <article className="panel stack-md investment-admin-detail-card">
           <p className="eyebrow">Team overview</p>
           <h2>{detail.competition?.name ?? "Teenvestor.school Investment Competition"}</h2>
           <dl className="investment-admin-detail-list">
@@ -80,11 +80,11 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           </dl>
         </article>
 
-        <article className="panel stack-md">
+        <article className="panel stack-md investment-admin-detail-card">
           <p className="eyebrow">Admin note</p>
           <h2>Protected team record.</h2>
           <p className="muted">
-            This page is visible only to organizer accounts. Students can see their own portfolio, but not this full
+            This page is visible only to admin accounts. Students can see their own portfolio, but not this full
             transaction view for every team.
           </p>
           <div className="investment-admin-note-grid">
@@ -95,7 +95,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
         </article>
       </section>
 
-      <section className="panel stack-md">
+      <section className="panel stack-md investment-admin-results-panel">
         <div className="section-header">
           <div>
             <p className="eyebrow">Current holdings</p>
@@ -142,7 +142,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
         ) : null}
       </section>
 
-      <section className="panel stack-md">
+      <section className="panel stack-md investment-admin-results-panel">
         <div className="section-header">
           <div>
             <p className="eyebrow">Transaction history</p>
