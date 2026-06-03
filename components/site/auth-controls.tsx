@@ -1,21 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Show, UserButton, useUser } from "@clerk/nextjs";
-
-import { isDefaultResultsAdminEmail } from "@/lib/results-access";
+import { Show, UserButton } from "@clerk/nextjs";
 
 function SignedInControls() {
-  const { user } = useUser();
-  const canViewResults = isDefaultResultsAdminEmail(user?.primaryEmailAddress?.emailAddress);
-
   return (
     <div className="auth-user">
-      {canViewResults ? (
-        <Link className="button secondary account-link" href="/results">
-          Results
-        </Link>
-      ) : null}
       <Link className="button secondary account-link" href="/account">
         Account
       </Link>

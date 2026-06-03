@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { finalizeInvestmentCompetition } from "@/lib/server-investments";
 
 export async function POST(request: Request) {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) return organizer.errorResponse;
 
   const form = await request.formData().catch(() => null);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import {
   getMarketStatus,
   recalculatePortfolios,
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
     }
   } else {
-    const organizer = await requireResultsOrganizer();
+    const organizer = await requireInvestmentAdmin();
     if (organizer.errorResponse) return organizer.errorResponse;
   }
 

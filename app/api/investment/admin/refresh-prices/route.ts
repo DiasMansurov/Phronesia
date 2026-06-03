@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import {
   recalculatePortfolios,
   refreshFeaturedAssetPrices,
@@ -11,7 +11,7 @@ import {
 } from "@/lib/server-investments";
 
 export async function POST(request: Request) {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) return organizer.errorResponse;
 
   const contentType = request.headers.get("content-type") ?? "";

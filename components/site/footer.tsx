@@ -53,7 +53,6 @@ export function SiteFooter() {
             <Link href="/teachers">Teachers</Link>
             <Link href="/teachers/classes">Classes</Link>
             <Link href="/championship">Championship</Link>
-            <Link href="/results">Organizer Results</Link>
             <Link href="/about">About</Link>
           </div>
           <div className="footer-link-column">

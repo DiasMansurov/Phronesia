@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Show } from "@clerk/nextjs";
+import { Show, useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FocusEvent } from "react";
 
 import { AuthControls } from "@/components/site/auth-controls";
@@ -76,6 +76,7 @@ export function SiteNav() {
             ))}
             {hasClerk ? (
               <Show when="signed-in">
+                <AdminResultsNavLink active={isActive("/results") || isActive("/investment-challenge/admin/results")} />
                 <NavLink
                   href={investmentLink.href}
                   label={investmentLink.label}
@@ -90,6 +91,31 @@ export function SiteNav() {
       </div>
     </header>
   );
+}
+
+function AdminResultsNavLink({ active }: { active: boolean }) {
+  const { isLoaded, isSignedIn } = useUser();
+  const [showAdminResults, setShowAdminResults] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      setShowAdminResults(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch("/api/investment/admin/access", { cache: "no-store", signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : { isAdmin: false }))
+      .then((data) => setShowAdminResults(Boolean(data?.isAdmin)))
+      .catch(() => {
+        if (!controller.signal.aborted) setShowAdminResults(false);
+      });
+
+    return () => controller.abort();
+  }, [isLoaded, isSignedIn]);
+
+  if (!showAdminResults) return null;
+  return <NavLink href="/results" label="Results" active={active} />;
 }
 
 function NavDropdown({

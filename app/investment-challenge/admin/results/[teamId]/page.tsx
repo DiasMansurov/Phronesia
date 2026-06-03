@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { getInvestmentAdminTeamDetail } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
@@ -20,7 +20,7 @@ type TeamDetailPageProps = {
 };
 
 export default async function InvestmentAdminTeamDetailPage({ params }: TeamDetailPageProps) {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (!organizer.ok && organizer.reason === "signed_out") {
     redirect("/sign-in?redirect_url=/investment-challenge/admin/results");
   }
@@ -221,7 +221,7 @@ function AdminBlocked() {
       <div className="panel stack-md">
         <p className="eyebrow">Investment Results</p>
         <h1>Admin access required.</h1>
-        <p className="muted">Only the organizer account can view team balances, holdings, and transaction history.</p>
+        <p className="muted">Only emails listed in INVESTMENT_ADMIN_EMAILS can view team balances, holdings, and transaction history.</p>
         <Link className="button primary" href="/investment-challenge">
           Back to Investment Challenge
         </Link>

@@ -3,11 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { listInvestmentAdminResults, type InvestmentAdminTeamResult } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
-  title: "Teenvestor Investment Results Admin",
+  title: "Competition Results Admin",
   description: "Private admin results dashboard for the Teenvestor.school Investment Competition.",
   robots: {
     index: false,
@@ -23,7 +23,7 @@ type ResultsPageProps = {
 };
 
 export default async function InvestmentAdminResultsPage({ searchParams }: ResultsPageProps) {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (!organizer.ok && organizer.reason === "signed_out") {
     redirect("/sign-in?redirect_url=/investment-challenge/admin/results");
   }
@@ -44,7 +44,7 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
     <section className="shell section stack-xl investment-admin-results-page">
       <div className="hero-band compact investment-admin-hero">
         <div className="stack-sm">
-          <p className="eyebrow">Private Admin Results</p>
+          <p className="eyebrow">Competition Results Admin</p>
           <h1 className="display compact">Teenvestor.school teams, balances, rankings, and trades.</h1>
           <p className="lede compact-lede">
             Admin-only view for monitoring every team portfolio in the Teenvestor.school Investment Competition.
@@ -192,7 +192,7 @@ function AdminBlocked() {
       <div className="panel stack-md">
         <p className="eyebrow">Investment Results</p>
         <h1>Admin access required.</h1>
-        <p className="muted">Only the organizer account can view all team balances, rankings, and transactions.</p>
+        <p className="muted">Only emails listed in INVESTMENT_ADMIN_EMAILS can view all team balances, rankings, and transactions.</p>
         <Link className="button primary" href="/investment-challenge">
           Back to Investment Challenge
         </Link>

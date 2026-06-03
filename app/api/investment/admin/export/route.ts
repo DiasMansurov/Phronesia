@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { getInvestmentAdminTeamDetail, listInvestmentAdminResults } from "@/lib/server-investments";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 type CsvRow = Record<string, unknown>;
 
 export async function GET(request: Request) {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) return organizer.errorResponse;
 
   const { searchParams } = new URL(request.url);

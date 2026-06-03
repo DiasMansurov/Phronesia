@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { formatUsd } from "@/lib/investment-challenge";
-import { requireResultsOrganizer } from "@/lib/server-results-auth";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { listInvestmentAdminBundle } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
@@ -24,7 +24,7 @@ function numberValue(row: Record<string, unknown>, key: string) {
 }
 
 export default async function InvestmentChallengeAdminPage() {
-  const organizer = await requireResultsOrganizer();
+  const organizer = await requireInvestmentAdmin();
   if (!organizer.ok && organizer.reason === "signed_out") {
     redirect("/sign-in?redirect_url=/investment-challenge/admin");
   }
@@ -34,8 +34,8 @@ export default async function InvestmentChallengeAdminPage() {
       <section className="shell section auth-page">
         <div className="panel stack-md">
           <p className="eyebrow">Investment Admin</p>
-          <h1>Organizer access only</h1>
-          <p className="muted">Sign in with the organizer account to view investment challenge results.</p>
+          <h1>Admin access only</h1>
+          <p className="muted">Sign in with an email listed in INVESTMENT_ADMIN_EMAILS to manage investment results.</p>
           <Link className="button primary" href="/sign-in?redirect_url=/investment-challenge/admin">
             Sign In
           </Link>
