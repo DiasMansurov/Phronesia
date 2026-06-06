@@ -64,6 +64,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             teamFound: Boolean(detail.overview),
             tradesLoadedCount: detail.trades.length,
             holdingsLoadedCount: detail.holdings.length,
+            positionsLoadedCount: detail.positions.length,
             errorMessage
           }}
         />
@@ -98,6 +99,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
         <Metric label="Total portfolio value" value={formatUsd(overview.totalPortfolioValue)} />
         <Metric label="Profit / loss" value={formatUsd(overview.profitLoss)} tone={overview.profitLoss >= 0 ? "positive" : "negative"} />
         <Metric label="Return" value={formatPercent(overview.returnPercent)} tone={overview.returnPercent >= 0 ? "positive" : "negative"} />
+        <Metric label="Locked margin" value={formatUsd(overview.lockedMargin)} />
+        <Metric label="Open exposure" value={formatUsd(overview.totalExposure)} />
+        <Metric label="Unrealized P/L" value={formatUsd(overview.unrealizedPnl)} tone={overview.unrealizedPnl >= 0 ? "positive" : "negative"} />
+        <Metric label="Open positions" value={overview.openPositionsCount.toString()} />
       </section>
 
       <section className="grid two investment-admin-detail-grid">
@@ -108,7 +113,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <div><dt>Team name</dt><dd>{overview.teamName}</dd></div>
             <div><dt>Starting cash</dt><dd>{formatUsd(overview.startingCash)}</dd></div>
             <div><dt>Current cash</dt><dd>{formatUsd(overview.cashBalance)}</dd></div>
-            <div><dt>Holdings value</dt><dd>{formatUsd(overview.holdingsValue)}</dd></div>
+            <div><dt>Holdings / positions value</dt><dd>{formatUsd(overview.holdingsValue)}</dd></div>
+            <div><dt>Locked margin</dt><dd>{formatUsd(overview.lockedMargin)}</dd></div>
+            <div><dt>Total exposure</dt><dd>{formatUsd(overview.totalExposure)}</dd></div>
+            <div><dt>Unrealized P/L</dt><dd className={overview.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.unrealizedPnl)}</dd></div>
             <div><dt>Total portfolio value</dt><dd>{formatUsd(overview.totalPortfolioValue)}</dd></div>
             <div><dt>Profit / loss</dt><dd className={overview.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.profitLoss)}</dd></div>
             <div><dt>Return</dt><dd className={overview.returnPercent >= 0 ? "positive-text" : "negative-text"}>{formatPercent(overview.returnPercent)}</dd></div>
@@ -129,9 +137,61 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           <div className="investment-admin-note-grid">
             <span>Trades: <strong>{overview.tradesCount}</strong></span>
             <span>Holdings: <strong>{overview.holdingsCount}</strong></span>
+            <span>Open positions: <strong>{overview.openPositionsCount}</strong></span>
             <span>Competition: <strong>{detail.competition?.runtimeStatus ?? "n/a"}</strong></span>
           </div>
         </article>
+      </section>
+
+      <section className="panel stack-md investment-admin-results-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Open positions</p>
+            <h2>Long, short, leverage, margin, and P/L.</h2>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="record-table investment-table investment-admin-results-table">
+            <thead>
+              <tr>
+                <th>Side</th>
+                <th>Ticker</th>
+                <th>Asset</th>
+                <th>Quantity</th>
+                <th>Entry price</th>
+                <th>Current price</th>
+                <th>Leverage</th>
+                <th>Margin locked</th>
+                <th>Exposure</th>
+                <th>Unrealized P/L</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.positions.map((position) => (
+                <tr key={position.id}>
+                  <td><span className={`pill ${position.side === "long" ? "positive" : "negative"}`}>{position.side.toUpperCase()}</span></td>
+                  <td>{position.symbol}</td>
+                  <td>{position.assetName}</td>
+                  <td>{position.quantity}</td>
+                  <td>{formatUsd(position.entryPrice)}</td>
+                  <td>{formatUsd(position.currentPrice)}</td>
+                  <td>x{position.leverage}</td>
+                  <td>{formatUsd(position.marginLocked)}</td>
+                  <td>{formatUsd(position.exposureValue)}</td>
+                  <td className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</td>
+                  <td>{position.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!detail.positions.length ? (
+          <div className="investment-empty-state">
+            <strong>No long/short positions yet.</strong>
+            <p className="muted small">Leveraged long and short positions will appear here after this team opens one.</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel stack-md investment-admin-results-panel">
@@ -193,14 +253,18 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <thead>
               <tr>
                 <th>Date/time</th>
+                <th>Action</th>
                 <th>Side</th>
                 <th>Symbol</th>
                 <th>Asset</th>
                 <th>Quantity</th>
+                <th>Leverage</th>
                 <th>Execution price</th>
                 <th>Gross value</th>
+                <th>Margin</th>
                 <th>Commission</th>
                 <th>Net / total</th>
+                <th>Realized P/L</th>
                 <th>Price source</th>
                 <th>Price timestamp</th>
                 <th>Status</th>
@@ -210,14 +274,18 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
               {detail.trades.map((trade) => (
                 <tr key={trade.id}>
                   <td>{formatDateTime(trade.createdAt)}</td>
-                  <td><span className={`pill ${trade.side === "buy" ? "positive" : "negative"}`}>{trade.side.toUpperCase()}</span></td>
+                  <td>{(trade.action ?? trade.side).replaceAll("_", " ").toUpperCase()}</td>
+                  <td><span className={`pill ${trade.side === "buy" || trade.side === "long" ? "positive" : "negative"}`}>{trade.side.toUpperCase()}</span></td>
                   <td>{trade.symbol}</td>
                   <td>{trade.assetName}</td>
                   <td>{trade.quantity}</td>
+                  <td>{trade.leverage ? `x${trade.leverage}` : "n/a"}</td>
                   <td>{trade.price ? formatUsd(trade.price) : "n/a"}</td>
                   <td>{trade.grossValue ? formatUsd(trade.grossValue) : "n/a"}</td>
+                  <td>{trade.marginUsed ? formatUsd(trade.marginUsed) : "n/a"}</td>
                   <td>{trade.feeAmount ? formatUsd(trade.feeAmount) : "n/a"}</td>
                   <td>{trade.netValue ? formatUsd(trade.netValue) : "n/a"}</td>
+                  <td className={(trade.realizedPnl ?? 0) >= 0 ? "positive-text" : "negative-text"}>{trade.realizedPnl === null ? "n/a" : formatUsd(trade.realizedPnl)}</td>
                   <td>{trade.priceSource ?? "n/a"}</td>
                   <td>{formatDateTime(trade.priceTimestamp)}</td>
                   <td>{trade.rejected ? trade.rejectReason ?? "Rejected" : "Executed"}</td>
@@ -244,6 +312,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           teamFound: Boolean(detail.overview),
           tradesLoadedCount: detail.trades.length,
           holdingsLoadedCount: detail.holdings.length,
+          positionsLoadedCount: detail.positions.length,
           errorMessage
         }}
       />
@@ -259,7 +328,7 @@ async function loadTeamDetailSafely(teamId: string) {
     };
   } catch (error) {
     return {
-      detail: { persisted: true, competition: null, overview: null, holdings: [], trades: [] },
+      detail: { persisted: true, competition: null, overview: null, holdings: [], positions: [], trades: [] },
       errorMessage: error instanceof Error ? error.message : String(error ?? "Unknown error")
     };
   }
@@ -310,6 +379,7 @@ function AdminDebugPanel({
     teamFound: boolean;
     tradesLoadedCount: number;
     holdingsLoadedCount: number;
+    positionsLoadedCount: number;
     errorMessage: string | null;
   };
 }) {
@@ -327,6 +397,7 @@ function AdminDebugPanel({
         <div><dt>Team found</dt><dd>{String(debug.teamFound)}</dd></div>
         <div><dt>Trades loaded count</dt><dd>{debug.tradesLoadedCount}</dd></div>
         <div><dt>Holdings loaded count</dt><dd>{debug.holdingsLoadedCount}</dd></div>
+        <div><dt>Positions loaded count</dt><dd>{debug.positionsLoadedCount}</dd></div>
         <div className="full-span"><dt>Error message</dt><dd>{debug.errorMessage ?? "none"}</dd></div>
       </dl>
     </section>

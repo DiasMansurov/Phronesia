@@ -138,12 +138,15 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
                 <th>Rank</th>
                 <th>Team</th>
                 <th>Cash balance</th>
-                <th>Holdings value</th>
+                <th>Holdings / positions</th>
+                <th>Locked margin</th>
+                <th>Unrealized P/L</th>
                 <th>Total portfolio</th>
                 <th>P/L</th>
                 <th>Return</th>
                 <th>Trades</th>
                 <th>Holdings</th>
+                <th>Open positions</th>
                 <th>Last activity</th>
                 <th>Status</th>
                 <th>Details</th>
@@ -160,11 +163,14 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
                   </td>
                   <td>{formatUsd(team.cashBalance)}</td>
                   <td>{formatUsd(team.holdingsValue)}</td>
+                  <td>{formatUsd(team.lockedMargin)}</td>
+                  <td className={team.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(team.unrealizedPnl)}</td>
                   <td>{formatUsd(team.totalPortfolioValue)}</td>
                   <td className={team.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(team.profitLoss)}</td>
                   <td className={team.returnPercent >= 0 ? "positive-text" : "negative-text"}>{formatPercent(team.returnPercent)}</td>
                   <td>{team.tradesCount}</td>
                   <td>{team.holdingsCount}</td>
+                  <td>{team.openPositionsCount}</td>
                   <td>{formatDateTime(team.lastActivity)}</td>
                   <td><span className="pill">{team.status}</span></td>
                   <td>

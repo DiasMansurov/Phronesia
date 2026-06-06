@@ -20,7 +20,7 @@ import {
   type InvestmentRecentBuyTradeContext,
   type TradeSide
 } from "@/lib/investment-challenge";
-import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentLeaderboardRow } from "@/lib/server-investments";
+import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentLeaderboardRow, InvestmentPositionView } from "@/lib/server-investments";
 
 type MarketPayload = {
   marketStatus: InvestmentMarketStatus;
@@ -120,6 +120,8 @@ export function InvestmentChallengeDashboard({
   const [assetSearchStatus, setAssetSearchStatus] = useState("");
   const [priceLoading, setPriceLoading] = useState(false);
   const [side, setSide] = useState<TradeSide>("buy");
+  const [positionSide, setPositionSide] = useState<"long" | "short">("long");
+  const [positionLeverage, setPositionLeverage] = useState(1);
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -182,8 +184,12 @@ export function InvestmentChallengeDashboard({
   const estimatedGross = hasSelectedAsset && selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
   const estimatedFee = estimatedGross * INVESTMENT_TRANSACTION_FEE_RATE;
   const estimatedNet = side === "buy" ? estimatedGross + estimatedFee : Math.max(0, estimatedGross - estimatedFee);
+  const estimatedPositionMargin = positionLeverage > 0 ? estimatedGross / positionLeverage : 0;
+  const estimatedPositionRequired = estimatedPositionMargin + estimatedFee;
   const ownedQuantity = hasSelectedAsset ? (account?.holdings.find((holding) => holding.symbol === symbol)?.quantity ?? 0) : 0;
   const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
+  const currentPortfolioValue = portfolio?.totalValue ?? INVESTMENT_STARTING_CASH;
+  const currentExposure = portfolio?.totalExposure ?? 0;
   const clientTradeWarning =
     !hasSelectedAsset
       ? ""
@@ -210,6 +216,34 @@ export function InvestmentChallengeDashboard({
       selectedQuote.priceAvailable &&
       !(side === "buy" && estimatedNet > cashBalance + 0.00001) &&
       !(side === "sell" && quantity > ownedQuantity)
+  );
+  const positionWarning =
+    !hasSelectedAsset
+      ? ""
+      : !selectedQuote.priceAvailable
+        ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
+        : activeCompetition?.runtimeStatus === "not_started"
+          ? "Competition has not started yet."
+        : activeCompetition?.runtimeStatus === "closed"
+          ? "Competition closed. Rankings are final."
+        : !marketStatus.isOpen
+          ? "US market is closed. Latest cached stock prices are shown, but position orders are disabled."
+        : estimatedPositionMargin > currentPortfolioValue * 0.3 + 0.00001
+          ? "Position exceeds 30% margin limit."
+        : currentExposure + estimatedGross > currentPortfolioValue * 1.5 + 0.00001
+          ? "Total exposure limit exceeded."
+        : account && estimatedPositionRequired > cashBalance + 0.00001
+          ? `Insufficient cash. Required margin plus commission is ${formatUsd(estimatedPositionRequired)}.`
+          : "";
+  const canOpenPosition = Boolean(
+    account &&
+      hasSelectedAsset &&
+      marketStatus.isOpen &&
+      (!activeCompetition || activeCompetition.runtimeStatus === "active") &&
+      !busy &&
+      !priceLoading &&
+      selectedQuote.priceAvailable &&
+      !positionWarning
   );
   const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
   const selectedHasDisplayPrice =
@@ -484,12 +518,91 @@ export function InvestmentChallengeDashboard({
     }
   }
 
+  async function submitPosition() {
+    if (!account || !hasSelectedAsset) return;
+    setBusy(true);
+    setStatus(`Opening ${positionSide} ${symbol} x${positionLeverage} on the server...`);
+    try {
+      const response = await fetch("/api/investment/positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: account.account.id,
+          symbol,
+          side: positionSide,
+          quantity,
+          leverage: positionLeverage
+        })
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        account?: InvestmentAccountView | null;
+        price?: number;
+        fee?: number;
+        margin?: number;
+        exposure?: number;
+        reason?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.ok || !data.account) {
+        setStatus(data.reason ?? data.error ?? "Position order was rejected.");
+        return;
+      }
+      setAccount(data.account);
+      setStatus(
+        `Opened ${positionSide.toUpperCase()} ${quantity} ${symbol} x${positionLeverage} at ${formatUsd(data.price ?? 0)}. Margin: ${formatUsd(
+          data.margin ?? 0
+        )}. Exposure: ${formatUsd(data.exposure ?? 0)}. Commission: ${formatUsd(data.fee ?? 0)}.`
+      );
+      void loadLeaderboard(account.competition.code);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closePosition(position: InvestmentPositionView) {
+    if (!account) return;
+    setBusy(true);
+    setStatus(`Closing ${position.side} ${position.symbol} position...`);
+    try {
+      const response = await fetch(`/api/investment/positions/${position.id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: account.account.id })
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        account?: InvestmentAccountView | null;
+        price?: number;
+        fee?: number;
+        realizedPnl?: number;
+        liquidated?: boolean;
+        reason?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.ok || !data.account) {
+        setStatus(data.reason ?? data.error ?? "Could not close position.");
+        return;
+      }
+      setAccount(data.account);
+      setStatus(
+        `${data.liquidated ? "Liquidated" : "Closed"} ${position.side.toUpperCase()} ${position.symbol} at ${formatUsd(data.price ?? 0)}. Realized P/L: ${formatUsd(
+          data.realizedPnl ?? 0
+        )}. Closing commission: ${formatUsd(data.fee ?? 0)}.`
+      );
+      void loadLeaderboard(account.competition.code);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
   const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
   const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
   const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 6), [quotes]);
   const centerSuggestionQuotes = quickPickQuotes.slice(0, 4);
   const recentTrades = account?.trades.slice(0, 5) ?? [];
+  const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
   const educationCards = market.educationalCards.filter((card) =>
     ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
   );
@@ -612,6 +725,9 @@ export function InvestmentChallengeDashboard({
             <MetricCard label="Profit / loss" value={formatUsd(profitLoss)} tone={profitLoss >= 0 ? "positive" : "negative"} />
             <MetricCard label="Current rank" value={currentRankText} />
             <MetricCard label="Holdings" value={String(holdingsCount)} />
+            <MetricCard label="Locked margin" value={formatUsd(portfolio?.lockedMargin ?? 0)} />
+            <MetricCard label="Open exposure" value={formatUsd(portfolio?.totalExposure ?? 0)} />
+            <MetricCard label="Position P/L" value={formatUsd(portfolio?.unrealizedPnl ?? 0)} tone={(portfolio?.unrealizedPnl ?? 0) >= 0 ? "positive" : "negative"} />
             <MetricCard label="Diversification" value={`${portfolio?.diversificationScore ?? 0}/100`} />
             <MetricCard label="Risk score" value={`${portfolio?.riskScore ?? 0}/100`} />
           </div>
@@ -791,6 +907,45 @@ export function InvestmentChallengeDashboard({
                 <div><span>{totalCostLabel}</span><strong>{formatUsd(estimatedNet)}</strong></div>
               </div>
 
+              <div className="position-ticket-sim">
+                <div className="section-header">
+                  <div>
+                    <p className="eyebrow">Long / short / leverage</p>
+                    <h3>Open a virtual position</h3>
+                  </div>
+                  <span className="pill">Max x3</span>
+                </div>
+                <div className="trade-side-toggle" aria-label="Position direction">
+                  <button type="button" className={positionSide === "long" ? "selected" : ""} onClick={() => setPositionSide("long")}>
+                    Long
+                  </button>
+                  <button type="button" className={positionSide === "short" ? "selected" : ""} onClick={() => setPositionSide("short")}>
+                    Short
+                  </button>
+                </div>
+                <div className="trade-side-toggle" aria-label="Position leverage">
+                  {[1, 2, 3].map((level) => (
+                    <button key={level} type="button" className={positionLeverage === level ? "selected" : ""} onClick={() => setPositionLeverage(level)}>
+                      x{level}
+                    </button>
+                  ))}
+                </div>
+                <div className="trade-readiness-grid">
+                  <div><span>Estimated margin</span><strong>{formatUsd(estimatedPositionMargin)}</strong></div>
+                  <div><span>Exposure</span><strong>{formatUsd(estimatedGross)}</strong></div>
+                  <div><span>Commission</span><strong>{formatUsd(estimatedFee)}</strong></div>
+                  <div><span>Required cash</span><strong>{formatUsd(estimatedPositionRequired)}</strong></div>
+                </div>
+                <p className="trade-research-note">
+                  Long, short, and leverage features are part of an educational simulation. No real money is used. This is not financial advice.
+                  Leverage increases both simulated gains and simulated losses. Losses are limited to the margin used in this educational simulation.
+                </p>
+                {positionWarning ? <p className="market-closed-note">{positionWarning}</p> : null}
+                <button className="button primary" type="button" disabled={!canOpenPosition} onClick={submitPosition}>
+                  Open {positionSide === "short" ? "Short" : "Long"} x{positionLeverage}
+                </button>
+              </div>
+
               <p className="trade-research-note">
                 Research the business, risks, valuation, and portfolio fit before buying. The simulation rewards the reasoning behind the trade as well as the return.
               </p>
@@ -823,13 +978,60 @@ export function InvestmentChallengeDashboard({
         </form>
 
         <aside className="investment-side-stack">
+        <section className="panel stack-md holdings-panel-v2 position-panel-v2">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Open positions</p>
+              <h2>Long, short, leverage, margin, and P/L</h2>
+            </div>
+            <span className="pill">Educational simulation</span>
+          </div>
+
+          {!openPositions.length ? (
+            <div className="investment-empty-state">
+              <strong>No open leveraged positions.</strong>
+              <p>Use the long/short panel after selecting an asset to open a virtual position with x1, x2, or x3 leverage.</p>
+            </div>
+          ) : (
+            <div className="position-card-list">
+              {openPositions.map((position) => (
+                <article className="position-card" key={position.id}>
+                  <div className="position-card-head">
+                    <div>
+                      <strong>{position.symbol}</strong>
+                      <span>{position.assetName}</span>
+                    </div>
+                    <span className={`pill ${position.side === "long" ? "positive-text" : "negative-text"}`}>
+                      {position.side.toUpperCase()} x{position.leverage}
+                    </span>
+                  </div>
+                  <dl>
+                    <div><dt>Quantity</dt><dd>{position.quantity}</dd></div>
+                    <div><dt>Entry</dt><dd>{formatUsd(position.entryPrice)}</dd></div>
+                    <div><dt>Current</dt><dd>{formatUsd(position.currentPrice)}</dd></div>
+                    <div><dt>Margin</dt><dd>{formatUsd(position.marginLocked)}</dd></div>
+                    <div><dt>Exposure</dt><dd>{formatUsd(position.exposureValue)}</dd></div>
+                    <div>
+                      <dt>Unrealized P/L</dt>
+                      <dd className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</dd>
+                    </div>
+                  </dl>
+                  <button className="button secondary compact-button" type="button" disabled={busy || !marketStatus.isOpen} onClick={() => closePosition(position)}>
+                    Close position
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="panel stack-md holdings-panel-v2">
           <div className="section-header">
             <div>
               <p className="eyebrow">Holdings</p>
               <h2>Positions, value, gains, and weights</h2>
             </div>
-            <span className="pill">No short selling · No margin</span>
+            <span className="pill">Legacy long-only holdings</span>
           </div>
 
           {!account?.holdings.length ? (
@@ -905,19 +1107,25 @@ export function InvestmentChallengeDashboard({
                 recentTrades.map((trade) => (
                   <article className="activity-row" key={trade.id}>
                     <span>
-                      {formatTradeTimestamp(trade.executedAt ?? trade.createdAt)} · {trade.side.toUpperCase()} {trade.symbol}
+                      {formatTradeTimestamp(trade.executedAt ?? trade.createdAt)} · {(trade.action ?? trade.side).replaceAll("_", " ").toUpperCase()} {trade.symbol}
                     </span>
                     <strong>
                       {trade.rejected
                         ? "Rejected"
-                        : `${trade.quantity} ${trade.quantity === 1 ? "share" : "shares"} · ${formatUsd(trade.price)}`}
+                        : `${trade.quantity} ${trade.quantity === 1 ? "share" : "shares"} · ${formatUsd(trade.price)}${
+                            trade.leverage ? ` · x${trade.leverage}` : ""
+                          }`}
                     </strong>
                     <small>
                       {trade.rejected
                         ? trade.rejectReason ?? "Rejected"
                         : `${trade.assetName} · Trade ${formatUsd(trade.grossValue)} · Fee ${formatUsd(trade.feeAmount)} · ${
-                            trade.side === "buy" ? "Total" : "Net"
-                          } ${formatUsd(trade.netValue)}`}
+                            trade.action?.startsWith("open") || trade.side === "buy" ? "Total" : "Net"
+                          } ${formatUsd(trade.netValue)}${
+                            trade.marginUsed ? ` · Margin ${formatUsd(trade.marginUsed)}` : ""
+                          }${
+                            trade.realizedPnl ? ` · Realized P/L ${formatUsd(trade.realizedPnl)}` : ""
+                          }`}
                     </small>
                   </article>
                 ))

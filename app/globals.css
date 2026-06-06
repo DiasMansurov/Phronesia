@@ -17707,6 +17707,91 @@ iframe {
   background: #eafffb;
 }
 
+.position-ticket-sim {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 11rem),
+    linear-gradient(145deg, rgba(240, 253, 250, 0.74), rgba(255, 255, 255, 0.96));
+}
+
+.position-ticket-sim h3 {
+  margin: 0;
+  color: var(--investment-ink);
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.position-card-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.position-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)),
+    #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.position-card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.position-card-head div {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.position-card-head strong {
+  color: var(--investment-ink);
+  font-size: 1.08rem;
+}
+
+.position-card-head span:not(.pill) {
+  color: var(--investment-muted);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.position-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.position-card dl div {
+  padding: 0.72rem;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.position-card dt {
+  color: var(--investment-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.position-card dd {
+  margin: 0.14rem 0 0;
+  color: var(--investment-ink);
+  font-weight: 900;
+}
+
 .trade-research-note,
 .score-formula-note,
 .investment-status {
