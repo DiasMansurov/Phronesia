@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { listInvestmentAdminBundle } from "@/lib/server-investments";
 
 export const metadata: Metadata = {
   title: "Investment Challenge Admin",
-  description: "Organizer admin view for Phronesia Investment Challenge accounts, holdings, trades, theses, and leaderboard.",
+  description: "Organizer admin view for Phronesia Investment Challenge accounts, holdings, trades, theses, exports, and private results.",
   alternates: {
     canonical: "/investment-challenge/admin"
   }
@@ -16,11 +15,6 @@ export const metadata: Metadata = {
 
 function value(row: Record<string, unknown>, key: string) {
   return String(row[key] ?? "");
-}
-
-function numberValue(row: Record<string, unknown>, key: string) {
-  const parsed = Number(row[key] ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export default async function InvestmentChallengeAdminPage() {
@@ -53,7 +47,7 @@ export default async function InvestmentChallengeAdminPage() {
           <p className="eyebrow">Investment Admin</p>
           <h1 className="display compact">Accounts, holdings, trades, theses, and scores.</h1>
           <p className="lede compact-lede">
-            Organizer view for monitoring team portfolios and exporting the current leaderboard.
+            Organizer tools for competition setup, price refreshes, exports, and private Results access.
           </p>
           <p className="muted small">
             Prices are fetched only through MarketData.app /stocks/quotes for selected, held, traded, or manually refreshed assets to save API credits.
@@ -80,9 +74,6 @@ export default async function InvestmentChallengeAdminPage() {
                 Refresh held assets
               </button>
             </form>
-            <Link className="button secondary" href="/investment-challenge/leaderboard">
-              Public Leaderboard
-            </Link>
           </div>
           <form className="cta-row" action="/api/investment/admin/refresh-prices" method="post">
             <input type="hidden" name="mode" value="selected" />
@@ -140,8 +131,6 @@ export default async function InvestmentChallengeAdminPage() {
                 <strong>{competition.name}</strong>
                 <p className="muted small">{competition.code} · {competition.runtimeStatus} · ends {competition.endAt ? competition.endAt.slice(0, 10) : "organizer controlled"}</p>
                 <div className="cta-row">
-                  <Link className="text-link" href={`/investment-challenge/leaderboard/${competition.slug}`}>Leaderboard</Link>
-                  <Link className="text-link" href={`/investment-challenge/results/${competition.slug}`}>Results</Link>
                   {competition.isTeenvestor ? (
                     <Link className="text-link" href="/investment-challenge/admin/results">Admin results</Link>
                   ) : null}
@@ -154,43 +143,6 @@ export default async function InvestmentChallengeAdminPage() {
             ))}
           </div>
         </article>
-      </section>
-
-      <section className="panel stack-md">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Leaderboard</p>
-            <h2>Current ranking.</h2>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table className="record-table investment-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Team</th>
-                <th>Profit</th>
-                <th>Total value</th>
-                <th>Overall</th>
-                <th>Return</th>
-                <th>Thesis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bundle.leaderboard.map((row) => (
-                <tr key={value(row, "account_id")}>
-                  <td>#{value(row, "rank_position")}</td>
-                  <td>{value(row, "team_name")}</td>
-                  <td className={numberValue(row, "profit_loss") >= 0 ? "positive-text" : "negative-text"}>{formatUsd(numberValue(row, "profit_loss"))}</td>
-                  <td>{formatUsd(numberValue(row, "total_value"))}</td>
-                  <td>{value(row, "overall_score")}/100</td>
-                  <td>{Number(numberValue(row, "total_return")).toFixed(2)}%</td>
-                  <td>{value(row, "thesis_score")}/100</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section className="grid two">

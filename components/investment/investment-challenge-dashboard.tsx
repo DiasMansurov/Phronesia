@@ -20,18 +20,12 @@ import {
   type InvestmentRecentBuyTradeContext,
   type TradeSide
 } from "@/lib/investment-challenge";
-import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentLeaderboardRow, InvestmentPositionView } from "@/lib/server-investments";
+import type { InvestmentAccountView, InvestmentCompetitionView, InvestmentPositionView } from "@/lib/server-investments";
 
 type MarketPayload = {
   marketStatus: InvestmentMarketStatus;
   quotes: InvestmentAssetQuote[];
   educationalCards: InvestmentEducationalCard[];
-};
-
-type LeaderboardPayload = {
-  rows: InvestmentLeaderboardRow[];
-  persisted: boolean;
-  competition?: InvestmentCompetitionView | null;
 };
 
 type RefreshPricesPayload = {
@@ -108,7 +102,6 @@ export function InvestmentChallengeDashboard({
     quotes: featuredQuotes(),
     educationalCards: INVESTMENT_EDUCATIONAL_CARDS
   });
-  const [leaderboard, setLeaderboard] = useState<LeaderboardPayload>({ rows: [], persisted: false });
   const [account, setAccount] = useState<InvestmentAccountView | null>(initialAccount);
   const [competitionCode, setCompetitionCode] = useState(initialCompetitionCode);
   const [resolvedCompetition, setResolvedCompetition] = useState<InvestmentCompetitionView | null>(initialAccount?.competition ?? null);
@@ -128,7 +121,6 @@ export function InvestmentChallengeDashboard({
 
   useEffect(() => {
     void loadMarket();
-    void loadLeaderboard(initialCompetitionCode);
     if (initialAccount) {
       setAccount(initialAccount);
       setResolvedCompetition(initialAccount.competition);
@@ -178,7 +170,7 @@ export function InvestmentChallengeDashboard({
 
   const quotes = account?.quotes ?? market.quotes;
   const marketStatus = account?.marketStatus ?? market.marketStatus;
-  const activeCompetition = account?.competition ?? resolvedCompetition ?? leaderboard.competition ?? null;
+  const activeCompetition = account?.competition ?? resolvedCompetition ?? null;
   const portfolio = account?.portfolio;
   const holdingsCount = account?.holdings.length ?? 0;
   const estimatedGross = hasSelectedAsset && selectedQuote.priceAvailable ? selectedQuote.latestClose * Math.max(0, quantity) : 0;
@@ -268,15 +260,6 @@ export function InvestmentChallengeDashboard({
     }
   }
 
-  async function loadLeaderboard(code = competitionCode) {
-    const suffix = code.trim() ? `?competitionCode=${encodeURIComponent(code.trim())}` : "";
-    const response = await fetch(`/api/investment/leaderboard${suffix}`, { cache: "no-store" });
-    if (!response.ok) return;
-    const data = (await response.json()) as LeaderboardPayload;
-    setLeaderboard(data);
-    if (data.competition) setResolvedCompetition(data.competition);
-  }
-
   async function loadAccount(accountId: string) {
     const response = await fetch(`/api/investment/accounts?accountId=${encodeURIComponent(accountId)}`, {
       cache: "no-store"
@@ -292,7 +275,6 @@ export function InvestmentChallengeDashboard({
       if (current) setSelectedQuote(current);
       setResolvedCompetition(data.account.competition);
       setCompetitionCode(data.account.competition.code);
-      void loadLeaderboard(data.account.competition.code);
     }
   }
 
@@ -313,7 +295,6 @@ export function InvestmentChallengeDashboard({
       }
       setResolvedCompetition(data.competition);
       setStatus(data.competition.welcomeMessage ?? `Competition loaded: ${data.competition.name}.`);
-      void loadLeaderboard(data.competition.code);
     } catch {
       setStatus("Competition code lookup is temporarily unavailable.");
     }
@@ -440,7 +421,6 @@ export function InvestmentChallengeDashboard({
       setStatus(resultMessage);
       setAssetSearchStatus("");
       if (account) void loadAccount(account.account.id);
-      void loadLeaderboard(account?.competition.code ?? competitionCode);
     } catch {
       const message = `Could not refresh ${symbol}.`;
       setStatus(message);
@@ -512,7 +492,6 @@ export function InvestmentChallengeDashboard({
         window.sessionStorage.setItem(INVESTMENT_RECENT_BUY_TRADE_STORAGE_KEY, JSON.stringify(recentBuyTrade));
         router.push("/investment/thesis");
       }
-      void loadLeaderboard(account.competition.code);
     } finally {
       setBusy(false);
     }
@@ -554,7 +533,6 @@ export function InvestmentChallengeDashboard({
           data.margin ?? 0
         )}. Exposure: ${formatUsd(data.exposure ?? 0)}. Commission: ${formatUsd(data.fee ?? 0)}.`
       );
-      void loadLeaderboard(account.competition.code);
     } finally {
       setBusy(false);
     }
@@ -590,13 +568,11 @@ export function InvestmentChallengeDashboard({
           data.realizedPnl ?? 0
         )}. Closing commission: ${formatUsd(data.fee ?? 0)}.`
       );
-      void loadLeaderboard(account.competition.code);
     } finally {
       setBusy(false);
     }
   }
 
-  const topLeaderboard = useMemo(() => leaderboard.rows.slice(0, 5), [leaderboard.rows]);
   const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
   const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
   const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 6), [quotes]);
@@ -641,9 +617,6 @@ export function InvestmentChallengeDashboard({
             <a className="button primary" href="#team-portfolio">
               Start Portfolio
             </a>
-            <Link className="button secondary" href="/investment-challenge/leaderboard">
-              View Leaderboard
-            </Link>
             <Link className="button secondary" href="/investment-challenge/rules">
               Read Rules
             </Link>
@@ -1135,33 +1108,6 @@ export function InvestmentChallengeDashboard({
             </div>
           </section>
 
-          <aside className="panel stack-md leaderboard-preview-panel investment-ranking-panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">Rankings</p>
-                <h2>Competition leaderboard</h2>
-              </div>
-              <Link className="text-link" href="/investment-challenge/leaderboard">
-                Full leaderboard
-              </Link>
-            </div>
-            <div className="leaderboard-preview-list">
-              {topLeaderboard.length ? (
-                topLeaderboard.map((row) => (
-                  <article key={row.accountId} className="leaderboard-preview-row">
-                    <span>#{row.rank}</span>
-                    <div>
-                      <strong>{row.teamName}</strong>
-                      <small>{formatUsd(row.totalValue)} · {formatPercent(row.totalReturn)}</small>
-                    </div>
-                    <b>{row.diversificationScore}</b>
-                  </article>
-                ))
-              ) : (
-                <p className="muted">No ranked portfolios yet. Create the first team portfolio to start the board.</p>
-              )}
-            </div>
-          </aside>
         </aside>
       </section>
 

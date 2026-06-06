@@ -21,15 +21,14 @@ export async function POST(request: Request) {
   try {
     const result = await refreshPriceForSymbol(symbol);
     const portfolios = await recalculatePortfolios();
-    const leaderboard = await updateInvestmentLeaderboard(access.access.allowed ? access.access.competitionCode : undefined);
+    await updateInvestmentLeaderboard(access.access.allowed ? access.access.competitionCode : undefined);
     const quotes = await listInvestmentAssetQuotes();
 
     return NextResponse.json({
       ok: Boolean(result?.ok),
       result,
       quotes,
-      portfolios,
-      leaderboardRows: leaderboard.rows.length
+      portfolios
     });
   } catch (error) {
     return NextResponse.json(

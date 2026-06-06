@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
 
-import { requireInvestmentStudentAccess } from "@/lib/investment-access";
-import { listInvestmentLeaderboard } from "@/lib/server-investments";
+import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
+import { listInvestmentAdminResults } from "@/lib/server-investments";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const access = await requireInvestmentStudentAccess();
-  if (access.errorResponse) return access.errorResponse;
+  const admin = await requireInvestmentAdmin();
+  if (admin.errorResponse) {
+    return NextResponse.json({ ok: false, error: "Admin access required" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
   const requestedCode = searchParams.get("competitionCode") ?? searchParams.get("competition") ?? undefined;
-  const competitionCode =
-    access.access.allowed && (!requestedCode || requestedCode === access.access.competitionCode)
-      ? access.access.competitionCode
-      : requestedCode;
-  if (access.access.allowed && requestedCode && requestedCode !== access.access.competitionCode) {
-    return NextResponse.json({ ok: false, error: "You can only view the current competition leaderboard." }, { status: 403 });
-  }
-  const leaderboard = await listInvestmentLeaderboard(competitionCode);
-  return NextResponse.json({ ok: true, ...leaderboard });
+  const bundle = await listInvestmentAdminResults(requestedCode ?? "Teenvestor.school");
+  return NextResponse.json({
+    ok: true,
+    persisted: bundle.persisted,
+    competition: bundle.competition,
+    rows: bundle.teams,
+    summary: bundle.stats
+  });
 }
