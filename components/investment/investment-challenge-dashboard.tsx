@@ -248,6 +248,7 @@ export function InvestmentChallengeDashboard({
         ? "No saved price yet"
         : "Select an asset";
   const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
+  const priceModeLabel = marketStatus.isOpen ? "Live if available" : "Cached prices";
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
@@ -575,7 +576,7 @@ export function InvestmentChallengeDashboard({
 
   const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
   const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
-  const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured).slice(0, 6), [quotes]);
+  const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured), [quotes]);
   const centerSuggestionQuotes = quickPickQuotes.slice(0, 4);
   const recentTrades = account?.trades.slice(0, 5) ?? [];
   const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
@@ -594,6 +595,35 @@ export function InvestmentChallengeDashboard({
   const latestPortfolioStatus = portfolio
     ? `${formatUsd(portfolio.totalValue)} · ${formatPercent(portfolio.totalReturn)}`
     : "Not available";
+  const primaryMetrics: Array<{ label: string; value: string; tone?: "positive" | "negative" }> = [
+    { label: "Portfolio Value", value: formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) },
+    {
+      label: "Total Return",
+      value: formatPercent(portfolio?.totalReturn ?? 0),
+      tone: (portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"
+    },
+    { label: "Current Cash", value: formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH) },
+    { label: "Current Rank", value: currentRankText }
+  ];
+  const secondaryMetrics: Array<{ label: string; value: string; tone?: "positive" | "negative" }> = [
+    { label: "Starting Balance", value: formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH) },
+    {
+      label: "Daily Change",
+      value: formatPercent(portfolio?.dailyChange ?? 0),
+      tone: (portfolio?.dailyChange ?? 0) >= 0 ? "positive" : "negative"
+    },
+    { label: "Profit / Loss", value: formatUsd(profitLoss), tone: profitLoss >= 0 ? "positive" : "negative" },
+    { label: "Holdings", value: String(holdingsCount) },
+    { label: "Locked Margin", value: formatUsd(portfolio?.lockedMargin ?? 0) },
+    { label: "Open Exposure", value: formatUsd(portfolio?.totalExposure ?? 0) },
+    {
+      label: "Position P/L",
+      value: formatUsd(portfolio?.unrealizedPnl ?? 0),
+      tone: (portfolio?.unrealizedPnl ?? 0) >= 0 ? "positive" : "negative"
+    },
+    { label: "Diversification", value: `${portfolio?.diversificationScore ?? 0}/100` },
+    { label: "Risk Score", value: `${portfolio?.riskScore ?? 0}/100` }
+  ];
 
   return (
     <div className="investment-app investment-student-product stack-xl">
@@ -601,21 +631,18 @@ export function InvestmentChallengeDashboard({
         <div className="investment-hero-copy stack-lg">
           <div className="stack-sm">
             <p className="eyebrow">Protected student area</p>
-            <h1>Build a $100,000 virtual portfolio</h1>
+            <h1>Team Portfolio Workspace</h1>
             <p>
-              Search US stocks and ETFs, use cached educational stock prices, write an investment thesis, and learn how return,
-              risk, diversification, and market discipline work together.
+              Build and manage your virtual portfolio, analyze real companies, and track your competition performance.
             </p>
-            {account ? (
-              <div className="investment-hero-team-chip">
-                <span>{activeCompetition?.name ?? account.competition.name}</span>
-                <strong>Team: {account.account.teamName}</strong>
-              </div>
-            ) : null}
+            <div className="investment-hero-team-chip">
+              <span>{activeCompetition?.name ?? "Teenvestor Investment Competition"}</span>
+              <strong>{account ? `Team: ${account.account.teamName}` : "Team access required"}</strong>
+            </div>
           </div>
           <div className="cta-row">
             <a className="button primary" href="#team-portfolio">
-              Start Portfolio
+              {account ? "Continue Portfolio" : "Start Portfolio"}
             </a>
             <Link className="button secondary" href="/investment-challenge/rules">
               Read Rules
@@ -627,16 +654,17 @@ export function InvestmentChallengeDashboard({
         </div>
         <aside className="market-status-card-v2 investment-hero-status-card">
           <div className="market-status-head">
-            <span>US market</span>
+            <span>Market Status</span>
             <strong className={marketStatus.isOpen ? "positive-text" : "negative-text"}>
               {marketStatus.isOpen ? "Open" : "Closed"}
             </strong>
           </div>
           <p>{compactMarketMessage}</p>
           <div className="market-status-grid">
+            <div><span>US Market</span><strong>{marketStatus.isOpen ? "Open" : "Closed"}</strong></div>
+            <div><span>Price mode</span><strong>{priceModeLabel}</strong></div>
             <div><span>Starting cash</span><strong>{formatUsd(INVESTMENT_STARTING_CASH)}</strong></div>
             <div><span>Commission</span><strong>{feeRateLabel}</strong></div>
-            <div><span>Prices</span><strong>Daily close</strong></div>
             <div><span>ET time</span><strong>{marketStatus.etTime || "Review"}</strong></div>
           </div>
         </aside>
@@ -646,8 +674,8 @@ export function InvestmentChallengeDashboard({
         <section className={`panel stack-md competition-banner investment-team-banner ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
           <div className="section-header">
             <div>
-              <p className="eyebrow">Team / competition header</p>
-              <h2>{activeCompetition.welcomeMessage ?? activeCompetition.name}</h2>
+              <p className="eyebrow">Competition status</p>
+              <h2>{activeCompetition.welcomeMessage ?? `Welcome to the ${activeCompetition.name}.`}</h2>
               <p className="muted">{activeCompetition.description ?? "Educational portfolio competition with virtual cash only."}</p>
             </div>
             <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
@@ -689,20 +717,17 @@ export function InvestmentChallengeDashboard({
             </div>
           ) : null}
 
-          <div className="portfolio-metric-grid investment-stat-grid">
-            <MetricCard label="Starting balance" value={formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)} />
-            <MetricCard label="Current cash" value={formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH)} />
-            <MetricCard label="Portfolio value" value={formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH)} />
-            <MetricCard label="Daily change" value={formatPercent(portfolio?.dailyChange ?? 0)} tone={(portfolio?.dailyChange ?? 0) >= 0 ? "positive" : "negative"} />
-            <MetricCard label="Total return" value={formatPercent(portfolio?.totalReturn ?? 0)} tone={(portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"} />
-            <MetricCard label="Profit / loss" value={formatUsd(profitLoss)} tone={profitLoss >= 0 ? "positive" : "negative"} />
-            <MetricCard label="Current rank" value={currentRankText} />
-            <MetricCard label="Holdings" value={String(holdingsCount)} />
-            <MetricCard label="Locked margin" value={formatUsd(portfolio?.lockedMargin ?? 0)} />
-            <MetricCard label="Open exposure" value={formatUsd(portfolio?.totalExposure ?? 0)} />
-            <MetricCard label="Position P/L" value={formatUsd(portfolio?.unrealizedPnl ?? 0)} tone={(portfolio?.unrealizedPnl ?? 0) >= 0 ? "positive" : "negative"} />
-            <MetricCard label="Diversification" value={`${portfolio?.diversificationScore ?? 0}/100`} />
-            <MetricCard label="Risk score" value={`${portfolio?.riskScore ?? 0}/100`} />
+          <div className="portfolio-kpi-stack">
+            <div className="portfolio-metric-grid investment-stat-grid portfolio-primary-kpis">
+              {primaryMetrics.map((metric) => (
+                <MetricCard key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} emphasis="primary" />
+              ))}
+            </div>
+            <div className="portfolio-metric-grid investment-stat-grid portfolio-secondary-kpis">
+              {secondaryMetrics.map((metric) => (
+                <MetricCard key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
+              ))}
+            </div>
           </div>
           {status ? <p className="form-status investment-status">{status}</p> : null}
         </article>
@@ -730,8 +755,8 @@ export function InvestmentChallengeDashboard({
 
             {!hasAssetSearchQuery ? (
               <div className="asset-search-empty">
-                <p>Search by company name or ticker, or start with one of these common picks.</p>
-                <div className="asset-quick-picks" aria-label="Quick pick assets">
+                <p>Search by company name or ticker, or start from the competition watchlist.</p>
+                <div className="asset-quick-picks asset-watchlist" aria-label="Quick pick assets">
                   {quickPickQuotes.map((quote) => (
                     <button
                       key={quote.symbol}
@@ -739,8 +764,15 @@ export function InvestmentChallengeDashboard({
                       onClick={() => selectAsset(quote)}
                       className={hasSelectedAsset && quote.symbol === symbol ? "selected" : ""}
                     >
-                      <strong>{quote.symbol}</strong>
-                      <span>{quote.type}</span>
+                      <span className="asset-row-symbol">
+                        <strong>{quote.symbol}</strong>
+                        <small>{quote.type.toUpperCase()}</small>
+                      </span>
+                      <span className="asset-row-copy">
+                        <span>{quote.name}</span>
+                        <small>{quote.theme}</small>
+                      </span>
+                      <b>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Check price"}</b>
                     </button>
                   ))}
                 </div>
@@ -807,11 +839,12 @@ export function InvestmentChallengeDashboard({
 
           {!hasSelectedAsset ? (
             <div className="trade-empty-state">
-              <strong>Search for an asset on the left to place your first simulated trade.</strong>
+              <strong>Choose an asset to begin.</strong>
+              <p>Search for a stock or ETF on the left to place your first simulated trade.</p>
               <div className="trade-step-guide" aria-label="Trade steps">
-                <span>Search asset</span>
-                <span>Refresh price</span>
-                <span>Confirm trade</span>
+                <span><b>1</b>Search asset</span>
+                <span><b>2</b>Review price</span>
+                <span><b>3</b>Confirm trade</span>
               </div>
               <div className="asset-suggestion-row" aria-label="Example tickers">
                 {centerSuggestionQuotes.map((quote) => (
@@ -950,129 +983,132 @@ export function InvestmentChallengeDashboard({
           ) : null}
         </form>
 
-        <aside className="investment-side-stack">
-        <section className="panel stack-md holdings-panel-v2 position-panel-v2">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Open positions</p>
-              <h2>Long, short, leverage, margin, and P/L</h2>
-            </div>
-            <span className="pill">Educational simulation</span>
-          </div>
-
-          {!openPositions.length ? (
-            <div className="investment-empty-state">
-              <strong>No open leveraged positions.</strong>
-              <p>Use the long/short panel after selecting an asset to open a virtual position with x1, x2, or x3 leverage.</p>
-            </div>
-          ) : (
-            <div className="position-card-list">
-              {openPositions.map((position) => (
-                <article className="position-card" key={position.id}>
-                  <div className="position-card-head">
-                    <div>
-                      <strong>{position.symbol}</strong>
-                      <span>{position.assetName}</span>
-                    </div>
-                    <span className={`pill ${position.side === "long" ? "positive-text" : "negative-text"}`}>
-                      {position.side.toUpperCase()} x{position.leverage}
-                    </span>
-                  </div>
-                  <dl>
-                    <div><dt>Quantity</dt><dd>{position.quantity}</dd></div>
-                    <div><dt>Entry</dt><dd>{formatUsd(position.entryPrice)}</dd></div>
-                    <div><dt>Current</dt><dd>{formatUsd(position.currentPrice)}</dd></div>
-                    <div><dt>Margin</dt><dd>{formatUsd(position.marginLocked)}</dd></div>
-                    <div><dt>Exposure</dt><dd>{formatUsd(position.exposureValue)}</dd></div>
-                    <div>
-                      <dt>Unrealized P/L</dt>
-                      <dd className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</dd>
-                    </div>
-                  </dl>
-                  <button className="button secondary compact-button" type="button" disabled={busy || !marketStatus.isOpen} onClick={() => closePosition(position)}>
-                    Close position
-                  </button>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="panel stack-md holdings-panel-v2">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Holdings</p>
-              <h2>Positions, value, gains, and weights</h2>
-            </div>
-            <span className="pill">Legacy long-only holdings</span>
-          </div>
-
-          {!account?.holdings.length ? (
-            <div className="investment-empty-state">
-              <strong>Your portfolio is empty.</strong>
-              <p>
-                Search for an asset, review the latest cached stock price, and place your first simulated trade when the market is open.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="table-wrap desktop-holdings">
-                <table className="record-table investment-table-v2">
-                  <thead>
-                    <tr>
-                      <th>Ticker</th>
-                      <th>Asset</th>
-                      <th>Quantity</th>
-                      <th>Average buy</th>
-                      <th>Latest price</th>
-                      <th>Current value</th>
-                      <th>Unrealized gain/loss</th>
-                      <th>Weight</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {account.holdings.map((holding) => (
-                      <tr key={holding.symbol}>
-                        <td>{holding.symbol}</td>
-                        <td>{holding.assetName}</td>
-                        <td>{holding.quantity}</td>
-                        <td>{formatUsd(holding.averageBuyPrice)}</td>
-                        <td>{formatUsd(holding.latestClose)}</td>
-                        <td>{formatUsd(holding.marketValue)}</td>
-                        <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
-                          {formatUsd(holding.unrealizedGainLoss)}
-                        </td>
-                        <td>{holding.weight.toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <aside className="investment-side-stack portfolio-sidebar-v2">
+          <section className="panel stack-md holdings-panel-v2 position-panel-v2">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Portfolio sidebar</p>
+                <h2>Open Positions</h2>
+                <p className="muted small">Long, short, leverage, margin, and P/L</p>
               </div>
-              <div className="mobile-holding-cards">
-                {account.holdings.map((holding) => (
-                  <article className="mobile-holding-card" key={holding.symbol}>
-                    <div>
-                      <strong>{holding.symbol}</strong>
-                      <span>{holding.assetName}</span>
+              <span className="pill">Educational simulation</span>
+            </div>
+
+            {!openPositions.length ? (
+              <div className="investment-empty-state">
+                <strong>No open leveraged positions.</strong>
+                <p>Use the long/short panel after selecting an asset to open a virtual position with x1, x2, or x3 leverage.</p>
+              </div>
+            ) : (
+              <div className="position-card-list">
+                {openPositions.map((position) => (
+                  <article className="position-card" key={position.id}>
+                    <div className="position-card-head">
+                      <div>
+                        <strong>{position.symbol}</strong>
+                        <span>{position.assetName}</span>
+                      </div>
+                      <span className={`pill ${position.side === "long" ? "positive-text" : "negative-text"}`}>
+                        {position.side.toUpperCase()} x{position.leverage}
+                      </span>
                     </div>
                     <dl>
-                      <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
-                      <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
-                      <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
-                      <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
+                      <div><dt>Quantity</dt><dd>{position.quantity}</dd></div>
+                      <div><dt>Entry</dt><dd>{formatUsd(position.entryPrice)}</dd></div>
+                      <div><dt>Current</dt><dd>{formatUsd(position.currentPrice)}</dd></div>
+                      <div><dt>Margin</dt><dd>{formatUsd(position.marginLocked)}</dd></div>
+                      <div><dt>Exposure</dt><dd>{formatUsd(position.exposureValue)}</dd></div>
+                      <div>
+                        <dt>Unrealized P/L</dt>
+                        <dd className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</dd>
+                      </div>
                     </dl>
+                    <button className="button secondary compact-button" type="button" disabled={busy || !marketStatus.isOpen} onClick={() => closePosition(position)}>
+                      Close position
+                    </button>
                   </article>
                 ))}
               </div>
-            </>
-          )}
-        </section>
+            )}
+          </section>
+
+          <section className="panel stack-md holdings-panel-v2">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Portfolio sidebar</p>
+                <h2>Holdings</h2>
+                <p className="muted small">Positions, value, gains, and weights</p>
+              </div>
+              <span className="pill">Legacy long-only holdings</span>
+            </div>
+
+            {!account?.holdings.length ? (
+              <div className="investment-empty-state">
+                <strong>Your portfolio is empty.</strong>
+                <p>
+                  Search for an asset, review the latest cached stock price, and place your first simulated trade when the market is open.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="table-wrap desktop-holdings">
+                  <table className="record-table investment-table-v2">
+                    <thead>
+                      <tr>
+                        <th>Ticker</th>
+                        <th>Asset</th>
+                        <th>Quantity</th>
+                        <th>Average buy</th>
+                        <th>Latest price</th>
+                        <th>Current value</th>
+                        <th>Unrealized gain/loss</th>
+                        <th>Weight</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {account.holdings.map((holding) => (
+                        <tr key={holding.symbol}>
+                          <td>{holding.symbol}</td>
+                          <td>{holding.assetName}</td>
+                          <td>{holding.quantity}</td>
+                          <td>{formatUsd(holding.averageBuyPrice)}</td>
+                          <td>{formatUsd(holding.latestClose)}</td>
+                          <td>{formatUsd(holding.marketValue)}</td>
+                          <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
+                            {formatUsd(holding.unrealizedGainLoss)}
+                          </td>
+                          <td>{holding.weight.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mobile-holding-cards">
+                  {account.holdings.map((holding) => (
+                    <article className="mobile-holding-card" key={holding.symbol}>
+                      <div>
+                        <strong>{holding.symbol}</strong>
+                        <span>{holding.assetName}</span>
+                      </div>
+                      <dl>
+                        <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
+                        <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
+                        <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
+                        <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
 
           <section className="panel stack-md portfolio-activity-panel investment-order-feed">
             <div className="section-header">
               <div>
-                <p className="eyebrow">Portfolio activity</p>
-                <h2>Latest simulated orders</h2>
+                <p className="eyebrow">Portfolio sidebar</p>
+                <h2>Portfolio Activity</h2>
+                <p className="muted small">Latest simulated orders</p>
               </div>
             </div>
             <div className="activity-list">
@@ -1111,26 +1147,30 @@ export function InvestmentChallengeDashboard({
         </aside>
       </section>
 
-      <section className="investment-dashboard-grid">
-        <aside className="panel stack-md investment-risk-panel">
-          <p className="eyebrow">Rules and risk</p>
-          <h2>Market closed means orders pause, not prices.</h2>
-          <p className="muted">
-            Latest saved prices remain visible from the Supabase cache. MarketData.app is called only through the approved
-            /stocks/quotes endpoint by server actions, admin refreshes, selected tickers, held assets, or cron jobs so the challenge saves API credits.
-          </p>
-          <div className="score-formula-note">
-            40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
-          </div>
-        </aside>
-      </section>
-      <section className="panel stack-md">
+      <section className="panel stack-md investment-risk-panel rules-risk-panel">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Educational cards</p>
-            <h2>Short finance explanations while you invest</h2>
+            <p className="eyebrow">Rules and risk</p>
+            <h2>Market closed means orders pause, not prices.</h2>
           </div>
         </div>
+        <p className="muted">
+          Latest saved prices remain visible from the Supabase cache. MarketData.app is called only through approved
+          endpoints to save API credits.
+        </p>
+        <div className="score-formula-note">
+          40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
+        </div>
+      </section>
+      <details className="panel finance-card-drawer">
+        <summary>
+          <div>
+            <p className="eyebrow">Finance cards</p>
+            <h2>Finance cards</h2>
+            <p className="muted small">Short explanations while you invest.</p>
+          </div>
+          <span className="finance-card-toggle">View all finance cards</span>
+        </summary>
         <div className="investment-education-grid-v2">
           {educationCards.map((card) => (
             <article className="lesson-card stack-sm" key={card.title}>
@@ -1140,7 +1180,7 @@ export function InvestmentChallengeDashboard({
             </article>
           ))}
         </div>
-      </section>
+      </details>
     </div>
   );
 }
@@ -1178,9 +1218,20 @@ function formatTradeTimestamp(value: string | null) {
   }).format(date);
 }
 
-function MetricCard({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
+function MetricCard({
+  label,
+  value,
+  tone,
+  emphasis
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative";
+  emphasis?: "primary";
+}) {
+  const className = `metric-card-v2 ${emphasis === "primary" ? "metric-card-primary" : "metric-card-secondary"}`;
   return (
-    <div className="metric-card-v2">
+    <div className={className}>
       <span>{label}</span>
       <strong className={tone === "positive" ? "positive-text" : tone === "negative" ? "negative-text" : undefined}>
         {value}
