@@ -577,7 +577,13 @@ export function InvestmentChallengeDashboard({
   const profitLoss = (portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) - (portfolio?.startingCash ?? INVESTMENT_STARTING_CASH);
   const currentRankText = account?.currentRank?.rank ? `#${account.currentRank.rank}` : "Not ranked yet";
   const quickPickQuotes = useMemo(() => quotes.filter((quote) => quote.featured), [quotes]);
-  const centerSuggestionQuotes = quickPickQuotes.slice(0, 4);
+  const centerSuggestionQuotes = useMemo(() => {
+    const preferredSymbols = ["AAPL", "AMD", "AMZN", "BAC"];
+    const preferred = preferredSymbols
+      .map((preferredSymbol) => quickPickQuotes.find((quote) => quote.symbol === preferredSymbol))
+      .filter((quote): quote is InvestmentAssetQuote => Boolean(quote));
+    return preferred.length ? preferred : quickPickQuotes.slice(0, 4);
+  }, [quickPickQuotes]);
   const recentTrades = account?.trades.slice(0, 5) ?? [];
   const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
   const educationCards = market.educationalCards.filter((card) =>
@@ -668,16 +674,9 @@ export function InvestmentChallengeDashboard({
             <div><span>ET time</span><strong>{marketStatus.etTime || "Review"}</strong></div>
           </div>
         </aside>
-      </section>
 
-      {activeCompetition ? (
-        <section className={`panel stack-md competition-banner investment-team-banner ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Competition status</p>
-              <h2>{activeCompetition.welcomeMessage ?? `Welcome to the ${activeCompetition.name}.`}</h2>
-              <p className="muted">{activeCompetition.description ?? "Educational portfolio competition with virtual cash only."}</p>
-            </div>
+        {activeCompetition ? (
+          <div className={`competition-inline-strip ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
             <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
               {activeCompetition.runtimeStatus === "not_started"
                 ? "Not started"
@@ -685,15 +684,14 @@ export function InvestmentChallengeDashboard({
                   ? "Competition closed"
                   : "Competition active"}
             </span>
-          </div>
-          <div className="competition-facts-grid">
+            <div><span>Competition</span><strong>{activeCompetition.name}</strong></div>
             <div><span>Starting capital</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
             <div><span>Start date</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
             <div><span>End date</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
             <div><span>Ranking</span><strong>{activeCompetition.runtimeStatus === "closed" ? "Final" : "Live"}</strong></div>
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
       <section className="investment-summary-section" id="team-portfolio">
         <article className="panel stack-md portfolio-panel">
@@ -737,8 +735,9 @@ export function InvestmentChallengeDashboard({
         <aside className="panel stack-md investment-search-sidebar investment-asset-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Asset search / watchlist</p>
-              <h2>Find a stock or ETF</h2>
+              <p className="eyebrow">Asset Search</p>
+              <h2>Asset Search</h2>
+              <p className="muted small">Search stocks and ETFs for your team portfolio.</p>
             </div>
           </div>
 
@@ -748,7 +747,7 @@ export function InvestmentChallengeDashboard({
               <input
                 value={assetQuery}
                 onChange={(event) => setAssetQuery(event.target.value)}
-                placeholder="Type AAPL, Apple, Microsoft, SPY..."
+                placeholder="Search ticker or company name"
                 autoComplete="off"
               />
             </label>
@@ -766,13 +765,13 @@ export function InvestmentChallengeDashboard({
                     >
                       <span className="asset-row-symbol">
                         <strong>{quote.symbol}</strong>
-                        <small>{quote.type.toUpperCase()}</small>
                       </span>
                       <span className="asset-row-copy">
                         <span>{quote.name}</span>
                         <small>{quote.theme}</small>
                       </span>
-                      <b>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Check price"}</b>
+                      <span className="asset-type-badge">{quote.type}</span>
+                      <b>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Select"}</b>
                     </button>
                   ))}
                 </div>
@@ -833,14 +832,14 @@ export function InvestmentChallengeDashboard({
           <div className="section-header">
             <div>
               <p className="eyebrow">Selected asset / trade panel</p>
-              <h2>{hasSelectedAsset ? "Review and trade" : "Choose an asset to begin"}</h2>
+              <h2>{hasSelectedAsset ? "Review and trade" : "Select an asset to begin"}</h2>
             </div>
           </div>
 
           {!hasSelectedAsset ? (
             <div className="trade-empty-state">
-              <strong>Choose an asset to begin.</strong>
-              <p>Search for a stock or ETF on the left to place your first simulated trade.</p>
+              <strong>Select an asset to begin.</strong>
+              <p>Choose a stock or ETF from the watchlist to review its price and place your first simulated trade.</p>
               <div className="trade-step-guide" aria-label="Trade steps">
                 <span><b>1</b>Search asset</span>
                 <span><b>2</b>Review price</span>
@@ -987,7 +986,6 @@ export function InvestmentChallengeDashboard({
           <section className="panel stack-md holdings-panel-v2 position-panel-v2">
             <div className="section-header">
               <div>
-                <p className="eyebrow">Portfolio sidebar</p>
                 <h2>Open Positions</h2>
                 <p className="muted small">Long, short, leverage, margin, and P/L</p>
               </div>
@@ -1035,7 +1033,6 @@ export function InvestmentChallengeDashboard({
           <section className="panel stack-md holdings-panel-v2">
             <div className="section-header">
               <div>
-                <p className="eyebrow">Portfolio sidebar</p>
                 <h2>Holdings</h2>
                 <p className="muted small">Positions, value, gains, and weights</p>
               </div>
@@ -1106,7 +1103,6 @@ export function InvestmentChallengeDashboard({
           <section className="panel stack-md portfolio-activity-panel investment-order-feed">
             <div className="section-header">
               <div>
-                <p className="eyebrow">Portfolio sidebar</p>
                 <h2>Portfolio Activity</h2>
                 <p className="muted small">Latest simulated orders</p>
               </div>
