@@ -16,13 +16,15 @@ export type OlympiadConfig = {
   rules: string[];
 };
 
+export const OFFICIAL_TEENVESTOR_COMPETITION_LOGIN = "Teenvestor.school";
+
 export const OLYMPIADS: OlympiadConfig[] = [
   {
     slug: "american-financial-crisis-2008",
     title: "Teenvestor Investment Competition",
     partner: "Official Competition",
-    accessCode: "QAZFINANCE",
-    accessAliases: ["Qazfinance", "QAZ-FINANCE", "PHRONESIA-2008"],
+    accessCode: OFFICIAL_TEENVESTOR_COMPETITION_LOGIN,
+    accessAliases: ["teenvestor.school"],
     scenarioId: "finance-2008-banking-crisis",
     difficultyId: "summit",
     policyComplexity: "advanced",
@@ -47,13 +49,22 @@ export function getOlympiadBySlug(slug: string) {
 }
 
 export function getOlympiadByAccessCode(code: string) {
+  const olympiad = getOlympiadByAccessCodeIncludingInactive(code);
+  return olympiad?.status === "active" ? olympiad : null;
+}
+
+export function getOlympiadByAccessCodeIncludingInactive(code: string) {
   const normalized = normalizeOlympiadAccessCode(code);
   return (
     OLYMPIADS.find((olympiad) => {
       const codes = [olympiad.accessCode, ...(olympiad.accessAliases ?? [])].map(normalizeOlympiadAccessCode);
-      return codes.includes(normalized) && olympiad.status === "active";
+      return codes.includes(normalized);
     }) ?? null
   );
+}
+
+export function isOfficialTeenvestorCompetitionLogin(code: string) {
+  return normalizeOlympiadAccessCode(code) === normalizeOlympiadAccessCode(OFFICIAL_TEENVESTOR_COMPETITION_LOGIN);
 }
 
 export function getOlympiadScenario(olympiad: OlympiadConfig) {

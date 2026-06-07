@@ -8,6 +8,8 @@ import { saveOlympiadSession } from "@/lib/olympiad-storage";
 type ResolveResponse = {
   ok?: boolean;
   error?: string;
+  mode?: "investment" | "olympiad";
+  redirectTo?: string;
   olympiad?: {
     slug: string;
     title: string;
@@ -101,9 +103,17 @@ export function OlympiadPortal() {
       const response = await fetch("/api/olympiads/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login: cleanLogin })
+        body: JSON.stringify({ login: cleanLogin, teamName: cleanTeam })
       });
       const data = (await response.json()) as ResolveResponse;
+      if (!response.ok) {
+        throw new Error(data.error ?? "Competition login was not found.");
+      }
+      if (data.redirectTo) {
+        router.push(data.redirectTo);
+        router.refresh();
+        return;
+      }
       if (!response.ok || !data.olympiad) {
         throw new Error(data.error ?? "Competition login was not found.");
       }

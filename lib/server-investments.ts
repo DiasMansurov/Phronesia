@@ -416,7 +416,7 @@ function displayCompetitionCode(input?: string | null) {
 
 function competitionDisplayName(code: string) {
   return competitionCodeToSlug(code) === TEENVESTOR_SLUG
-    ? "Teenvestor.school Investment Competition"
+    ? "Teenvestor Investment Competition"
     : code === DEFAULT_INVESTMENT_COMPETITION_SLUG
       ? "Phronesia Investment Challenge"
       : `${code} Investment Competition`;
@@ -2469,7 +2469,10 @@ export async function createOrGetInvestmentAccount(input: {
   competitionCode?: string;
 }) {
   if (!supabaseConfigured()) return null;
-  const competition = await ensureDefaultCompetition(input.competitionCode || input.competitionSlug);
+  const requestedCompetition = input.competitionCode || input.competitionSlug;
+  const competition = requestedCompetition
+    ? await resolveInvestmentCompetition(requestedCompetition)
+    : await ensureDefaultCompetition();
   if (!competition) return null;
 
   const teamName = normalizeInvestmentTeamDisplayName(input.teamName);
@@ -3731,7 +3734,8 @@ function mapAlphaSearchMatch(match: Payload): InvestmentAssetSearchResult | null
 function mapCompetitionRow(row: Payload): InvestmentCompetitionView {
   const slug = rowString(row, "slug") || competitionCodeToSlug(rowString(row, "code"));
   const code = rowString(row, "code") || slug || DEFAULT_INVESTMENT_COMPETITION_SLUG;
-  const name = rowString(row, "name") || rowString(row, "title") || competitionDisplayName(code);
+  const isTeenvestor = slug === TEENVESTOR_SLUG || competitionCodeToSlug(code) === TEENVESTOR_SLUG;
+  const name = isTeenvestor ? competitionDisplayName(code) : rowString(row, "name") || rowString(row, "title") || competitionDisplayName(code);
   const startAt = rowNullableString(row, "start_at") ?? rowNullableString(row, "starts_at");
   const endAt = rowNullableString(row, "end_at") ?? rowNullableString(row, "ends_at");
   const status = rowString(row, "status") || "active";
@@ -3748,11 +3752,11 @@ function mapCompetitionRow(row: Payload): InvestmentCompetitionView {
     runtimeStatus: "active",
     transactionFee: rowNumber(row, "transaction_fee", INVESTMENT_TRANSACTION_FEE_RATE),
     rankingMethod: rowString(row, "ranking_method") || "portfolio_value",
-    isTeenvestor: slug === TEENVESTOR_SLUG || competitionCodeToSlug(code) === TEENVESTOR_SLUG,
+    isTeenvestor,
     welcomeMessage: null
   };
   competition.runtimeStatus = runtimeStatusForCompetition(competition);
-  competition.welcomeMessage = competition.isTeenvestor ? "Welcome to the Teenvestor.school Investment Competition." : null;
+  competition.welcomeMessage = competition.isTeenvestor ? "Welcome to the Teenvestor Investment Competition." : null;
   return competition;
 }
 
@@ -3821,11 +3825,7 @@ export async function resolveExistingInvestmentCompetition(codeOrSlug?: string |
   const code = displayCompetitionCode(rawCode);
   const slug = competitionCodeToSlug(code);
 
-  if (slug === TEENVESTOR_SLUG) {
-    await ensureDefaultCompetition(TEENVESTOR_CODE);
-  } else {
-    await ensureInvestmentSeedData(false);
-  }
+  if (slug !== TEENVESTOR_SLUG) await ensureInvestmentSeedData(false);
 
   try {
     const bySlug = await selectRows("investment_competitions", {
@@ -3846,10 +3846,10 @@ export async function resolveExistingInvestmentCompetition(codeOrSlug?: string |
     });
     if (Array.isArray(byCode) && byCode[0]) return mapCompetitionRow(byCode[0]);
   } catch {
-    return null;
+    // Create the official fallback below if Supabase does not have it yet.
   }
 
-  return null;
+  return slug === TEENVESTOR_SLUG ? ensureDefaultCompetition(TEENVESTOR_CODE) : null;
 }
 
 async function ensureDefaultCompetition(codeInput = DEFAULT_INVESTMENT_COMPETITION_SLUG) {
@@ -3859,6 +3859,8 @@ async function ensureDefaultCompetition(codeInput = DEFAULT_INVESTMENT_COMPETITI
   const now = new Date();
   const defaultEnd = new Date(now);
   defaultEnd.setUTCDate(defaultEnd.getUTCDate() + (isTeenvestor ? 30 : 365));
+  const defaultStart = isTeenvestor ? new Date(Date.UTC(2026, 5, 22, 13, 30, 0, 0)) : now;
+  if (isTeenvestor) defaultEnd.setTime(defaultStart.getTime() + 30 * 24 * 60 * 60 * 1000);
   const name = competitionDisplayName(code);
   const description = isTeenvestor
     ? "A private educational virtual portfolio competition for Teenvestor.school teams."
@@ -3871,8 +3873,8 @@ async function ensureDefaultCompetition(codeInput = DEFAULT_INVESTMENT_COMPETITI
     description,
     status: "active",
     starting_cash: INVESTMENT_STARTING_CASH,
-    starts_at: now.toISOString(),
-    start_at: now.toISOString(),
+    starts_at: defaultStart.toISOString(),
+    start_at: defaultStart.toISOString(),
     ends_at: defaultEnd.toISOString(),
     end_at: defaultEnd.toISOString(),
     transaction_fee: INVESTMENT_TRANSACTION_FEE_RATE,
