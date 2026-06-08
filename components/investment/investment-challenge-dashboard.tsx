@@ -675,23 +675,24 @@ export function InvestmentChallengeDashboard({
           </div>
         </aside>
 
-        {activeCompetition ? (
-          <div className={`competition-inline-strip ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
-            <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
-              {activeCompetition.runtimeStatus === "not_started"
-                ? "Not started"
-                : activeCompetition.runtimeStatus === "closed"
-                  ? "Competition closed"
-                  : "Competition active"}
-            </span>
-            <div><span>Competition</span><strong>{activeCompetition.name}</strong></div>
-            <div><span>Starting capital</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
-            <div><span>Start date</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
-            <div><span>End date</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
-            <div><span>Ranking</span><strong>{activeCompetition.runtimeStatus === "closed" ? "Final" : "Live"}</strong></div>
-          </div>
-        ) : null}
       </section>
+
+      {activeCompetition ? (
+        <div className={`competition-inline-strip ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
+          <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
+            {activeCompetition.runtimeStatus === "not_started"
+              ? "Not started"
+              : activeCompetition.runtimeStatus === "closed"
+                ? "Competition closed"
+                : "Competition active"}
+          </span>
+          <div><span>Competition</span><strong>{activeCompetition.name}</strong></div>
+          <div><span>Starting capital</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
+          <div><span>Start date</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
+          <div><span>End date</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
+          <div><span>Ranking</span><strong>{activeCompetition.runtimeStatus === "closed" ? "Final" : "Live"}</strong></div>
+        </div>
+      ) : null}
 
       <section className="investment-summary-section" id="team-portfolio">
         <article className="panel stack-md portfolio-panel">
