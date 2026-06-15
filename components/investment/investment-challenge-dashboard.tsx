@@ -971,7 +971,7 @@ export function InvestmentChallengeDashboard({
             <section className="portfolio-center-summary" aria-label="Portfolio summary">
               <div><span>Cash balance</span><strong>{formatUsd(cashBalance)}</strong></div>
               <div><span>Holdings count</span><strong>{holdingsCount}</strong></div>
-              <div><span>Total invested</span><strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong></div>
+              <div><span>Holdings value</span><strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong></div>
               <div><span>Portfolio status</span><strong>{latestPortfolioStatus}</strong></div>
             </section>
           ) : null}
@@ -1016,6 +1016,7 @@ export function InvestmentChallengeDashboard({
                       <div><dt>Current</dt><dd>{formatUsd(position.currentPrice)}</dd></div>
                       <div><dt>Margin</dt><dd>{formatUsd(position.marginLocked)}</dd></div>
                       <div><dt>Exposure</dt><dd>{formatUsd(position.exposureValue)}</dd></div>
+                      <div><dt>Position equity</dt><dd>{formatUsd(position.marginLocked + position.unrealizedPnl)}</dd></div>
                       <div>
                         <dt>Unrealized P/L</dt>
                         <dd className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</dd>
@@ -1059,6 +1060,7 @@ export function InvestmentChallengeDashboard({
                         <th>Latest price</th>
                         <th>Current value</th>
                         <th>Unrealized gain/loss</th>
+                        <th>Unrealized return</th>
                         <th>Weight</th>
                       </tr>
                     </thead>
@@ -1073,6 +1075,9 @@ export function InvestmentChallengeDashboard({
                           <td>{formatUsd(holding.marketValue)}</td>
                           <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
                             {formatUsd(holding.unrealizedGainLoss)}
+                          </td>
+                          <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
+                            {holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : "n/a"}
                           </td>
                           <td>{holding.weight.toFixed(1)}%</td>
                         </tr>
@@ -1089,8 +1094,10 @@ export function InvestmentChallengeDashboard({
                       </div>
                       <dl>
                         <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
+                        <div><dt>Current</dt><dd>{formatUsd(holding.latestClose)}</dd></div>
                         <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
                         <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
+                        <div><dt>Return</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : "n/a"}</dd></div>
                         <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
                       </dl>
                     </article>

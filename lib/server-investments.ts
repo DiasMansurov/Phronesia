@@ -32,6 +32,7 @@ export type InvestmentAccountView = {
   thesis: InvestmentThesisView | null;
   quotes: InvestmentAssetQuote[];
   portfolio: InvestmentPortfolioSummary;
+  portfolioDebug: InvestmentPortfolioDebug;
   marketStatus: InvestmentMarketStatus;
   currentRank: InvestmentLeaderboardRow | null;
 };
@@ -80,6 +81,24 @@ export type InvestmentPortfolioSummary = {
   totalReturn: number;
   diversificationScore: number;
   riskScore: number;
+};
+
+export type InvestmentPortfolioDebug = {
+  cashBalance: number;
+  legacyHoldingsCount: number;
+  legacyHoldingsValue: number;
+  openPositionsCount: number;
+  lockedMargin: number;
+  openExposure: number;
+  unrealizedPnl: number;
+  calculatedPortfolioValue: number;
+  pricesUsed: Array<{
+    symbol: string;
+    price: number | null;
+    source: string;
+    priceDate: string | null;
+    fetchedAt: string | null;
+  }>;
 };
 
 export type InvestmentPositionView = {
@@ -172,6 +191,7 @@ export type InvestmentAdminTeamResult = {
   totalExposure: number;
   unrealizedPnl: number;
   totalPortfolioValue: number;
+  portfolioDebug: InvestmentPortfolioDebug;
   profitLoss: number;
   returnPercent: number;
   tradesCount: number;
@@ -1902,6 +1922,155 @@ export async function getCachedPrice(symbol: string) {
   };
 }
 
+function collectPortfolioSymbols(holdingRows: Payload[], positionRows: Payload[]) {
+  const symbols = new Set<string>();
+  for (const row of holdingRows) {
+    const quantity = rowNumber(row, "quantity");
+    const symbol = normalizeSymbol(rowString(row, "symbol"));
+    if (symbol && quantity > 0) symbols.add(symbol);
+  }
+  for (const row of positionRows) {
+    const symbol = normalizeSymbol(rowString(row, "symbol"));
+    if (symbol) symbols.add(symbol);
+  }
+  return symbols;
+}
+
+async function resolvePortfolioQuotesForSymbols(
+  symbols: Iterable<string>,
+  baseQuotes: InvestmentAssetQuote[] = [],
+  assetsInput: InvestmentAsset[] = [],
+  priceMapInput?: Map<string, number>
+) {
+  const quotesBySymbol = new Map<string, InvestmentAssetQuote>();
+  for (const quote of baseQuotes) {
+    const symbol = normalizeSymbol(quote.symbol);
+    if (symbol) quotesBySymbol.set(symbol, { ...quote, symbol });
+  }
+
+  const assetsBySymbol = new Map<string, InvestmentAsset>();
+  for (const asset of assetsInput) assetsBySymbol.set(normalizeSymbol(asset.symbol), asset);
+  for (const asset of INVESTMENT_ASSETS) {
+    const symbol = normalizeSymbol(asset.symbol);
+    if (!assetsBySymbol.has(symbol)) assetsBySymbol.set(symbol, asset);
+  }
+
+  for (const rawSymbol of symbols) {
+    const symbol = normalizeSymbol(rawSymbol);
+    if (!symbol) continue;
+    const existing = quotesBySymbol.get(symbol);
+    if (
+      existing &&
+      existing.priceAvailable &&
+      existing.priceSource !== "reference" &&
+      Number.isFinite(existing.latestClose) &&
+      existing.latestClose > 0
+    ) {
+      continue;
+    }
+
+    const cached = await getCachedPrice(symbol).catch(() => null);
+    if (cached && Number.isFinite(cached.latestClose) && cached.latestClose > 0) {
+      const asset = assetsBySymbol.get(symbol) ?? (await resolveInvestmentAsset(symbol).catch(() => null)) ?? getInvestmentAsset(symbol) ?? null;
+      quotesBySymbol.set(symbol, {
+        ...(asset ?? {
+          symbol,
+          name: symbol,
+          type: "Stock",
+          theme: "US-listed asset",
+          referencePrice: cached.latestClose,
+          region: "United States",
+          currency: cached.currency ?? "USD",
+          exchange: null,
+          featured: false
+        }),
+        latestClose: cached.latestClose,
+        priceDate: cached.priceDate,
+        provider: cached.provider,
+        priceAvailable: true,
+        priceSource: "cache",
+        priceMessage: cached.priceMessage ?? "Using latest cached price.",
+        fetchedAt: cached.fetchedAt ?? null,
+        currency: cached.currency ?? asset?.currency ?? "USD",
+        cacheStatus: cached.cacheStatus
+      });
+      continue;
+    }
+
+    const inputPrice = priceMapInput?.get(symbol);
+    if (inputPrice && Number.isFinite(inputPrice) && inputPrice > 0) {
+      const asset = assetsBySymbol.get(symbol) ?? (await resolveInvestmentAsset(symbol).catch(() => null)) ?? getInvestmentAsset(symbol) ?? null;
+      quotesBySymbol.set(symbol, {
+        ...(asset ?? {
+          symbol,
+          name: symbol,
+          type: "Stock",
+          theme: "US-listed asset",
+          referencePrice: inputPrice,
+          region: "United States",
+          currency: "USD",
+          exchange: null,
+          featured: false
+        }),
+        latestClose: inputPrice,
+        priceDate: null,
+        provider: "saved_price_map",
+        priceAvailable: true,
+        priceSource: "cache",
+        priceMessage: "Using latest cached price.",
+        fetchedAt: null,
+        currency: asset?.currency ?? "USD",
+        cacheStatus: "cached"
+      });
+      continue;
+    }
+
+    const asset = assetsBySymbol.get(symbol) ?? (await resolveInvestmentAsset(symbol).catch(() => null)) ?? getInvestmentAsset(symbol) ?? null;
+    const referencePrice = asset?.referencePrice ?? 0;
+    quotesBySymbol.set(symbol, {
+      ...(asset ?? {
+        symbol,
+        name: symbol,
+        type: "Stock",
+        theme: "US-listed asset",
+        referencePrice,
+        region: "United States",
+        currency: "USD",
+        exchange: null,
+        featured: false
+      }),
+      latestClose: referencePrice,
+      priceDate: null,
+      provider: referencePrice ? "educational_reference" : "unavailable",
+      priceAvailable: false,
+      priceSource: referencePrice ? "reference" : "unavailable",
+      priceMessage: referencePrice ? "Using reference price as final fallback." : "Price unavailable.",
+      fetchedAt: null,
+      currency: asset?.currency ?? "USD",
+      cacheStatus: "missing"
+    });
+  }
+
+  return Array.from(quotesBySymbol.values());
+}
+
+function portfolioPricesUsed(symbols: Iterable<string>, quoteMap: Map<string, InvestmentAssetQuote>) {
+  return Array.from(symbols)
+    .map((symbol) => normalizeSymbol(symbol))
+    .filter(Boolean)
+    .sort()
+    .map((symbol) => {
+      const quote = quoteMap.get(symbol);
+      return {
+        symbol,
+        price: quote && Number.isFinite(quote.latestClose) && quote.latestClose > 0 ? quote.latestClose : null,
+        source: quote?.priceSource ?? quote?.provider ?? "unavailable",
+        priceDate: quote?.priceDate ?? null,
+        fetchedAt: quote?.fetchedAt ?? null
+      };
+    });
+}
+
 function isCachedQuoteFresh(
   stored: { fetchedAt?: string | null; priceDate?: string | null },
   marketStatus = getMarketStatus()
@@ -2674,6 +2843,26 @@ export async function getInvestmentAccountView(accountId: string) {
   return buildInvestmentAccountView(accountId);
 }
 
+export async function calculateTeamPortfolioValue(teamId: string, competitionId?: string | null) {
+  if (!supabaseConfigured()) return null;
+  const view = await buildInvestmentAccountView(teamId);
+  if (!view) return null;
+  if (competitionId && view.account.competitionId !== competitionId) return null;
+  return {
+    cashBalance: view.portfolio.cash,
+    legacyHoldingsValue: view.portfolio.holdingsValue,
+    lockedMargin: view.portfolio.lockedMargin,
+    openExposure: view.portfolio.totalExposure,
+    unrealizedPnl: view.portfolio.unrealizedPnl,
+    portfolioValue: view.portfolio.totalValue,
+    profitLoss: view.portfolio.totalValue - view.portfolio.startingCash,
+    returnPercent: view.portfolio.totalReturn,
+    holdings: view.holdings,
+    openPositions: view.positions.filter((position) => position.status === "open"),
+    portfolioDebug: view.portfolioDebug
+  };
+}
+
 export async function executeInvestmentTrade(input: {
   accountId: string;
   symbol: string;
@@ -3191,8 +3380,10 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
     listInvestmentAssetQuotes()
   ]);
 
+  const portfolioSymbols = collectPortfolioSymbols(holdingRows, positionRows);
+  const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, quotes);
   const quoteMap = new Map(
-    quotes
+    quoteList
       .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
       .map((quote) => [quote.symbol, quote])
   );
@@ -3249,6 +3440,20 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
       totalExposure,
       unrealizedPnl,
       totalPortfolioValue,
+      portfolioDebug: {
+        cashBalance,
+        legacyHoldingsCount: teamHoldings.length,
+        legacyHoldingsValue,
+        openPositionsCount: openPositions.length,
+        lockedMargin,
+        openExposure: totalExposure,
+        unrealizedPnl,
+        calculatedPortfolioValue: totalPortfolioValue,
+        pricesUsed: portfolioPricesUsed(
+          collectPortfolioSymbols(teamHoldings, positionsByAccount.get(accountId) ?? []),
+          quoteMap
+        )
+      },
       profitLoss,
       returnPercent: startingCash > 0 ? (profitLoss / startingCash) * 100 : 0,
       tradesCount: teamTrades.length,
@@ -3329,8 +3534,12 @@ export async function getInvestmentAdminTeamDetail(
     listInvestmentAssetQuotes()
   ]);
 
-  const quoteMap = new Map(
+  const quoteList = await resolvePortfolioQuotesForSymbols(
+    collectPortfolioSymbols(Array.isArray(holdingRows) ? holdingRows : [], Array.isArray(positionRows) ? positionRows : []),
     quotes
+  );
+  const quoteMap = new Map(
+    quoteList
       .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
       .map((quote) => [quote.symbol, quote])
   );
@@ -3460,7 +3669,9 @@ function groupRowsByTeam(rows: Payload[]) {
 
 function storedPriceRawPayload(row: Payload | null | undefined): Payload | null {
   const raw = row?.raw_source ?? row?.raw;
-  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Payload) : null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const payload = (raw as Payload).payload;
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Payload) : (raw as Payload);
 }
 
 function resolveStoredInvestmentPrice(row: Payload | null | undefined, referencePrice = 0) {
@@ -3946,22 +4157,41 @@ async function getStoredLatestPrice(symbol: string) {
   if (!supabaseConfigured()) return null;
   try {
     const rows = await selectRows("investment_daily_prices", {
-      select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
+      select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at,raw,raw_source",
       symbol: `eq.${symbol}`,
       order: "fetched_at.desc,price_date.desc",
       limit: "1"
     });
     if (!Array.isArray(rows) || !rows[0]) return null;
+    const resolved = resolveStoredInvestmentPrice(rows[0]);
     return {
-      latestClose: rowNumber(rows[0], "price", rowNumber(rows[0], "close_price")),
-      priceDate: rowString(rows[0], "trading_day") || rowString(rows[0], "price_date"),
+      latestClose: resolved.price ?? rowNumber(rows[0], "price", rowNumber(rows[0], "close_price")),
+      priceDate: resolved.priceDate,
       provider: rowString(rows[0], "provider") || "stored",
       priceAvailable: true,
-      fetchedAt: rowNullableString(rows[0], "fetched_at") ?? rowNullableString(rows[0], "updated_at"),
+      fetchedAt: resolved.fetchedAt,
       currency: rowString(rows[0], "currency") || "USD"
     };
   } catch {
-    return null;
+    try {
+      const rows = await selectRows("investment_daily_prices", {
+        select: "symbol,price_date,trading_day,close_price,price,currency,provider,endpoint,fetched_at,updated_at",
+        symbol: `eq.${symbol}`,
+        order: "fetched_at.desc,price_date.desc",
+        limit: "1"
+      });
+      if (!Array.isArray(rows) || !rows[0]) return null;
+      return {
+        latestClose: rowNumber(rows[0], "price", rowNumber(rows[0], "close_price")),
+        priceDate: rowString(rows[0], "trading_day") || rowString(rows[0], "price_date"),
+        provider: rowString(rows[0], "provider") || "stored",
+        priceAvailable: true,
+        fetchedAt: rowNullableString(rows[0], "fetched_at") ?? rowNullableString(rows[0], "updated_at"),
+        currency: rowString(rows[0], "currency") || "USD"
+      };
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -4033,6 +4263,7 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
   const leverage = Math.max(1, rowNumber(row, "leverage", 1));
   const marginLocked = rowNumber(row, "margin_locked");
   const currentPrice = priceMap.get(symbol) ?? rowNumber(row, "current_price", entryPrice);
+  const exposureValue = status === "open" ? quantity * currentPrice : rowNumber(row, "exposure_value", quantity * currentPrice);
   const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity, leverage) : 0;
   const unrealizedPnl = status === "open" ? Math.max(rawUnrealized, -marginLocked) : 0;
 
@@ -4046,7 +4277,7 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
     currentPrice,
     leverage,
     marginLocked,
-    exposureValue: rowNumber(row, "exposure_value", quantity * currentPrice),
+    exposureValue,
     unrealizedPnl,
     realizedPnl: rowNumber(row, "realized_pnl"),
     status,
@@ -4169,7 +4400,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     limit: "20"
   });
 
-  const quoteList = quotes ?? assets.map((asset) => ({
+  const baseQuoteList = quotes ?? assets.map((asset) => ({
     ...asset,
     latestClose: priceMapInput?.get(asset.symbol) ?? asset.referencePrice,
     priceDate: null,
@@ -4183,13 +4414,19 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     currency: asset.currency ?? "USD",
     cacheStatus: priceMapInput?.has(asset.symbol) ? ("cached" as const) : ("missing" as const)
   }));
+  const portfolioSymbols = collectPortfolioSymbols(
+    Array.isArray(holdingsRows) ? holdingsRows : [],
+    Array.isArray(positionRows) ? positionRows : []
+  );
+  const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, baseQuoteList, assets, priceMapInput);
+  const quoteMap = new Map(quoteList.map((quote) => [quote.symbol, quote]));
   const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
   const holdingViews = Array.isArray(holdingsRows)
     ? holdingsRows
         .filter((row) => rowNumber(row, "quantity") > 0)
         .map((row) => {
           const symbol = rowString(row, "symbol");
-          const asset = quoteList.find((quote) => quote.symbol === symbol) ?? getInvestmentAsset(symbol);
+          const asset = quoteMap.get(symbol) ?? getInvestmentAsset(symbol);
           const assetName = rowNullableString(row, "asset_name") ?? asset?.name ?? symbol;
           const latestClose = priceMap.get(symbol) ?? asset?.referencePrice ?? 0;
           const quantity = rowNumber(row, "quantity");
@@ -4202,7 +4439,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
             quantity,
             averageBuyPrice,
             latestClose,
-            priceDate: quoteList.find((quote) => quote.symbol === symbol)?.priceDate ?? null,
+            priceDate: quoteMap.get(symbol)?.priceDate ?? null,
             marketValue,
             unrealizedGainLoss: (latestClose - averageBuyPrice) * quantity,
             weight: 0
@@ -4239,6 +4476,17 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
     riskScore: calculateRiskScore(holdingViews, totalValue)
   };
+  const portfolioDebug = {
+    cashBalance: cash,
+    legacyHoldingsCount: holdingViews.length,
+    legacyHoldingsValue: holdingsValue,
+    openPositionsCount: openPositions.length,
+    lockedMargin,
+    openExposure: totalExposure,
+    unrealizedPnl,
+    calculatedPortfolioValue: totalValue,
+    pricesUsed: portfolioPricesUsed(portfolioSymbols, quoteMap)
+  };
   const currentRank = await getLeaderboardRowForAccount(accountId, competitionView);
   return {
     account: {
@@ -4264,6 +4512,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       : null,
     quotes: quoteList,
     portfolio,
+    portfolioDebug,
     marketStatus: getMarketStatus(),
     currentRank
   };
