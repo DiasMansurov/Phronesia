@@ -607,11 +607,11 @@ export function InvestmentChallengeDashboard({
       label: "Total Return",
       value: formatPercent(portfolio?.totalReturn ?? 0),
       tone: (portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"
-    },
-    { label: "Current Cash", value: formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH) },
-    { label: "Current Rank", value: currentRankText }
+    }
   ];
   const secondaryMetrics: Array<{ label: string; value: string; tone?: "positive" | "negative" }> = [
+    { label: "Current Cash", value: formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH) },
+    { label: "Current Rank", value: currentRankText },
     { label: "Starting Balance", value: formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH) },
     {
       label: "Daily Change",
