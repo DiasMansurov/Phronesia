@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AdminResultsRefreshButton } from "@/components/investment/admin-results-refresh-button";
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { listInvestmentAdminResults, type InvestmentAdminResultsBundle, type InvestmentAdminTeamResult } from "@/lib/server-investments";
@@ -67,6 +68,7 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
             <Link className="button secondary" href="/investment-challenge/admin">
               Admin Home
             </Link>
+            <AdminResultsRefreshButton />
             <Link className="button primary" href="/api/investment/admin/export?type=leaderboard&competitionCode=Teenvestor.school">
               Export leaderboard CSV
             </Link>
@@ -138,7 +140,7 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
                 <th>Rank</th>
                 <th>Team</th>
                 <th>Cash balance</th>
-                <th>Holdings / positions</th>
+                <th>Holdings value</th>
                 <th>Locked margin</th>
                 <th>Unrealized P/L</th>
                 <th>Total portfolio</th>

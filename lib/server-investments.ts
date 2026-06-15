@@ -2071,6 +2071,14 @@ function portfolioPricesUsed(symbols: Iterable<string>, quoteMap: Map<string, In
     });
 }
 
+function marketPriceMapFromQuotes(quotes: InvestmentAssetQuote[]) {
+  return new Map(
+    quotes
+      .filter((quote) => quote.priceAvailable && quote.priceSource !== "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
+      .map((quote) => [quote.symbol, quote.latestClose])
+  );
+}
+
 function isCachedQuoteFresh(
   stored: { fetchedAt?: string | null; priceDate?: string | null },
   marketStatus = getMarketStatus()
@@ -2254,14 +2262,25 @@ async function getHeldInvestmentSymbols() {
 
   let symbols: string[] = [];
   try {
-    const rows = await selectRows("investment_holdings", {
-      select: "symbol,quantity",
-      quantity: "gt.0",
-      limit: "200"
-    });
-    if (Array.isArray(rows)) {
-      symbols = Array.from(new Set(rows.map((row) => normalizeSymbol(rowString(row, "symbol"))).filter(Boolean)));
-    }
+    const [holdingRows, positionRows] = await Promise.all([
+      selectRows("investment_holdings", {
+        select: "symbol,quantity",
+        quantity: "gt.0",
+        limit: "200"
+      }).catch(() => []),
+      selectRows("investment_positions", {
+        select: "symbol,status",
+        status: "eq.open",
+        limit: "200"
+      }).catch(() => [])
+    ]);
+    symbols = Array.from(
+      new Set(
+        [...(Array.isArray(holdingRows) ? holdingRows : []), ...(Array.isArray(positionRows) ? positionRows : [])]
+          .map((row) => normalizeSymbol(rowString(row, "symbol")))
+          .filter(Boolean)
+      )
+    );
   } catch {
     return [];
   }
@@ -2376,7 +2395,7 @@ export async function recalculatePortfolios() {
   if (!Array.isArray(accounts)) return { updated: 0, persisted: false };
 
   const quotes = await listInvestmentAssetQuotes();
-  const priceMap = new Map(quotes.map((quote) => [quote.symbol, quote.latestClose]));
+  const priceMap = marketPriceMapFromQuotes(quotes);
   let updated = 0;
 
   for (const account of accounts) {
@@ -2419,7 +2438,7 @@ export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string
     if (!Array.isArray(accounts)) continue;
 
     const quotes = await listInvestmentAssetQuotes();
-    const priceMap = new Map(quotes.map((quote) => [quote.symbol, quote.latestClose]));
+    const priceMap = marketPriceMapFromQuotes(quotes);
     const scored: InvestmentLeaderboardRow[] = [];
 
     for (const account of accounts) {
@@ -2848,8 +2867,11 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
   const view = await buildInvestmentAccountView(teamId);
   if (!view) return null;
   if (competitionId && view.account.competitionId !== competitionId) return null;
+  const openPositions = view.positions.filter((position) => position.status === "open");
   return {
+    startingCash: view.portfolio.startingCash,
     cashBalance: view.portfolio.cash,
+    holdingsValue: view.portfolio.holdingsValue,
     legacyHoldingsValue: view.portfolio.holdingsValue,
     lockedMargin: view.portfolio.lockedMargin,
     openExposure: view.portfolio.totalExposure,
@@ -2857,8 +2879,12 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     portfolioValue: view.portfolio.totalValue,
     profitLoss: view.portfolio.totalValue - view.portfolio.startingCash,
     returnPercent: view.portfolio.totalReturn,
+    holdingsCount: view.holdings.length,
+    openPositionsCount: openPositions.length,
+    tradesCount: await getTradeCount(teamId),
     holdings: view.holdings,
-    openPositions: view.positions.filter((position) => position.status === "open"),
+    openPositions,
+    pricesUsed: view.portfolioDebug.pricesUsed,
     portfolioDebug: view.portfolioDebug
   };
 }
@@ -3372,97 +3398,59 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
   });
 
   const accountRows = Array.isArray(accounts) ? accounts : [];
-  const accountIds = new Set(accountRows.map((row) => rowString(row, "id")));
-  const [holdingRows, tradeRows, positionRows, quotes] = await Promise.all([
-    listInvestmentHoldingsForCompetition(competition.id, accountIds),
-    listInvestmentTradesForCompetition(competition.id, accountIds),
-    listInvestmentPositionsForCompetition(competition.id, accountIds),
-    listInvestmentAssetQuotes()
-  ]);
+  const quotes = await listInvestmentAssetQuotes();
+  const priceMap = marketPriceMapFromQuotes(quotes);
 
-  const portfolioSymbols = collectPortfolioSymbols(holdingRows, positionRows);
-  const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, quotes);
-  const quoteMap = new Map(
-    quoteList
-      .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
-      .map((quote) => [quote.symbol, quote])
-  );
-  const priceMap = new Map(Array.from(quoteMap.entries()).map(([symbol, quote]) => [symbol, quote.latestClose]));
+  const teams = (
+    await Promise.all(
+      accountRows.map(async (account) => {
+        const accountId = rowString(account, "id");
+        const view = await buildInvestmentAccountView(accountId, priceMap);
+        if (!view) return null;
+        const openPositions = view.positions.filter((position) => position.status === "open");
+        const tradesCount = await getTradeCount(accountId);
+        const lastTradeActivity = latestIso(...view.trades.map((trade) => trade.executedAt ?? trade.createdAt));
+        const lastPositionActivity = latestIso(
+          ...view.positions.map((position) => position.closedAt ?? position.updatedAt ?? position.openedAt)
+        );
+        const lastActivity = latestIso(
+          rowNullableString(account, "last_login_at"),
+          rowNullableString(account, "updated_at"),
+          rowNullableString(account, "created_at"),
+          lastTradeActivity,
+          lastPositionActivity
+        );
+        const profitLoss = view.portfolio.totalValue - view.portfolio.startingCash;
 
-  const holdingsByAccount = groupRowsByTeam(holdingRows);
-  const tradesByAccount = groupRowsByTeam(tradeRows);
-  const positionsByAccount = groupRowsByTeam(positionRows);
-
-  const teams = accountRows.map((account) => {
-    const accountId = rowString(account, "id");
-    const startingCash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
-    const cashBalance = rowNumber(account, "cash", rowNumber(account, "cash_balance", startingCash));
-    const teamHoldings = (holdingsByAccount.get(accountId) ?? []).filter((row) => rowNumber(row, "quantity") > 0);
-    const legacyHoldingsValue = teamHoldings.reduce((sum, holding) => {
-      const symbol = rowString(holding, "symbol");
-      const quote = quoteMap.get(symbol);
-      const latestPrice = quote?.latestClose ?? null;
-      return latestPrice ? sum + rowNumber(holding, "quantity") * latestPrice : sum;
-    }, 0);
-    const teamPositions = (positionsByAccount.get(accountId) ?? []).map((row) => mapPositionRow(row, priceMap));
-    const openPositions = teamPositions.filter((position) => position.status === "open");
-    const lockedMargin = openPositions.reduce((sum, position) => sum + position.marginLocked, 0);
-    const totalExposure = openPositions.reduce((sum, position) => sum + position.exposureValue, 0);
-    const unrealizedPnl = openPositions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
-    const holdingsValue = legacyHoldingsValue + lockedMargin + unrealizedPnl;
-    const totalPortfolioValue = cashBalance + holdingsValue;
-    const profitLoss = totalPortfolioValue - startingCash;
-    const teamTrades = (tradesByAccount.get(accountId) ?? []).filter((row) => !row.rejected);
-    const lastHoldingActivity = latestIso(...teamHoldings.map((row) => rowNullableString(row, "updated_at")));
-    const lastTradeActivity = latestIso(...(tradesByAccount.get(accountId) ?? []).map((row) => rowNullableString(row, "created_at")));
-    const lastPositionActivity = latestIso(
-      ...teamPositions.map((position) => position.closedAt ?? position.updatedAt ?? position.openedAt)
-    );
-    const lastActivity = latestIso(
-      rowNullableString(account, "last_login_at"),
-      rowNullableString(account, "updated_at"),
-      rowNullableString(account, "created_at"),
-      lastHoldingActivity,
-      lastTradeActivity,
-      lastPositionActivity
-    );
-
-    return {
-      rank: 0,
-      teamId: accountId,
-      competitionId: competition.id,
-      competitionCode: competition.code,
-      teamName: rowString(account, "team_name"),
-      startingCash,
-      cashBalance,
-      holdingsValue,
-      lockedMargin,
-      totalExposure,
-      unrealizedPnl,
-      totalPortfolioValue,
-      portfolioDebug: {
-        cashBalance,
-        legacyHoldingsCount: teamHoldings.length,
-        legacyHoldingsValue,
-        openPositionsCount: openPositions.length,
-        lockedMargin,
-        openExposure: totalExposure,
-        unrealizedPnl,
-        calculatedPortfolioValue: totalPortfolioValue,
-        pricesUsed: portfolioPricesUsed(
-          collectPortfolioSymbols(teamHoldings, positionsByAccount.get(accountId) ?? []),
-          quoteMap
-        )
-      },
-      profitLoss,
-      returnPercent: startingCash > 0 ? (profitLoss / startingCash) * 100 : 0,
-      tradesCount: teamTrades.length,
-      holdingsCount: teamHoldings.length,
-      openPositionsCount: openPositions.length,
-      lastActivity,
-      status: competition.runtimeStatus === "closed" ? "closed" : teamTrades.length || teamHoldings.length || openPositions.length ? "active" : "registered"
-    } satisfies InvestmentAdminTeamResult;
-  });
+        return {
+          rank: 0,
+          teamId: accountId,
+          competitionId: competition.id,
+          competitionCode: competition.code,
+          teamName: view.account.teamName || rowString(account, "team_name"),
+          startingCash: view.portfolio.startingCash,
+          cashBalance: view.portfolio.cash,
+          holdingsValue: view.portfolio.holdingsValue,
+          lockedMargin: view.portfolio.lockedMargin,
+          totalExposure: view.portfolio.totalExposure,
+          unrealizedPnl: view.portfolio.unrealizedPnl,
+          totalPortfolioValue: view.portfolio.totalValue,
+          portfolioDebug: view.portfolioDebug,
+          profitLoss,
+          returnPercent: view.portfolio.totalReturn,
+          tradesCount,
+          holdingsCount: view.holdings.length,
+          openPositionsCount: openPositions.length,
+          lastActivity,
+          status: competition.runtimeStatus === "closed"
+            ? "closed"
+            : tradesCount || view.holdings.length || openPositions.length
+              ? "active"
+              : "registered"
+        } satisfies InvestmentAdminTeamResult;
+      })
+    )
+  ).filter((team): team is InvestmentAdminTeamResult => Boolean(team));
 
   teams.sort((a, b) => b.totalPortfolioValue - a.totalPortfolioValue || b.returnPercent - a.returnPercent || a.teamName.localeCompare(b.teamName));
   teams.forEach((team, index) => {
@@ -3517,7 +3505,7 @@ export async function getInvestmentAdminTeamDetail(
 ): Promise<InvestmentAdminTeamDetail> {
   if (!supabaseConfigured()) return { persisted: false, competition: null, overview: null, holdings: [], positions: [], trades: [] };
 
-  const competition = await resolveInvestmentCompetition(competitionCodeOrSlug);
+  const competition = await resolveInvestmentAdminCompetition(competitionCodeOrSlug);
   if (!competition) return { persisted: true, competition: null, overview: null, holdings: [], positions: [], trades: [] };
 
   const account = await getAccountRow(teamId);
@@ -3527,54 +3515,31 @@ export async function getInvestmentAdminTeamDetail(
 
   const results = await listInvestmentAdminResults(competition.code);
   const overviewBase = results.teams.find((team) => team.teamId === teamId) ?? null;
-  const [holdingRows, positionRows, tradeRows, quotes] = await Promise.all([
-    selectRows("investment_holdings", { select: "*", account_id: `eq.${teamId}`, order: "symbol.asc", limit: "1000" }),
-    listPositionRowsForAccount(teamId),
-    selectRows("investment_trades", { select: "*", account_id: `eq.${teamId}`, order: "created_at.desc", limit: "3000" }),
-    listInvestmentAssetQuotes()
+  const [accountView, tradeRows] = await Promise.all([
+    buildInvestmentAccountView(teamId),
+    selectRows("investment_trades", { select: "*", account_id: `eq.${teamId}`, order: "created_at.desc", limit: "3000" })
   ]);
+  const totalValue =
+    overviewBase?.totalPortfolioValue ??
+    accountView?.portfolio.totalValue ??
+    rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
 
-  const quoteList = await resolvePortfolioQuotesForSymbols(
-    collectPortfolioSymbols(Array.isArray(holdingRows) ? holdingRows : [], Array.isArray(positionRows) ? positionRows : []),
-    quotes
-  );
-  const quoteMap = new Map(
-    quoteList
-      .filter((quote) => Number.isFinite(quote.latestClose) && quote.latestClose > 0)
-      .map((quote) => [quote.symbol, quote])
-  );
-  const priceMap = new Map(Array.from(quoteMap.entries()).map(([symbol, quote]) => [symbol, quote.latestClose]));
-  const totalValue = overviewBase?.totalPortfolioValue ?? rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
+  const holdings = (accountView?.holdings ?? []).map((holding) => ({
+    symbol: holding.symbol,
+    assetName: holding.assetName,
+    quantity: holding.quantity,
+    averageBuyPrice: holding.averageBuyPrice,
+    latestPrice: holding.latestClose > 0 ? holding.latestClose : null,
+    priceDate: holding.priceDate,
+    marketValue: holding.latestClose > 0 ? holding.marketValue : null,
+    unrealizedProfitLoss: holding.latestClose > 0 ? holding.unrealizedGainLoss : null,
+    allocationPercent: totalValue > 0 ? (holding.marketValue / totalValue) * 100 : 0
+  } satisfies InvestmentAdminHoldingResult));
 
-  const holdings = (Array.isArray(holdingRows) ? holdingRows : [])
-    .filter((row) => rowNumber(row, "quantity") > 0)
-    .map((row) => {
-      const symbol = rowString(row, "symbol");
-      const quote = quoteMap.get(symbol);
-      const latestPrice = quote?.latestClose ?? null;
-      const quantity = rowNumber(row, "quantity");
-      const averageBuyPrice = rowNumber(row, "average_buy_price");
-      const marketValue = latestPrice ? latestPrice * quantity : null;
-      return {
-        symbol,
-        assetName: rowNullableString(row, "asset_name") ?? getInvestmentAsset(symbol)?.name ?? symbol,
-        quantity,
-        averageBuyPrice,
-        latestPrice,
-        priceDate: quote?.priceDate ?? null,
-        marketValue,
-        unrealizedProfitLoss: latestPrice ? (latestPrice - averageBuyPrice) * quantity : null,
-        allocationPercent: marketValue && totalValue > 0 ? (marketValue / totalValue) * 100 : 0
-      } satisfies InvestmentAdminHoldingResult;
-    });
-
-  const positions = (Array.isArray(positionRows) ? positionRows : []).map((row) => {
-    const position = mapPositionRow(row, priceMap);
-    return {
-      ...position,
-      marketValue: position.status === "open" ? position.marginLocked + position.unrealizedPnl : 0
-    } satisfies InvestmentAdminPositionResult;
-  });
+  const positions = (accountView?.positions ?? []).map((position) => ({
+    ...position,
+    marketValue: position.status === "open" ? position.marginLocked + position.unrealizedPnl : 0
+  } satisfies InvestmentAdminPositionResult));
 
   const trades = (Array.isArray(tradeRows) ? tradeRows : []).map((row) => ({
     ...mapTradeRow(row),

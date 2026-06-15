@@ -6274,6 +6274,20 @@ li,
   align-items: center;
 }
 
+.admin-results-refresh-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.admin-refresh-message {
+  max-width: 18rem;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
 .investment-admin-summary {
   align-items: stretch;
   gap: clamp(0.8rem, 1.5vw, 1rem);
