@@ -18668,17 +18668,12 @@ main:has(.investment-dashboard-page) {
 }
 
 .investment-dashboard-page.shell {
-<<<<<<< HEAD
   width: 100%;
   max-width: 1440px;
   margin-inline: auto;
   padding: 24px;
   box-sizing: border-box;
   gap: 24px;
-=======
-  width: min(1240px, calc(100% - 48px));
-  padding-block: 22px 38px;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
 }
 
 .investment-dashboard-page .investment-student-product {
@@ -18917,11 +18912,7 @@ main:has(.investment-dashboard-page) {
 }
 
 .investment-dashboard-page .portfolio-panel {
-<<<<<<< HEAD
   padding: 24px;
-=======
-  padding: 20px;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
 }
 
 .investment-dashboard-page .portfolio-panel .section-header {
@@ -18943,34 +18934,18 @@ main:has(.investment-dashboard-page) {
 }
 
 .investment-dashboard-page .portfolio-kpi-stack {
-<<<<<<< HEAD
-=======
   display: grid;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   gap: 12px;
 }
 
 .investment-dashboard-page .portfolio-primary-kpis {
-<<<<<<< HEAD
   grid-template-columns: repeat(4, minmax(0, 1fr));
-=======
-  grid-template-columns: repeat(2, minmax(0, 1fr));
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   gap: 12px;
 }
 
 .investment-dashboard-page .portfolio-secondary-kpis {
-<<<<<<< HEAD
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-=======
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-}
-
-.investment-dashboard-page .investment-summary-section {
-  margin: 0;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
 }
 
 .investment-dashboard-page .metric-card-v2 {
@@ -18983,11 +18958,7 @@ main:has(.investment-dashboard-page) {
 }
 
 .investment-dashboard-page .metric-card-primary {
-<<<<<<< HEAD
   min-height: 94px;
-=======
-  min-height: 88px;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   padding: 16px;
   border-color: rgba(20, 184, 166, 0.22);
   background: linear-gradient(180deg, #ffffff, #f3fbfa);
@@ -19012,13 +18983,8 @@ main:has(.investment-dashboard-page) {
 
 .investment-dashboard-page .investment-workspace-grid {
   display: grid;
-<<<<<<< HEAD
   grid-template-columns: 320px minmax(0, 1fr) 320px;
   gap: 24px;
-=======
-  grid-template-columns: 300px minmax(0, 1fr) 300px;
-  gap: 16px;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   align-items: start;
   margin-top: 4px;
 }
@@ -19026,7 +18992,6 @@ main:has(.investment-dashboard-page) {
 .investment-dashboard-page .investment-asset-panel,
 .investment-dashboard-page .investment-trade-panel,
 .investment-dashboard-page .portfolio-sidebar-v2 > .panel {
-<<<<<<< HEAD
   align-self: start;
   width: 100%;
   margin: 0;
@@ -19035,15 +19000,6 @@ main:has(.investment-dashboard-page) {
 
 .investment-dashboard-page .investment-asset-panel {
   position: static;
-=======
-  padding: 18px;
-}
-
-.investment-dashboard-page .investment-asset-panel {
-  position: sticky;
-  top: 96px;
-  width: 100%;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   max-width: none;
   color: var(--workspace-ink);
 }
@@ -19334,16 +19290,10 @@ main:has(.investment-dashboard-page) {
 
 .investment-dashboard-page .portfolio-sidebar-v2 {
   display: grid;
-<<<<<<< HEAD
   gap: 16px;
   min-width: 0;
   width: 100%;
   align-self: start;
-=======
-  gap: 14px;
-  min-width: 0;
-  width: 100%;
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
 }
 
 .investment-dashboard-page .portfolio-sidebar-v2 > .panel {
@@ -19506,11 +19456,7 @@ main:has(.investment-dashboard-page) {
 
 @media (max-width: 1180px) {
   .investment-dashboard-page .portfolio-secondary-kpis {
-<<<<<<< HEAD
     grid-template-columns: repeat(3, minmax(0, 1fr));
-=======
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
->>>>>>> 92534ad9d472cd75b0a4b59145d5cac1930c1692
   }
 
   .investment-dashboard-page .investment-workspace-grid {

@@ -3320,6 +3320,8 @@ export async function listInvestmentAdminBundle() {
   if (!supabaseConfigured()) {
     return { accounts: [], holdings: [], trades: [], theses: [], snapshots: [], leaderboard: [], competitions: [], stats: null, persisted: false };
   }
+  // Refresh leaderboard with latest cached prices before reading so values are not stale.
+  await updateInvestmentLeaderboard().catch(() => null);
   const [accounts, holdings, trades, theses, snapshots, leaderboard, competitionRows] = await Promise.all([
     selectRows("investment_accounts", { select: "*", order: "created_at.desc", limit: "500" }),
     selectRows("investment_holdings", { select: "*", order: "updated_at.desc", limit: "1000" }),
@@ -4390,10 +4392,11 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     ? holdingsRows
         .filter((row) => rowNumber(row, "quantity") > 0)
         .map((row) => {
-          const symbol = rowString(row, "symbol");
+          const symbol = normalizeSymbol(rowString(row, "symbol"));
           const asset = quoteMap.get(symbol) ?? getInvestmentAsset(symbol);
           const assetName = rowNullableString(row, "asset_name") ?? asset?.name ?? symbol;
-          const latestClose = priceMap.get(symbol) ?? asset?.referencePrice ?? 0;
+          const rawPrice = priceMap.get(symbol);
+          const latestClose = (rawPrice !== undefined && rawPrice > 0) ? rawPrice : (asset?.referencePrice ?? 0);
           const quantity = rowNumber(row, "quantity");
           const averageBuyPrice = rowNumber(row, "average_buy_price");
           const marketValue = quantity * latestClose;
