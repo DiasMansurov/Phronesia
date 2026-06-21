@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   INVESTMENT_ACCOUNT_STORAGE_KEY,
@@ -116,8 +116,17 @@ export function InvestmentChallengeDashboard({
   const [positionSide, setPositionSide] = useState<"long" | "short">("long");
   const [positionLeverage, setPositionLeverage] = useState(1);
   const [quantity, setQuantity] = useState(1);
-  const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showLevPanel, setShowLevPanel] = useState(false);
+
+  const toastIdRef = useRef(0);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" }>>([]);
+
+  function showToast(message: string, type: "success" | "error" | "info" = "info") {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  }
 
   useEffect(() => {
     void loadMarket();
@@ -237,7 +246,6 @@ export function InvestmentChallengeDashboard({
       selectedQuote.priceAvailable &&
       !positionWarning
   );
-  const compactMarketMessage = marketStatus.isOpen ? marketStatus.message : closedMessage;
   const selectedHasDisplayPrice =
     hasSelectedAsset && selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
   const selectedPriceText = priceLoading
@@ -248,7 +256,6 @@ export function InvestmentChallengeDashboard({
         ? "No saved price yet"
         : "Select an asset";
   const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
-  const priceModeLabel = marketStatus.isOpen ? "Live if available" : "Cached prices";
 
   async function loadMarket() {
     const response = await fetch("/api/investment/market", { cache: "no-store" });
@@ -283,21 +290,21 @@ export function InvestmentChallengeDashboard({
     const code = inputCode.trim();
     if (!code) {
       setResolvedCompetition(null);
-      setStatus("Using the public Phronesia Investment Challenge.");
+      showToast("Using the public Phronesia Investment Challenge.", "info");
       return;
     }
-    setStatus("Checking competition code...");
+    showToast("Checking competition code...", "info");
     try {
       const response = await fetch(`/api/investment/competitions/resolve?code=${encodeURIComponent(code)}`, { cache: "no-store" });
       const data = (await response.json()) as { ok?: boolean; competition?: InvestmentCompetitionView; reason?: string };
       if (!response.ok || !data.competition) {
-        setStatus(data.reason ?? "Competition code was not found.");
+        showToast(data.reason ?? "Competition code was not found.", "error");
         return;
       }
       setResolvedCompetition(data.competition);
-      setStatus(data.competition.welcomeMessage ?? `Competition loaded: ${data.competition.name}.`);
+      showToast(data.competition.welcomeMessage ?? `Competition loaded: ${data.competition.name}.`, "success");
     } catch {
-      setStatus("Competition code lookup is temporarily unavailable.");
+      showToast("Competition code lookup is temporarily unavailable.", "error");
     }
   }
 
@@ -370,7 +377,7 @@ export function InvestmentChallengeDashboard({
   async function fetchSelectedSymbolPrice(actionLabel = "Fetching") {
     if (!hasSelectedAsset || !symbol) return;
     setPriceLoading(true);
-    setStatus(`${actionLabel} ${symbol} price from MarketData.app...`);
+    showToast(`${actionLabel} ${symbol} price from MarketData.app...`, "info");
     setAssetSearchStatus(`${actionLabel} ${symbol} price from the backend endpoint...`);
     try {
       const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
@@ -378,17 +385,17 @@ export function InvestmentChallengeDashboard({
 
       if (response.ok && data.ok && data.quote?.priceAvailable && data.quote.latestClose > 0) {
         applySelectedQuote(data.quote);
-        setStatus(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`);
+        showToast(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`, "success");
         setAssetSearchStatus("");
         return;
       }
 
       const message = data.reason ?? data.error ?? `${symbol} price is unavailable.`;
-      setStatus(message);
+      showToast(message, "error");
       setAssetSearchStatus(message);
     } catch {
       const message = `${symbol} price endpoint is temporarily unavailable.`;
-      setStatus(message);
+      showToast(message, "error");
       setAssetSearchStatus(message);
     } finally {
       setPriceLoading(false);
@@ -398,7 +405,7 @@ export function InvestmentChallengeDashboard({
   async function refreshSelectedSymbol() {
     if (!symbol) return;
     setPriceLoading(true);
-    setStatus(`Refreshing ${symbol} server-side through /stocks/quotes...`);
+    showToast(`Refreshing ${symbol} server-side through /stocks/quotes...`, "info");
     try {
       const response = await fetch("/api/investment/refresh-symbol", {
         method: "POST",
@@ -409,7 +416,7 @@ export function InvestmentChallengeDashboard({
       const data = (await response.json()) as RefreshSymbolPayload;
       if (!response.ok || !data.ok) {
         const message = data.error ?? data.result?.error ?? `Could not refresh ${symbol}.`;
-        setStatus(message);
+        showToast(message, "error");
         setAssetSearchStatus(message);
         return;
       }
@@ -419,12 +426,12 @@ export function InvestmentChallengeDashboard({
         if (refreshedSelected) setSelectedQuote(refreshedSelected);
       }
       const resultMessage = data.result?.message ?? `${symbol} refreshed.`;
-      setStatus(resultMessage);
+      showToast(resultMessage, "success");
       setAssetSearchStatus("");
       if (account) void loadAccount(account.account.id);
     } catch {
       const message = `Could not refresh ${symbol}.`;
-      setStatus(message);
+      showToast(message, "error");
       setAssetSearchStatus(message);
     } finally {
       setPriceLoading(false);
@@ -439,7 +446,7 @@ export function InvestmentChallengeDashboard({
     const submittedQuantity = quantity;
     const submittedQuote = selectedQuote;
     setBusy(true);
-    setStatus("Validating trade on the server...");
+    showToast("Validating trade on the server...", "info");
     try {
       const response = await fetch("/api/investment/trades", {
         method: "POST",
@@ -462,14 +469,13 @@ export function InvestmentChallengeDashboard({
         error?: string;
       };
       if (!response.ok || !data.ok || !data.account) {
-        setStatus(data.reason ?? data.error ?? "Trade was rejected.");
+        showToast(data.reason ?? data.error ?? "Trade was rejected.", "error");
         return;
       }
       setAccount(data.account);
-      setStatus(
-        `${submittedSide === "buy" ? "Bought" : "Sold"} ${submittedQuantity} ${submittedSymbol} at ${formatUsd(data.price ?? 0)}. Commission: ${formatUsd(
-          data.fee ?? 0
-        )}. ${submittedSide === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`
+      showToast(
+        `${submittedSide === "buy" ? "Bought" : "Sold"} ${submittedQuantity} ${submittedSymbol} at ${formatUsd(data.price ?? 0)}. Commission: ${formatUsd(data.fee ?? 0)}. ${submittedSide === "buy" ? "Total cost" : "Net proceeds"}: ${formatUsd(data.net ?? 0)}.`,
+        "success"
       );
       if (submittedSide === "buy") {
         const latestTrade =
@@ -501,7 +507,7 @@ export function InvestmentChallengeDashboard({
   async function submitPosition() {
     if (!account || !hasSelectedAsset) return;
     setBusy(true);
-    setStatus(`Opening ${positionSide} ${symbol} x${positionLeverage} on the server...`);
+    showToast(`Opening ${positionSide} ${symbol} x${positionLeverage} on the server...`, "info");
     try {
       const response = await fetch("/api/investment/positions", {
         method: "POST",
@@ -525,14 +531,13 @@ export function InvestmentChallengeDashboard({
         error?: string;
       };
       if (!response.ok || !data.ok || !data.account) {
-        setStatus(data.reason ?? data.error ?? "Position order was rejected.");
+        showToast(data.reason ?? data.error ?? "Position order was rejected.", "error");
         return;
       }
       setAccount(data.account);
-      setStatus(
-        `Opened ${positionSide.toUpperCase()} ${quantity} ${symbol} x${positionLeverage} at ${formatUsd(data.price ?? 0)}. Margin: ${formatUsd(
-          data.margin ?? 0
-        )}. Exposure: ${formatUsd(data.exposure ?? 0)}. Commission: ${formatUsd(data.fee ?? 0)}.`
+      showToast(
+        `Opened ${positionSide.toUpperCase()} ${quantity} ${symbol} x${positionLeverage} at ${formatUsd(data.price ?? 0)}. Margin: ${formatUsd(data.margin ?? 0)}. Exposure: ${formatUsd(data.exposure ?? 0)}. Commission: ${formatUsd(data.fee ?? 0)}.`,
+        "success"
       );
     } finally {
       setBusy(false);
@@ -542,7 +547,7 @@ export function InvestmentChallengeDashboard({
   async function closePosition(position: InvestmentPositionView) {
     if (!account) return;
     setBusy(true);
-    setStatus(`Closing ${position.side} ${position.symbol} position...`);
+    showToast(`Closing ${position.side} ${position.symbol} position...`, "info");
     try {
       const response = await fetch(`/api/investment/positions/${position.id}/close`, {
         method: "POST",
@@ -560,14 +565,13 @@ export function InvestmentChallengeDashboard({
         error?: string;
       };
       if (!response.ok || !data.ok || !data.account) {
-        setStatus(data.reason ?? data.error ?? "Could not close position.");
+        showToast(data.reason ?? data.error ?? "Could not close position.", "error");
         return;
       }
       setAccount(data.account);
-      setStatus(
-        `${data.liquidated ? "Liquidated" : "Closed"} ${position.side.toUpperCase()} ${position.symbol} at ${formatUsd(data.price ?? 0)}. Realized P/L: ${formatUsd(
-          data.realizedPnl ?? 0
-        )}. Closing commission: ${formatUsd(data.fee ?? 0)}.`
+      showToast(
+        `${data.liquidated ? "Liquidated" : "Closed"} ${position.side.toUpperCase()} ${position.symbol} at ${formatUsd(data.price ?? 0)}. Realized P/L: ${formatUsd(data.realizedPnl ?? 0)}. Closing commission: ${formatUsd(data.fee ?? 0)}.`,
+        "success"
       );
     } finally {
       setBusy(false);
@@ -591,9 +595,6 @@ export function InvestmentChallengeDashboard({
     () => watchlistSymbols.map((sym) => quotes.find((q) => q.symbol === sym)).filter((q): q is InvestmentAssetQuote => q !== undefined),
     [quotes]
   );
-  const educationCards = market.educationalCards.filter((card) =>
-    ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
-  );
   const typedTickerCandidate = assetQuery.trim().toUpperCase();
   const hasAssetSearchQuery = assetQuery.trim().length > 0;
   const showAssetResults = assetQuery.trim().length >= 2 && assetResults.length > 0;
@@ -601,542 +602,408 @@ export function InvestmentChallengeDashboard({
     /^[A-Z][A-Z0-9.-]{0,11}$/.test(typedTickerCandidate) &&
     !assetResults.some((asset) => asset.symbol === typedTickerCandidate) &&
     !quotes.some((asset) => asset.symbol === typedTickerCandidate);
-  const totalCostLabel = side === "buy" ? "Estimated total cost" : "Estimated net proceeds";
-  const priceStatusLabel = priceLoading ? "Checking price" : selectedQuote.priceAvailable ? "Price available" : "Price missing";
-  const latestPortfolioStatus = portfolio
-    ? `${formatUsd(portfolio.totalValue)} · ${formatPercent(portfolio.totalReturn)}`
-    : "Not available";
-  const primaryMetrics: Array<{ label: string; value: string; tone?: "positive" | "negative" }> = [
-    { label: "Portfolio Value", value: formatUsd(portfolio?.totalValue ?? INVESTMENT_STARTING_CASH) },
-    {
-      label: "Total Return",
-      value: formatPercent(portfolio?.totalReturn ?? 0),
-      tone: (portfolio?.totalReturn ?? 0) >= 0 ? "positive" : "negative"
-    }
-  ];
-  const secondaryMetrics: Array<{ label: string; value: string; tone?: "positive" | "negative" }> = [
-    { label: "Current Cash", value: formatUsd(portfolio?.cash ?? INVESTMENT_STARTING_CASH) },
-    { label: "Current Rank", value: currentRankText },
-    { label: "Starting Balance", value: formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH) },
-    {
-      label: "Daily Change",
-      value: formatPercent(portfolio?.dailyChange ?? 0),
-      tone: (portfolio?.dailyChange ?? 0) >= 0 ? "positive" : "negative"
-    },
-    { label: "Profit / Loss", value: formatUsd(profitLoss), tone: profitLoss >= 0 ? "positive" : "negative" },
-    { label: "Holdings", value: String(holdingsCount) },
-    { label: "Locked Margin", value: formatUsd(portfolio?.lockedMargin ?? 0) },
-    { label: "Open Exposure", value: formatUsd(portfolio?.totalExposure ?? 0) },
-    {
-      label: "Position P/L",
-      value: formatUsd(portfolio?.unrealizedPnl ?? 0),
-      tone: (portfolio?.unrealizedPnl ?? 0) >= 0 ? "positive" : "negative"
-    },
-    { label: "Diversification", value: `${portfolio?.diversificationScore ?? 0}/100` },
-    { label: "Risk Score", value: `${portfolio?.riskScore ?? 0}/100` }
-  ];
+
+  void holdingsCount;
+  void currentRankText;
 
   return (
-    <div className="trading-terminal">
-      {/* Header */}
-      <header className="terminal-header">
-        <div className="terminal-header-left">
-          <strong className="terminal-team-label">
-            {account ? `Team: ${account.account.teamName}` : "Team access required"}
-          </strong>
-          {activeCompetition ? (
-            <span className="terminal-comp-name">{activeCompetition.name}</span>
-          ) : null}
-        </div>
-        <div className="terminal-header-right">
-          <span className={`terminal-market-badge ${marketStatus.isOpen ? "open" : "closed"}`}>
-            {marketStatus.isOpen ? "● Market Open" : "● Market Closed"}
-          </span>
-          {marketStatus.etTime ? <span className="terminal-et-time">{marketStatus.etTime} ET</span> : null}
-          {!account ? (
-            <Link className="terminal-join-btn" href="/investment-challenge/join">
-              Join Competition
-            </Link>
-          ) : null}
-        </div>
-      </header>
+    <>
+      {/* Mobile fallback */}
+      <div className="mobile-desktop-only">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
+        </svg>
+        <p>This platform is designed for desktop.</p>
+        <p>Please open it on a laptop or computer.</p>
+      </div>
 
-      {status ? (
-        <div className="terminal-status-bar">
-          <span>{status}</span>
+      {/* Trading terminal */}
+      <div className="trading-terminal">
+
+        {/* Zone A: Top bar */}
+        <header className="t-topbar">
+          <div className="t-topbar-left">
+            <span className="t-team-name">Team: {account?.account.teamName ?? "—"}</span>
+            <span className="t-topbar-sep">/</span>
+            <span className="t-comp-name">{activeCompetition?.name ?? "Investment Challenge"}</span>
+          </div>
+          <div className="t-topbar-right">
+            <span className={`t-market-badge ${marketStatus.isOpen ? "t-market-open" : "t-market-closed"}`}>
+              <span className="t-market-dot" />
+              {marketStatus.isOpen ? "Market Open" : "Market Closed"}
+            </span>
+            {marketStatus.etTime ? <span className="t-et-time">{marketStatus.etTime} ET</span> : null}
+          </div>
+        </header>
+
+        {/* Zone B: Portfolio hero */}
+        <div className="t-hero">
+          <div className="t-hero-main">
+            <span className="t-hero-label">PORTFOLIO VALUE</span>
+            <div className="t-hero-value">{formatUsd(currentPortfolioValue)}</div>
+          </div>
+          <div className="t-hero-metrics">
+            <div className="t-metric-pill">
+              <span className="t-mpill-label">CASH</span>
+              <span className="t-mpill-value">{formatUsd(cashBalance)}</span>
+            </div>
+            <div className="t-metric-pill">
+              <span className="t-mpill-label">HOLDINGS</span>
+              <span className="t-mpill-value">{formatUsd(portfolio?.holdingsValue ?? 0)}</span>
+            </div>
+            <div className="t-metric-pill">
+              <span className="t-mpill-label">P&amp;L</span>
+              <span className={`t-mpill-value ${profitLoss >= 0 ? "t-pos" : "t-neg"}`}>{formatUsd(profitLoss)}</span>
+            </div>
+            <div className="t-metric-pill">
+              <span className="t-mpill-label">RETURN</span>
+              <span className={`t-mpill-value ${(portfolio?.totalReturn ?? 0) >= 0 ? "t-pos" : "t-neg"}`}>
+                {formatPercent(portfolio?.totalReturn ?? 0)}
+              </span>
+            </div>
+          </div>
         </div>
-      ) : null}
 
-      {/* 3-column grid */}
-      <div className="terminal-grid">
+        {/* Zone C: 3-column grid */}
+        <div className="t-grid">
 
-        {/* LEFT: Asset Browser */}
-        <aside className="terminal-left">
-          <div className="terminal-search-wrap">
+          {/* Left column: Asset browser */}
+          <aside className="t-col-left">
             <input
-              className="terminal-search"
+              className="t-search"
               value={assetQuery}
-              onChange={(event) => setAssetQuery(event.target.value)}
+              onChange={(e) => setAssetQuery(e.target.value)}
               placeholder="Search ticker or company name"
               autoComplete="off"
             />
-          </div>
 
-          {showAssetResults ? (
-            <div className="terminal-search-results">
-              {assetResults.map((asset) => (
-                <button
-                  key={asset.symbol}
-                  className="terminal-search-result-row"
-                  type="button"
-                  onClick={() => void selectAsset(asset)}
-                >
-                  <strong>{asset.symbol}</strong>
-                  <span>{asset.name}</span>
-                  {asset.priceAvailable && asset.latestClose ? <b>{formatUsd(asset.latestClose)}</b> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {hasAssetSearchQuery && canTryTypedTicker ? (
-            <button
-              className="terminal-direct-pick"
-              type="button"
-              onClick={() => void selectAsset({ symbol: typedTickerCandidate, name: typedTickerCandidate, type: "Stock", theme: "US-listed asset", referencePrice: 0, region: "United States", currency: "USD", exchange: null, featured: false })}
-            >
-              Use ticker {typedTickerCandidate} →
-            </button>
-          ) : null}
-
-          {hasAssetSearchQuery && assetSearchStatus ? (
-            <p className="terminal-search-status">{assetSearchStatus}</p>
-          ) : null}
-
-          {!hasAssetSearchQuery ? (
-            <div className="terminal-watchlist">
-              <div className="terminal-watchlist-header">
-                <span>Watchlist</span>
-                <span>Price</span>
-              </div>
-              {watchlistQuotes.map((quote) => {
-                const pctChange = quote.referencePrice > 0 ? ((quote.latestClose - quote.referencePrice) / quote.referencePrice) * 100 : 0;
-                return (
-                  <button
-                    key={quote.symbol}
-                    className={`terminal-watchlist-row${hasSelectedAsset && quote.symbol === symbol ? " active" : ""}`}
-                    type="button"
-                    onClick={() => void selectAsset(quote)}
-                  >
-                    <div className="terminal-wl-ticker">
-                      <strong>{quote.symbol}</strong>
-                      <span>{quote.name}</span>
-                    </div>
-                    <div className="terminal-wl-price">
-                      <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
-                      {quote.priceAvailable && quote.referencePrice > 0 ? (
-                        <span className={pctChange >= 0 ? "terminal-pos" : "terminal-neg"}>{formatPercent(pctChange)}</span>
-                      ) : null}
-                    </div>
+            {showAssetResults && (
+              <div className="t-search-results">
+                {assetResults.map((asset) => (
+                  <button key={asset.symbol} className="t-search-row" type="button" onClick={() => void selectAsset(asset)}>
+                    <strong>{asset.symbol}</strong>
+                    <span>{asset.name}</span>
+                    {asset.priceAvailable && asset.latestClose ? <b>{formatUsd(asset.latestClose)}</b> : null}
                   </button>
-                );
-              })}
-              <div className="terminal-watchlist-divider" />
-              {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).map((quote) => (
-                <button
-                  key={quote.symbol}
-                  className={`terminal-watchlist-row terminal-wl-sm${hasSelectedAsset && quote.symbol === symbol ? " active" : ""}`}
-                  type="button"
-                  onClick={() => void selectAsset(quote)}
-                >
-                  <div className="terminal-wl-ticker">
-                    <strong>{quote.symbol}</strong>
-                  </div>
-                  <div className="terminal-wl-price">
-                    <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {hasSelectedAsset ? (
-            <div className="terminal-price-actions">
-              <button className="terminal-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
-                Fetch price
-              </button>
-              <button className="terminal-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
-                Refresh
-              </button>
-            </div>
-          ) : null}
-        </aside>
-
-        {/* CENTER: Main Workspace */}
-        <main className="terminal-center">
-          {/* Portfolio Hero */}
-          <div className="terminal-portfolio-hero">
-            {!account ? (
-              <div className="terminal-no-account">
-                <strong>Join the competition to start trading</strong>
-                <p>Team portfolios are unlocked with a competition code, team name, and password.</p>
-                <Link className="button primary" href="/investment-challenge/join">Join Competition</Link>
+                ))}
               </div>
-            ) : (
+            )}
+
+            {hasAssetSearchQuery && canTryTypedTicker && (
+              <button
+                className="t-direct-pick"
+                type="button"
+                onClick={() => void selectAsset({ symbol: typedTickerCandidate, name: typedTickerCandidate, type: "Stock", theme: "US-listed asset", referencePrice: 0, region: "United States", currency: "USD", exchange: null, featured: false })}
+              >
+                Use ticker {typedTickerCandidate} →
+              </button>
+            )}
+
+            {hasAssetSearchQuery && assetSearchStatus && (
+              <p className="t-search-status">{assetSearchStatus}</p>
+            )}
+
+            {!hasAssetSearchQuery && (
               <>
-                <div className="terminal-portfolio-main">
-                  <div>
-                    <span className="terminal-hero-label">Portfolio Value</span>
-                    <div className={`terminal-portfolio-value${profitLoss >= 0 ? " terminal-pos" : " terminal-neg"}`}>
-                      {formatUsd(currentPortfolioValue)}
-                    </div>
-                  </div>
-                  <div className="terminal-portfolio-return">
-                    <span className={`terminal-return-badge${(portfolio?.totalReturn ?? 0) >= 0 ? " terminal-pos-bg" : " terminal-neg-bg"}`}>
-                      {formatPercent(portfolio?.totalReturn ?? 0)}
-                    </span>
-                    <span className="terminal-hero-sub">{currentRankText}</span>
-                  </div>
+                <div className="t-section-label" style={{ marginTop: 10 }}>Watchlist</div>
+                <div className="t-wl-header">
+                  <span>Asset</span><span>Price</span>
                 </div>
-                <div className="terminal-portfolio-metrics">
-                  <div className="terminal-metric">
-                    <span>Cash</span>
-                    <strong>{formatUsd(cashBalance)}</strong>
-                  </div>
-                  <div className="terminal-metric">
-                    <span>Holdings</span>
-                    <strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong>
-                  </div>
-                  <div className="terminal-metric">
-                    <span>P&amp;L</span>
-                    <strong className={profitLoss >= 0 ? "terminal-pos" : "terminal-neg"}>{formatUsd(profitLoss)}</strong>
-                  </div>
-                  <div className="terminal-metric">
-                    <span>Return</span>
-                    <strong className={(portfolio?.totalReturn ?? 0) >= 0 ? "terminal-pos" : "terminal-neg"}>
-                      {formatPercent(portfolio?.totalReturn ?? 0)}
-                    </strong>
-                  </div>
-                  <div className="terminal-metric">
-                    <span>Rank</span>
-                    <strong>{currentRankText}</strong>
-                  </div>
-                </div>
+                {watchlistQuotes.map((quote) => {
+                  const pctChange = quote.referencePrice > 0 ? ((quote.latestClose - quote.referencePrice) / quote.referencePrice) * 100 : 0;
+                  return (
+                    <button
+                      key={quote.symbol}
+                      className={`t-wl-row${hasSelectedAsset && quote.symbol === symbol ? " t-wl-active" : ""}`}
+                      type="button"
+                      onClick={() => void selectAsset(quote)}
+                    >
+                      <div className="t-wl-left">
+                        <strong>{quote.symbol}</strong>
+                        <span>{quote.name}</span>
+                      </div>
+                      <div className="t-wl-right">
+                        <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
+                        {quote.priceAvailable && quote.referencePrice > 0
+                          ? <span className={pctChange >= 0 ? "t-pos" : "t-neg"}>{formatPercent(pctChange)}</span>
+                          : null}
+                      </div>
+                    </button>
+                  );
+                })}
+                {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).length > 0 && (
+                  <>
+                    <div className="t-wl-divider" />
+                    {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).map((quote) => (
+                      <button
+                        key={quote.symbol}
+                        className={`t-wl-row t-wl-sm${hasSelectedAsset && quote.symbol === symbol ? " t-wl-active" : ""}`}
+                        type="button"
+                        onClick={() => void selectAsset(quote)}
+                      >
+                        <div className="t-wl-left"><strong>{quote.symbol}</strong></div>
+                        <div className="t-wl-right">
+                          <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
               </>
             )}
-          </div>
 
-          {/* Trade Panel */}
-          <form className="terminal-trade-panel" onSubmit={submitTrade}>
-            {!hasSelectedAsset ? (
-              <div className="terminal-trade-empty">
-                <strong>Select an asset to trade</strong>
-                <p>Choose a stock or ETF from the watchlist on the left.</p>
-                <div className="terminal-suggestion-chips">
-                  {centerSuggestionQuotes.map((quote) => (
-                    <button key={quote.symbol} className="terminal-chip" type="button" onClick={() => void selectAsset(quote)}>
-                      {quote.symbol}
-                    </button>
-                  ))}
-                </div>
+            {hasSelectedAsset && (
+              <div className="t-price-actions">
+                <button className="t-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
+                  Fetch price
+                </button>
+                <button className="t-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
+                  Refresh
+                </button>
               </div>
-            ) : (
-              <>
-                <div className="terminal-asset-display">
-                  <div className="terminal-asset-info">
-                    <strong className="terminal-asset-ticker">{selectedQuote.symbol}</strong>
-                    <span className="terminal-asset-name">{selectedQuote.name}</span>
-                    <span className="terminal-asset-type">{selectedQuote.type} · {selectedQuote.region ?? "US"}</span>
+            )}
+          </aside>
+
+          {/* Center column: Trade panel */}
+          <main className="t-col-center">
+            <div className="t-section-label">Trade</div>
+
+            <form className="t-trade-form" onSubmit={submitTrade}>
+              {!hasSelectedAsset ? (
+                <div className="t-trade-empty">
+                  <p>Select an asset from the watchlist</p>
+                  <div className="t-suggestion-chips">
+                    {centerSuggestionQuotes.map((quote) => (
+                      <button key={quote.symbol} className="t-chip" type="button" onClick={() => void selectAsset(quote)}>
+                        {quote.symbol}
+                      </button>
+                    ))}
                   </div>
-                  <div className="terminal-asset-price-block">
-                    <strong className="terminal-price-big">{selectedPriceText}</strong>
-                    <span className={`terminal-price-status-label${selectedQuote.priceAvailable ? " terminal-pos" : " terminal-neg"}`}>
-                      {priceLoading ? "Checking..." : selectedQuote.priceAvailable
+                </div>
+              ) : (
+                <>
+                  <div className="t-asset-card">
+                    <div className="t-asset-meta">{selectedQuote.name} · {selectedQuote.type} · {selectedQuote.region ?? "US"}</div>
+                    <div className="t-asset-ticker">{selectedQuote.symbol}</div>
+                    <div className="t-asset-price">{selectedPriceText}</div>
+                    <div className="t-asset-source">
+                      {priceLoading ? "Checking price..." : selectedQuote.priceAvailable
                         ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
                         : selectedQuote.priceMessage ?? "No saved price"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="terminal-trade-controls">
-                  <div className="terminal-side-toggle">
-                    <button type="button" className={`terminal-side-btn buy${side === "buy" ? " active" : ""}`} onClick={() => setSide("buy")}>
-                      BUY
-                    </button>
-                    <button type="button" className={`terminal-side-btn sell${side === "sell" ? " active" : ""}`} onClick={() => setSide("sell")}>
-                      SELL
-                    </button>
+                    </div>
                   </div>
 
-                  <div className="terminal-qty-row">
-                    <label className="terminal-qty-label">
-                      <span>Shares</span>
+                  <div className="t-side-toggle">
+                    <button
+                      type="button"
+                      className={`t-side-btn t-side-buy${side === "buy" ? " t-side-active-buy" : ""}`}
+                      onClick={() => setSide("buy")}
+                    >BUY</button>
+                    <button
+                      type="button"
+                      className={`t-side-btn t-side-sell${side === "sell" ? " t-side-active-sell" : ""}`}
+                      onClick={() => setSide("sell")}
+                    >SELL</button>
+                  </div>
+
+                  <div className="t-qty-row">
+                    <label className="t-qty-label">
+                      <span>SHARES</span>
                       <input
-                        className="terminal-qty-input"
+                        className="t-qty-input"
                         min={1}
                         step={1}
                         type="number"
                         value={quantity}
-                        onChange={(event) => setQuantity(Number(event.target.value))}
+                        onChange={(e) => setQuantity(Number(e.target.value))}
                         required
                       />
                     </label>
-                    <div className="terminal-est-block">
-                      <span>Est. total</span>
-                      <strong>{formatUsd(estimatedNet)}</strong>
-                    </div>
-                    <div className="terminal-est-block">
-                      <span>Fee ({feeRateLabel})</span>
-                      <strong>{formatUsd(estimatedFee)}</strong>
+                    <div className="t-est-group">
+                      <div className="t-est-item">
+                        <span>Est. total</span>
+                        <strong>{formatUsd(estimatedNet)}</strong>
+                      </div>
+                      <div className="t-est-item">
+                        <span>Fee ({feeRateLabel})</span>
+                        <strong>{formatUsd(estimatedFee)}</strong>
+                      </div>
                     </div>
                   </div>
 
-                  {clientTradeWarning ? <p className="terminal-warning">{clientTradeWarning}</p> : null}
+                  {clientTradeWarning ? (
+                    <div className="t-trade-warning">{clientTradeWarning}</div>
+                  ) : null}
 
                   {!selectedQuote.priceAvailable ? (
-                    <button className="terminal-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
+                    <button
+                      className="t-btn-sm"
+                      type="button"
+                      style={{ marginBottom: 8 }}
+                      onClick={() => void fetchSelectedSymbolPrice("Fetching")}
+                      disabled={priceLoading}
+                    >
                       Fetch latest price
                     </button>
                   ) : null}
 
-                  <button className="terminal-submit-btn" type="submit" disabled={!canTrade}>
-                    {priceLoading ? "Checking price..." : busy ? "Submitting..." : `Confirm ${side === "buy" ? "Buy" : "Sell"}`}
+                  <button
+                    className={`t-confirm-btn ${side === "buy" ? "t-confirm-buy" : "t-confirm-sell"}`}
+                    type="submit"
+                    disabled={!canTrade || busy}
+                  >
+                    {busy ? "Processing..." : side === "buy" ? "Confirm Buy" : "Confirm Sell"}
                   </button>
 
-                  {account?.holdings.length ? (
-                    <Link className="terminal-thesis-link" href="/investment/thesis">
-                      Write Investment Thesis →
-                    </Link>
-                  ) : null}
+                  <button
+                    className="t-leveraged-link"
+                    type="button"
+                    onClick={() => setShowLevPanel((v) => !v)}
+                  >
+                    {showLevPanel ? "Hide" : "Open"} Leveraged Position (Long / Short / x1–x3)
+                  </button>
+                </>
+              )}
+            </form>
+
+            {/* Leveraged position panel */}
+            {hasSelectedAsset && showLevPanel && (
+              <div className="t-lev-panel">
+                <div className="t-section-label" style={{ marginBottom: 8 }}>Leveraged Position</div>
+                <div className="t-side-toggle">
+                  <button type="button" className={`t-side-btn${positionSide === "long" ? " t-side-active-buy" : ""}`} onClick={() => setPositionSide("long")}>Long</button>
+                  <button type="button" className={`t-side-btn${positionSide === "short" ? " t-side-active-sell" : ""}`} onClick={() => setPositionSide("short")}>Short</button>
                 </div>
-
-                {/* Leveraged position — collapsed */}
-                <details className="terminal-position-ticket">
-                  <summary>Open Leveraged Position (Long / Short / x1–x3)</summary>
-                  <div className="terminal-position-body">
-                    <div className="terminal-side-toggle">
-                      <button type="button" className={`terminal-side-btn${positionSide === "long" ? " active" : ""}`} onClick={() => setPositionSide("long")}>Long</button>
-                      <button type="button" className={`terminal-side-btn${positionSide === "short" ? " active" : ""}`} onClick={() => setPositionSide("short")}>Short</button>
-                    </div>
-                    <div className="terminal-side-toggle">
-                      {[1, 2, 3].map((level) => (
-                        <button key={level} type="button" className={`terminal-side-btn${positionLeverage === level ? " active" : ""}`} onClick={() => setPositionLeverage(level)}>
-                          x{level}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="terminal-pos-metrics">
-                      <div><span>Margin</span><strong>{formatUsd(estimatedPositionMargin)}</strong></div>
-                      <div><span>Exposure</span><strong>{formatUsd(estimatedGross)}</strong></div>
-                      <div><span>Required cash</span><strong>{formatUsd(estimatedPositionRequired)}</strong></div>
-                    </div>
-                    {positionWarning ? <p className="terminal-warning">{positionWarning}</p> : null}
-                    <button className="terminal-submit-btn" type="button" disabled={!canOpenPosition} onClick={() => void submitPosition()}>
-                      Open {positionSide === "short" ? "Short" : "Long"} x{positionLeverage}
+                <div className="t-side-toggle" style={{ marginTop: 6 }}>
+                  {[1, 2, 3].map((level) => (
+                    <button key={level} type="button" className={`t-side-btn${positionLeverage === level ? " t-side-active-buy" : ""}`} onClick={() => setPositionLeverage(level)}>
+                      x{level}
                     </button>
-                    <p className="terminal-disclaimer">Educational simulation only. No real money used. Losses are limited to margin.</p>
-                  </div>
-                </details>
-              </>
-            )}
-          </form>
-
-          {/* Holdings Table */}
-          <div className="terminal-section terminal-holdings-section">
-            <div className="terminal-section-header">
-              <span>Holdings</span>
-              <span className="terminal-holdings-count">{holdingsCount} position{holdingsCount !== 1 ? "s" : ""}</span>
-            </div>
-            {!account?.holdings.length ? (
-              <p className="terminal-empty-note">No holdings yet. Buy your first asset to get started.</p>
-            ) : (
-              <div className="table-wrap">
-                <table className="terminal-table">
-                  <thead>
-                    <tr>
-                      <th>Asset</th>
-                      <th>Shares</th>
-                      <th>Avg Price</th>
-                      <th>Current</th>
-                      <th>Value</th>
-                      <th>P&amp;L</th>
-                      <th>Weight</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {account.holdings.map((holding) => (
-                      <tr
-                        key={holding.symbol}
-                        onClick={() => {
-                          const q = quotes.find((q) => q.symbol === holding.symbol);
-                          if (q) void selectAsset(q);
-                          else void selectAsset({ symbol: holding.symbol, name: holding.assetName, type: "Stock", theme: "", referencePrice: holding.averageBuyPrice, region: "United States", currency: "USD", exchange: null, featured: false });
-                        }}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <td>
-                          <strong>{holding.symbol}</strong>
-                          <span className="terminal-holding-name">{holding.assetName}</span>
-                        </td>
-                        <td>{holding.quantity}</td>
-                        <td>{formatUsd(holding.averageBuyPrice)}</td>
-                        <td>{formatUsd(holding.latestClose)}</td>
-                        <td>{formatUsd(holding.marketValue)}</td>
-                        <td className={holding.unrealizedGainLoss >= 0 ? "terminal-pos" : "terminal-neg"}>
-                          {formatUsd(holding.unrealizedGainLoss)}
-                          <span className="terminal-holding-pct">
-                            {holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : ""}
-                          </span>
-                        </td>
-                        <td>{holding.weight.toFixed(1)}%</td>
-                        <td>
-                          <button
-                            className="terminal-sell-btn"
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const q = quotes.find((q) => q.symbol === holding.symbol);
-                              if (q) void selectAsset(q);
-                              else void selectAsset({ symbol: holding.symbol, name: holding.assetName, type: "Stock", theme: "", referencePrice: holding.averageBuyPrice, region: "United States", currency: "USD", exchange: null, featured: false });
-                              setSide("sell");
-                            }}
-                          >
-                            Sell
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  ))}
+                </div>
+                <div className="t-lev-metrics">
+                  <div className="t-lev-metric"><span>Margin</span><strong>{formatUsd(estimatedPositionMargin)}</strong></div>
+                  <div className="t-lev-metric"><span>Exposure</span><strong>{formatUsd(estimatedGross)}</strong></div>
+                  <div className="t-lev-metric"><span>Required cash</span><strong>{formatUsd(estimatedPositionRequired)}</strong></div>
+                </div>
+                {positionWarning ? <div className="t-trade-warning" style={{ marginTop: 6 }}>{positionWarning}</div> : null}
+                <button
+                  className="t-confirm-btn t-confirm-buy"
+                  type="button"
+                  disabled={!canOpenPosition || busy}
+                  onClick={() => void submitPosition()}
+                  style={{ marginTop: 8 }}
+                >
+                  {busy ? "Processing..." : `Open ${positionSide === "short" ? "Short" : "Long"} x${positionLeverage}`}
+                </button>
+                <p className="t-lev-disclaimer">Educational simulation. No real money used.</p>
               </div>
             )}
-          </div>
-        </main>
+          </main>
 
-        {/* RIGHT: Activity & Stats */}
-        <aside className="terminal-right">
-          {/* Open Positions */}
-          <div className="terminal-section">
-            <div className="terminal-section-header">
-              <span>Open Positions</span>
-              <span className="terminal-count">{openPositions.length}</span>
-            </div>
-            {!openPositions.length ? (
-              <p className="terminal-empty-note">No open leveraged positions.</p>
+          {/* Right column: Portfolio info */}
+          <aside className="t-col-right">
+            {/* Holdings & Positions */}
+            <div className="t-section-label">Holdings</div>
+
+            {(account?.holdings.length ?? 0) === 0 && openPositions.length === 0 ? (
+              <p className="t-empty-msg">No positions yet.</p>
             ) : (
-              <div className="terminal-position-list">
+              <div className="t-holdings-list">
+                {account?.holdings.map((holding) => (
+                  <div key={holding.symbol} className="t-holding-row">
+                    <div className="t-holding-left">
+                      <strong>{holding.symbol}</strong>
+                      <span>{holding.quantity} shares</span>
+                    </div>
+                    <div className="t-holding-right">
+                      <strong>{formatUsd(holding.marketValue)}</strong>
+                      <span className={holding.unrealizedGainLoss >= 0 ? "t-pos" : "t-neg"}>
+                        {formatUsd(holding.unrealizedGainLoss)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
                 {openPositions.map((position) => (
-                  <div className="terminal-position-row" key={position.id}>
-                    <div className="terminal-pos-head">
-                      <div className="terminal-pos-head-left">
-                        <strong>{position.symbol}</strong>
-                        <span className={`terminal-pos-badge${position.side === "long" ? " terminal-pos" : " terminal-neg"}`}>
-                          {position.side.toUpperCase()} x{position.leverage}
-                        </span>
-                      </div>
-                      <span className={position.unrealizedPnl >= 0 ? "terminal-pos" : "terminal-neg"}>
+                  <div key={position.id} className="t-holding-row">
+                    <div className="t-holding-left">
+                      <strong>{position.symbol} <span className="t-lev-badge">LEV</span></strong>
+                      <span>{position.side.toUpperCase()} x{position.leverage}</span>
+                    </div>
+                    <div className="t-holding-right">
+                      <strong>{formatUsd(position.exposureValue)}</strong>
+                      <span className={position.unrealizedPnl >= 0 ? "t-pos" : "t-neg"}>
                         {formatUsd(position.unrealizedPnl)}
                       </span>
+                      <button className="t-close-pos-btn" type="button" onClick={() => void closePosition(position)} disabled={busy}>
+                        Close
+                      </button>
                     </div>
-                    <div className="terminal-pos-details">
-                      <span>Qty {position.quantity}</span>
-                      <span>Entry {formatUsd(position.entryPrice)}</span>
-                      <span>Now {formatUsd(position.currentPrice)}</span>
-                    </div>
-                    <button
-                      className="terminal-close-btn"
-                      type="button"
-                      disabled={busy || !marketStatus.isOpen}
-                      onClick={() => void closePosition(position)}
-                    >
-                      Close position
-                    </button>
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Recent Trades */}
-          <div className="terminal-section">
-            <div className="terminal-section-header">
-              <span>Recent Trades</span>
-            </div>
-            {!recentTrades.length ? (
-              <p className="terminal-empty-note">No trades yet.</p>
+            {/* Recent Trades */}
+            <div className="t-section-divider" />
+            <div className="t-section-label">Recent Trades</div>
+
+            {recentTrades.length === 0 ? (
+              <p className="t-empty-msg">No trades yet.</p>
             ) : (
-              <div className="terminal-trade-feed">
-                {recentTrades.map((trade) => (
-                  <div className="terminal-trade-row" key={trade.id}>
-                    <div className="terminal-trade-head">
-                      <span className={`terminal-trade-side${trade.side === "buy" ? " terminal-pos" : " terminal-neg"}`}>
-                        {(trade.action ?? trade.side).replaceAll("_", " ").toUpperCase()}
-                      </span>
-                      <strong>{trade.symbol}</strong>
-                      <span className="terminal-trade-time">{formatTradeTimestamp(trade.executedAt ?? trade.createdAt)}</span>
-                    </div>
-                    {trade.rejected ? (
-                      <span className="terminal-neg terminal-trade-detail">Rejected: {trade.rejectReason ?? ""}</span>
-                    ) : (
-                      <span className="terminal-trade-detail">
-                        {trade.quantity} shares · {formatUsd(trade.price)}
-                        {trade.leverage ? ` · x${trade.leverage}` : ""}
-                        {trade.realizedPnl ? ` · P/L ${formatUsd(trade.realizedPnl)}` : ""}
-                      </span>
-                    )}
+              <div className="t-trades-list">
+                {recentTrades.map((trade, i) => (
+                  <div key={i} className="t-trade-row">
+                    <span className={`t-trade-badge ${trade.side === "buy" ? "t-badge-buy" : "t-badge-sell"}`}>
+                      {trade.side.toUpperCase()}
+                    </span>
+                    <span className="t-trade-ticker">{trade.symbol}</span>
+                    <span className="t-trade-detail">{trade.quantity} @ {formatUsd(trade.price ?? 0)}</span>
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Competition info */}
-          {activeCompetition ? (
-            <div className="terminal-section">
-              <div className="terminal-section-header">
-                <span>Competition</span>
-                <span className={activeCompetition.runtimeStatus === "active" ? "terminal-pos" : "terminal-neg"}>
-                  {activeCompetition.runtimeStatus === "active" ? "Active" : activeCompetition.runtimeStatus === "not_started" ? "Not started" : "Closed"}
-                </span>
+            {/* Competition */}
+            <div className="t-section-divider" />
+            <div className="t-section-label">Competition</div>
+
+            <div className="t-comp-rows">
+              <div className="t-comp-row">
+                <span>Start</span>
+                <span>{activeCompetition?.startAt ? new Date(activeCompetition.startAt).toLocaleDateString() : "—"}</span>
               </div>
-              <div className="terminal-comp-details">
-                <div><span>Name</span><strong>{activeCompetition.name}</strong></div>
-                <div><span>Starting cash</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
-                <div><span>Start</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
-                <div><span>End</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
-                <div><span>Your rank</span><strong>{currentRankText}</strong></div>
-                <div><span>Diversification</span><strong>{portfolio?.diversificationScore ?? 0}/100</strong></div>
-                <div><span>Risk score</span><strong>{portfolio?.riskScore ?? 0}/100</strong></div>
+              <div className="t-comp-row">
+                <span>End</span>
+                <span>{activeCompetition?.endAt ? new Date(activeCompetition.endAt).toLocaleDateString() : "—"}</span>
               </div>
-              <div className="terminal-scoring-note">
-                40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown
+              <div className="t-comp-row">
+                <span>Starting cash</span>
+                <span>{formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)}</span>
               </div>
             </div>
-          ) : null}
+            <p className="t-comp-scoring">40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown</p>
 
-          {/* Links */}
-          <div className="terminal-links">
-            <Link className="terminal-link-btn" href="/investment-challenge/rules">Rules</Link>
-            <Link className="terminal-link-btn" href="/investment-challenge/options">Options Simulator</Link>
-          </div>
-        </aside>
-      </div>
+            <button className="t-right-btn" type="button" onClick={() => router.push("/investment-challenge/rules")}>Rules</button>
+            <button className="t-right-btn t-thesis-btn" type="button" onClick={() => router.push("/investment/thesis")}>Thesis</button>
+          </aside>
+        </div>
 
-      {/* Educational content — collapsed */}
-      <details className="terminal-education-drawer">
-        <summary>Finance Cards</summary>
-        <div className="terminal-education-grid">
-          {educationCards.map((card) => (
-            <article className="terminal-edu-card" key={card.title}>
-              <span>{card.concept}</span>
-              <h3>{card.title}</h3>
-              <p>{card.body}</p>
-            </article>
+        {/* Zone D: Footer */}
+        <footer className="t-footer">
+          Educational simulation only. Not real financial advice.
+        </footer>
+
+        {/* Toast notifications */}
+        <div className="toast-container">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`toast toast-${toast.type}`}>
+              {toast.message}
+            </div>
           ))}
         </div>
-      </details>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -1194,3 +1061,8 @@ function MetricCard({
     </div>
   );
 }
+
+void formatDateTime;
+void formatTradeTimestamp;
+void MetricCard;
+void Link;
