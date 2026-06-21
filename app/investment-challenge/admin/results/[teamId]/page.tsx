@@ -113,7 +113,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <div><dt>Team name</dt><dd>{overview.teamName}</dd></div>
             <div><dt>Starting cash</dt><dd>{formatUsd(overview.startingCash)}</dd></div>
             <div><dt>Current cash</dt><dd>{formatUsd(overview.cashBalance)}</dd></div>
-            <div><dt>Holdings / positions value</dt><dd>{formatUsd(overview.holdingsValue)}</dd></div>
+            <div><dt>Holdings value</dt><dd>{formatUsd(overview.holdingsValue)}</dd></div>
             <div><dt>Locked margin</dt><dd>{formatUsd(overview.lockedMargin)}</dd></div>
             <div><dt>Total exposure</dt><dd>{formatUsd(overview.totalExposure)}</dd></div>
             <div><dt>Unrealized P/L</dt><dd className={overview.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.unrealizedPnl)}</dd></div>
