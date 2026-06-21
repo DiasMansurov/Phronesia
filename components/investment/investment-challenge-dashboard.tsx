@@ -584,8 +584,13 @@ export function InvestmentChallengeDashboard({
       .filter((quote): quote is InvestmentAssetQuote => Boolean(quote));
     return preferred.length ? preferred : quickPickQuotes.slice(0, 4);
   }, [quickPickQuotes]);
-  const recentTrades = account?.trades.slice(0, 5) ?? [];
+  const recentTrades = account?.trades.slice(0, 10) ?? [];
   const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
+  const watchlistSymbols = ["AAPL", "AMD", "AMZN", "BAC", "COST", "DIS", "GLD"];
+  const watchlistQuotes = useMemo(
+    () => watchlistSymbols.map((sym) => quotes.find((q) => q.symbol === sym)).filter((q): q is InvestmentAssetQuote => q !== undefined),
+    [quotes]
+  );
   const educationCards = market.educationalCards.filter((card) =>
     ["Stocks", "ETFs", "Diversification", "Market Hours", "Closing Price", "Risk vs Return"].includes(card.title)
   );
@@ -632,555 +637,501 @@ export function InvestmentChallengeDashboard({
   ];
 
   return (
-    <div className="investment-app investment-student-product stack-xl">
-      <section className="investment-hero-v2 investment-dashboard-hero">
-        <div className="investment-hero-copy stack-lg">
-          <div className="stack-sm">
-            <p className="eyebrow">Protected student area</p>
-            <h1>Team Portfolio Workspace</h1>
-            <p>
-              Build and manage your virtual portfolio, analyze real companies, and track your competition performance.
-            </p>
-            <div className="investment-hero-team-chip">
-              <span>{activeCompetition?.name ?? "Teenvestor Investment Competition"}</span>
-              <strong>{account ? `Team: ${account.account.teamName}` : "Team access required"}</strong>
-            </div>
-          </div>
-          <div className="cta-row">
-            <a className="button primary" href="#team-portfolio">
-              {account ? "Continue Portfolio" : "Start Portfolio"}
-            </a>
-            <Link className="button secondary" href="/investment-challenge/rules">
-              Read Rules
-            </Link>
-            <Link className="button secondary" href="/investment-challenge/options">
-              Options Simulator
-            </Link>
-          </div>
+    <div className="trading-terminal">
+      {/* Header */}
+      <header className="terminal-header">
+        <div className="terminal-header-left">
+          <strong className="terminal-team-label">
+            {account ? `Team: ${account.account.teamName}` : "Team access required"}
+          </strong>
+          {activeCompetition ? (
+            <span className="terminal-comp-name">{activeCompetition.name}</span>
+          ) : null}
         </div>
-        <aside className="market-status-card-v2 investment-hero-status-card">
-          <div className="market-status-head">
-            <span>Market Status</span>
-            <strong className={marketStatus.isOpen ? "positive-text" : "negative-text"}>
-              {marketStatus.isOpen ? "Open" : "Closed"}
-            </strong>
-          </div>
-          <p>{compactMarketMessage}</p>
-          <div className="market-status-grid">
-            <div><span>US Market</span><strong>{marketStatus.isOpen ? "Open" : "Closed"}</strong></div>
-            <div><span>Price mode</span><strong>{priceModeLabel}</strong></div>
-            <div><span>Starting cash</span><strong>{formatUsd(INVESTMENT_STARTING_CASH)}</strong></div>
-            <div><span>Commission</span><strong>{feeRateLabel}</strong></div>
-            <div><span>ET time</span><strong>{marketStatus.etTime || "Review"}</strong></div>
-          </div>
-        </aside>
-
-      </section>
-
-      {activeCompetition ? (
-        <div className={`competition-inline-strip ${activeCompetition.isTeenvestor ? "teenvestor" : ""}`}>
-          <span className={`pill ${activeCompetition.runtimeStatus === "active" ? "positive-text" : "negative-text"}`}>
-            {activeCompetition.runtimeStatus === "not_started"
-              ? "Not started"
-              : activeCompetition.runtimeStatus === "closed"
-                ? "Competition closed"
-                : "Competition active"}
+        <div className="terminal-header-right">
+          <span className={`terminal-market-badge ${marketStatus.isOpen ? "open" : "closed"}`}>
+            {marketStatus.isOpen ? "● Market Open" : "● Market Closed"}
           </span>
-          <div><span>Competition</span><strong>{activeCompetition.name}</strong></div>
-          <div><span>Starting capital</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
-          <div><span>Start date</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
-          <div><span>End date</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
-          <div><span>Ranking</span><strong>{activeCompetition.runtimeStatus === "closed" ? "Final" : "Live"}</strong></div>
+          {marketStatus.etTime ? <span className="terminal-et-time">{marketStatus.etTime} ET</span> : null}
+          {!account ? (
+            <Link className="terminal-join-btn" href="/investment-challenge/join">
+              Join Competition
+            </Link>
+          ) : null}
+        </div>
+      </header>
+
+      {status ? (
+        <div className="terminal-status-bar">
+          <span>{status}</span>
         </div>
       ) : null}
 
-      <section className="investment-summary-section" id="team-portfolio">
-        <article className="panel stack-md portfolio-panel">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Portfolio summary</p>
-              <h2>{account ? account.account.teamName : "Team access required"}</h2>
-            </div>
-            <span className="pill">Protected student area</span>
+      {/* 3-column grid */}
+      <div className="terminal-grid">
+
+        {/* LEFT: Asset Browser */}
+        <aside className="terminal-left">
+          <div className="terminal-search-wrap">
+            <input
+              className="terminal-search"
+              value={assetQuery}
+              onChange={(event) => setAssetQuery(event.target.value)}
+              placeholder="Search ticker or company name"
+              autoComplete="off"
+            />
           </div>
 
-          {!account ? (
-            <div className="investment-empty-state">
-              <strong>Open the join page to create or enter a team portfolio.</strong>
-              <p>
-                Team portfolios are stored in Supabase and unlocked with competition code, team name, and team password.
-              </p>
-              <Link className="button primary" href="/investment-challenge/join">
-                Join Competition
-              </Link>
+          {showAssetResults ? (
+            <div className="terminal-search-results">
+              {assetResults.map((asset) => (
+                <button
+                  key={asset.symbol}
+                  className="terminal-search-result-row"
+                  type="button"
+                  onClick={() => void selectAsset(asset)}
+                >
+                  <strong>{asset.symbol}</strong>
+                  <span>{asset.name}</span>
+                  {asset.priceAvailable && asset.latestClose ? <b>{formatUsd(asset.latestClose)}</b> : null}
+                </button>
+              ))}
             </div>
           ) : null}
 
-          <div className="portfolio-kpi-stack">
-            <div className="portfolio-metric-grid investment-stat-grid portfolio-primary-kpis">
-              {primaryMetrics.map((metric) => (
-                <MetricCard key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} emphasis="primary" />
-              ))}
-            </div>
-            <div className="portfolio-metric-grid investment-stat-grid portfolio-secondary-kpis">
-              {secondaryMetrics.map((metric) => (
-                <MetricCard key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
-              ))}
-            </div>
-          </div>
-          {status ? <p className="form-status investment-status">{status}</p> : null}
-        </article>
-      </section>
+          {hasAssetSearchQuery && canTryTypedTicker ? (
+            <button
+              className="terminal-direct-pick"
+              type="button"
+              onClick={() => void selectAsset({ symbol: typedTickerCandidate, name: typedTickerCandidate, type: "Stock", theme: "US-listed asset", referencePrice: 0, region: "United States", currency: "USD", exchange: null, featured: false })}
+            >
+              Use ticker {typedTickerCandidate} →
+            </button>
+          ) : null}
 
-      <section className="investment-workspace-grid">
-        <aside className="panel stack-md investment-search-sidebar investment-asset-panel">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Asset Search</p>
-              <h2>Asset Search</h2>
-              <p className="muted small">Search stocks and ETFs for your team portfolio.</p>
-            </div>
-          </div>
+          {hasAssetSearchQuery && assetSearchStatus ? (
+            <p className="terminal-search-status">{assetSearchStatus}</p>
+          ) : null}
 
-          <div className="asset-picker">
-            <label className="form-field">
-              <span>Search asset</span>
-              <input
-                value={assetQuery}
-                onChange={(event) => setAssetQuery(event.target.value)}
-                placeholder="Search ticker or company name"
-                autoComplete="off"
-              />
-            </label>
-
-            {!hasAssetSearchQuery ? (
-              <div className="asset-search-empty">
-                <p>Search by company name or ticker, or start from the competition watchlist.</p>
-                <div className="asset-quick-picks asset-watchlist" aria-label="Quick pick assets">
-                  {quickPickQuotes.map((quote) => (
-                    <button
-                      key={quote.symbol}
-                      type="button"
-                      onClick={() => selectAsset(quote)}
-                      className={hasSelectedAsset && quote.symbol === symbol ? "selected" : ""}
-                    >
-                      <span className="asset-row-symbol">
-                        <strong>{quote.symbol}</strong>
-                      </span>
-                      <span className="asset-row-copy">
-                        <span>{quote.name}</span>
-                        <small>{quote.theme}</small>
-                      </span>
-                      <span className="asset-type-badge">{quote.type}</span>
-                      <b>{quote.priceAvailable ? formatUsd(quote.latestClose) : "Select"}</b>
-                    </button>
-                  ))}
-                </div>
+          {!hasAssetSearchQuery ? (
+            <div className="terminal-watchlist">
+              <div className="terminal-watchlist-header">
+                <span>Watchlist</span>
+                <span>Price</span>
               </div>
-            ) : null}
-
-            {showAssetResults ? (
-              <div className="asset-results" role="listbox" aria-label="Asset search results">
-                {assetResults.map((asset) => (
-                  <button key={asset.symbol} type="button" onClick={() => selectAsset(asset)}>
-                    <strong>{asset.symbol}</strong>
-                    <span>{asset.name}</span>
-                    <small>
-                      {asset.type} · {asset.region ?? "United States"} · {asset.currency ?? "USD"}
-                      {asset.priceAvailable && asset.latestClose ? ` · ${formatUsd(asset.latestClose)}` : ""}
-                    </small>
+              {watchlistQuotes.map((quote) => {
+                const pctChange = quote.referencePrice > 0 ? ((quote.latestClose - quote.referencePrice) / quote.referencePrice) * 100 : 0;
+                return (
+                  <button
+                    key={quote.symbol}
+                    className={`terminal-watchlist-row${hasSelectedAsset && quote.symbol === symbol ? " active" : ""}`}
+                    type="button"
+                    onClick={() => void selectAsset(quote)}
+                  >
+                    <div className="terminal-wl-ticker">
+                      <strong>{quote.symbol}</strong>
+                      <span>{quote.name}</span>
+                    </div>
+                    <div className="terminal-wl-price">
+                      <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
+                      {quote.priceAvailable && quote.referencePrice > 0 ? (
+                        <span className={pctChange >= 0 ? "terminal-pos" : "terminal-neg"}>{formatPercent(pctChange)}</span>
+                      ) : null}
+                    </div>
                   </button>
-                ))}
-              </div>
-            ) : null}
-            {hasAssetSearchQuery && canTryTypedTicker ? (
-              <button
-                className="asset-direct-pick"
-                type="button"
-                onClick={() =>
-                  selectAsset({
-                    symbol: typedTickerCandidate,
-                    name: typedTickerCandidate,
-                    type: "Stock",
-                    theme: "US-listed asset",
-                    referencePrice: 0,
-                    region: "United States",
-                    currency: "USD",
-                    exchange: null,
-                    featured: false
-                  })
-                }
-              >
-                Use ticker {typedTickerCandidate} and check price
-              </button>
-            ) : null}
-            {hasAssetSearchQuery && assetSearchStatus ? <p className="asset-search-status">{assetSearchStatus}</p> : null}
-          </div>
+                );
+              })}
+              <div className="terminal-watchlist-divider" />
+              {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).map((quote) => (
+                <button
+                  key={quote.symbol}
+                  className={`terminal-watchlist-row terminal-wl-sm${hasSelectedAsset && quote.symbol === symbol ? " active" : ""}`}
+                  type="button"
+                  onClick={() => void selectAsset(quote)}
+                >
+                  <div className="terminal-wl-ticker">
+                    <strong>{quote.symbol}</strong>
+                  </div>
+                  <div className="terminal-wl-price">
+                    <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {hasSelectedAsset ? (
-            <div className="selected-asset-actions">
-              <button className="button secondary compact-button" type="button" onClick={() => fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
+            <div className="terminal-price-actions">
+              <button className="terminal-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
                 Fetch price
               </button>
-              <button className="button secondary compact-button" type="button" onClick={refreshSelectedSymbol} disabled={priceLoading}>
-                Refresh this symbol
+              <button className="terminal-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
+                Refresh
               </button>
             </div>
           ) : null}
         </aside>
 
-        <form className="panel stack-md trade-ticket-v2 investment-trade-dashboard investment-trade-panel" onSubmit={submitTrade}>
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Selected asset / trade panel</p>
-              <h2>{hasSelectedAsset ? "Review and trade" : "Select an asset to begin"}</h2>
-            </div>
-          </div>
-
-          {!hasSelectedAsset ? (
-            <div className="trade-empty-state">
-              <strong>Select an asset to begin.</strong>
-              <p>Choose a stock or ETF from the watchlist to review its price and place your first simulated trade.</p>
-              <div className="trade-step-guide" aria-label="Trade steps">
-                <span><b>1</b>Search asset</span>
-                <span><b>2</b>Review price</span>
-                <span><b>3</b>Confirm trade</span>
-              </div>
-              <div className="asset-suggestion-row" aria-label="Example tickers">
-                {centerSuggestionQuotes.map((quote) => (
-                  <button key={quote.symbol} type="button" onClick={() => selectAsset(quote)}>
-                    {quote.symbol}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="selected-asset-card asset-preview-card">
-                <div>
-                  <span>Selected asset</span>
-                  <strong>{selectedQuote.symbol}</strong>
-                  <p>{selectedQuote.name}</p>
-                </div>
-                <div className="asset-preview-meta">
-                  <span>Details</span>
-                  <p>{selectedQuote.type}</p>
-                  <p>{selectedQuote.region ?? "United States"} · {selectedQuote.currency ?? "USD"}</p>
-                </div>
-              </div>
-
-              <div className="asset-price-status">
-                <div>
-                  <span>Latest price</span>
-                  <strong>{selectedPriceText}</strong>
-                  <p>
-                    {selectedQuote.priceAvailable
-                      ? `Price date: ${selectedQuote.priceDate ?? "latest saved"} · Source: ${sourceLabel(selectedQuote)} · Status: ${selectedQuote.cacheStatus ?? "cached"}${
-                          selectedQuote.fetchedAt ? ` · Updated: ${new Date(selectedQuote.fetchedAt).toLocaleString("en-US")}` : ""
-                        }`
-                      : selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."}
-                  </p>
-                </div>
-                <span className={selectedQuote.priceAvailable ? "positive-text" : "negative-text"}>{priceStatusLabel}</span>
-              </div>
-
-              <div className="trade-side-toggle" aria-label="Trade side">
-                <button type="button" className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>
-                  Buy
-                </button>
-                <button type="button" className={side === "sell" ? "selected" : ""} onClick={() => setSide("sell")}>
-                  Sell
-                </button>
-              </div>
-
-              <label className="form-field">
-                <span>Quantity</span>
-                <input
-                  min={1}
-                  step={1}
-                  type="number"
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
-                  required
-                />
-              </label>
-
-              <div className="trade-readiness-grid">
-                <div><span>Price status</span><strong>{priceStatusLabel}</strong></div>
-                <div><span>Quantity selected</span><strong>{quantity}</strong></div>
-                <div><span>Estimated trade value</span><strong>{formatUsd(estimatedGross)}</strong></div>
-                <div><span>Estimated commission</span><strong>{formatUsd(estimatedFee)}</strong></div>
-                <div><span>{totalCostLabel}</span><strong>{formatUsd(estimatedNet)}</strong></div>
-              </div>
-
-              <div className="position-ticket-sim">
-                <div className="section-header">
-                  <div>
-                    <p className="eyebrow">Long / short / leverage</p>
-                    <h3>Open a virtual position</h3>
-                  </div>
-                  <span className="pill">Max x3</span>
-                </div>
-                <div className="trade-side-toggle" aria-label="Position direction">
-                  <button type="button" className={positionSide === "long" ? "selected" : ""} onClick={() => setPositionSide("long")}>
-                    Long
-                  </button>
-                  <button type="button" className={positionSide === "short" ? "selected" : ""} onClick={() => setPositionSide("short")}>
-                    Short
-                  </button>
-                </div>
-                <div className="trade-side-toggle" aria-label="Position leverage">
-                  {[1, 2, 3].map((level) => (
-                    <button key={level} type="button" className={positionLeverage === level ? "selected" : ""} onClick={() => setPositionLeverage(level)}>
-                      x{level}
-                    </button>
-                  ))}
-                </div>
-                <div className="trade-readiness-grid">
-                  <div><span>Estimated margin</span><strong>{formatUsd(estimatedPositionMargin)}</strong></div>
-                  <div><span>Exposure</span><strong>{formatUsd(estimatedGross)}</strong></div>
-                  <div><span>Commission</span><strong>{formatUsd(estimatedFee)}</strong></div>
-                  <div><span>Required cash</span><strong>{formatUsd(estimatedPositionRequired)}</strong></div>
-                </div>
-                <p className="trade-research-note">
-                  Long, short, and leverage features are part of an educational simulation. No real money is used. This is not financial advice.
-                  Leverage increases both simulated gains and simulated losses. Losses are limited to the margin used in this educational simulation.
-                </p>
-                {positionWarning ? <p className="market-closed-note">{positionWarning}</p> : null}
-                <button className="button primary" type="button" disabled={!canOpenPosition} onClick={submitPosition}>
-                  Open {positionSide === "short" ? "Short" : "Long"} x{positionLeverage}
-                </button>
-              </div>
-
-              <p className="trade-research-note">
-                Research the business, risks, valuation, and portfolio fit before buying. The simulation rewards the reasoning behind the trade as well as the return.
-              </p>
-
-              {clientTradeWarning ? <p className="market-closed-note">{clientTradeWarning}</p> : null}
-              {!selectedQuote.priceAvailable ? (
-                <button className="button secondary" type="button" onClick={() => fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
-                  Try refresh price
-                </button>
-              ) : null}
-              <button className="button primary" type="submit" disabled={!canTrade}>
-                {priceLoading ? "Checking latest price..." : "Submit server-validated trade"}
-              </button>
-            </>
-          )}
-
-          {account?.holdings.length ? (
-            <section className="portfolio-center-summary" aria-label="Portfolio summary">
-              <div><span>Cash balance</span><strong>{formatUsd(cashBalance)}</strong></div>
-              <div><span>Holdings count</span><strong>{holdingsCount}</strong></div>
-              <div><span>Holdings value</span><strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong></div>
-              <div><span>Portfolio status</span><strong>{latestPortfolioStatus}</strong></div>
-            </section>
-          ) : null}
-          {account?.holdings.length ? (
-            <Link className="button secondary" href="/investment/thesis">
-              Write Investment Thesis
-            </Link>
-          ) : null}
-        </form>
-
-        <aside className="investment-side-stack portfolio-sidebar-v2">
-          <section className="panel stack-md holdings-panel-v2 position-panel-v2">
-            <div className="section-header">
-              <div>
-                <h2>Open Positions</h2>
-                <p className="muted small">Long, short, leverage, margin, and P/L</p>
-              </div>
-              <span className="pill">Educational simulation</span>
-            </div>
-
-            {!openPositions.length ? (
-              <div className="investment-empty-state">
-                <strong>No open leveraged positions.</strong>
-                <p>Use the long/short panel after selecting an asset to open a virtual position with x1, x2, or x3 leverage.</p>
-              </div>
-            ) : (
-              <div className="position-card-list">
-                {openPositions.map((position) => (
-                  <article className="position-card" key={position.id}>
-                    <div className="position-card-head">
-                      <div>
-                        <strong>{position.symbol}</strong>
-                        <span>{position.assetName}</span>
-                      </div>
-                      <span className={`pill ${position.side === "long" ? "positive-text" : "negative-text"}`}>
-                        {position.side.toUpperCase()} x{position.leverage}
-                      </span>
-                    </div>
-                    <dl>
-                      <div><dt>Quantity</dt><dd>{position.quantity}</dd></div>
-                      <div><dt>Entry</dt><dd>{formatUsd(position.entryPrice)}</dd></div>
-                      <div><dt>Current</dt><dd>{formatUsd(position.currentPrice)}</dd></div>
-                      <div><dt>Margin</dt><dd>{formatUsd(position.marginLocked)}</dd></div>
-                      <div><dt>Exposure</dt><dd>{formatUsd(position.exposureValue)}</dd></div>
-                      <div><dt>Position equity</dt><dd>{formatUsd(position.marginLocked + position.unrealizedPnl)}</dd></div>
-                      <div>
-                        <dt>Unrealized P/L</dt>
-                        <dd className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</dd>
-                      </div>
-                    </dl>
-                    <button className="button secondary compact-button" type="button" disabled={busy || !marketStatus.isOpen} onClick={() => closePosition(position)}>
-                      Close position
-                    </button>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="panel stack-md holdings-panel-v2">
-            <div className="section-header">
-              <div>
-                <h2>Holdings</h2>
-                <p className="muted small">Positions, value, gains, and weights</p>
-              </div>
-              <span className="pill">Legacy long-only holdings</span>
-            </div>
-
-            {!account?.holdings.length ? (
-              <div className="investment-empty-state">
-                <strong>Your portfolio is empty.</strong>
-                <p>
-                  Search for an asset, review the latest cached stock price, and place your first simulated trade when the market is open.
-                </p>
+        {/* CENTER: Main Workspace */}
+        <main className="terminal-center">
+          {/* Portfolio Hero */}
+          <div className="terminal-portfolio-hero">
+            {!account ? (
+              <div className="terminal-no-account">
+                <strong>Join the competition to start trading</strong>
+                <p>Team portfolios are unlocked with a competition code, team name, and password.</p>
+                <Link className="button primary" href="/investment-challenge/join">Join Competition</Link>
               </div>
             ) : (
               <>
-                <div className="table-wrap desktop-holdings">
-                  <table className="record-table investment-table-v2">
-                    <thead>
-                      <tr>
-                        <th>Ticker</th>
-                        <th>Asset</th>
-                        <th>Quantity</th>
-                        <th>Average buy</th>
-                        <th>Latest price</th>
-                        <th>Current value</th>
-                        <th>Unrealized gain/loss</th>
-                        <th>Unrealized return</th>
-                        <th>Weight</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {account.holdings.map((holding) => (
-                        <tr key={holding.symbol}>
-                          <td>{holding.symbol}</td>
-                          <td>{holding.assetName}</td>
-                          <td>{holding.quantity}</td>
-                          <td>{formatUsd(holding.averageBuyPrice)}</td>
-                          <td>{formatUsd(holding.latestClose)}</td>
-                          <td>{formatUsd(holding.marketValue)}</td>
-                          <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
-                            {formatUsd(holding.unrealizedGainLoss)}
-                          </td>
-                          <td className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>
-                            {holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : "n/a"}
-                          </td>
-                          <td>{holding.weight.toFixed(1)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="terminal-portfolio-main">
+                  <div>
+                    <span className="terminal-hero-label">Portfolio Value</span>
+                    <div className={`terminal-portfolio-value${profitLoss >= 0 ? " terminal-pos" : " terminal-neg"}`}>
+                      {formatUsd(currentPortfolioValue)}
+                    </div>
+                  </div>
+                  <div className="terminal-portfolio-return">
+                    <span className={`terminal-return-badge${(portfolio?.totalReturn ?? 0) >= 0 ? " terminal-pos-bg" : " terminal-neg-bg"}`}>
+                      {formatPercent(portfolio?.totalReturn ?? 0)}
+                    </span>
+                    <span className="terminal-hero-sub">{currentRankText}</span>
+                  </div>
                 </div>
-                <div className="mobile-holding-cards">
-                  {account.holdings.map((holding) => (
-                    <article className="mobile-holding-card" key={holding.symbol}>
-                      <div>
-                        <strong>{holding.symbol}</strong>
-                        <span>{holding.assetName}</span>
-                      </div>
-                      <dl>
-                        <div><dt>Qty</dt><dd>{holding.quantity}</dd></div>
-                        <div><dt>Current</dt><dd>{formatUsd(holding.latestClose)}</dd></div>
-                        <div><dt>Value</dt><dd>{formatUsd(holding.marketValue)}</dd></div>
-                        <div><dt>Gain/Loss</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(holding.unrealizedGainLoss)}</dd></div>
-                        <div><dt>Return</dt><dd className={holding.unrealizedGainLoss >= 0 ? "positive-text" : "negative-text"}>{holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : "n/a"}</dd></div>
-                        <div><dt>Weight</dt><dd>{holding.weight.toFixed(1)}%</dd></div>
-                      </dl>
-                    </article>
-                  ))}
+                <div className="terminal-portfolio-metrics">
+                  <div className="terminal-metric">
+                    <span>Cash</span>
+                    <strong>{formatUsd(cashBalance)}</strong>
+                  </div>
+                  <div className="terminal-metric">
+                    <span>Holdings</span>
+                    <strong>{formatUsd(portfolio?.holdingsValue ?? 0)}</strong>
+                  </div>
+                  <div className="terminal-metric">
+                    <span>P&amp;L</span>
+                    <strong className={profitLoss >= 0 ? "terminal-pos" : "terminal-neg"}>{formatUsd(profitLoss)}</strong>
+                  </div>
+                  <div className="terminal-metric">
+                    <span>Return</span>
+                    <strong className={(portfolio?.totalReturn ?? 0) >= 0 ? "terminal-pos" : "terminal-neg"}>
+                      {formatPercent(portfolio?.totalReturn ?? 0)}
+                    </strong>
+                  </div>
+                  <div className="terminal-metric">
+                    <span>Rank</span>
+                    <strong>{currentRankText}</strong>
+                  </div>
                 </div>
               </>
             )}
-          </section>
+          </div>
 
-          <section className="panel stack-md portfolio-activity-panel investment-order-feed">
-            <div className="section-header">
-              <div>
-                <h2>Portfolio Activity</h2>
-                <p className="muted small">Latest simulated orders</p>
+          {/* Trade Panel */}
+          <form className="terminal-trade-panel" onSubmit={submitTrade}>
+            {!hasSelectedAsset ? (
+              <div className="terminal-trade-empty">
+                <strong>Select an asset to trade</strong>
+                <p>Choose a stock or ETF from the watchlist on the left.</p>
+                <div className="terminal-suggestion-chips">
+                  {centerSuggestionQuotes.map((quote) => (
+                    <button key={quote.symbol} className="terminal-chip" type="button" onClick={() => void selectAsset(quote)}>
+                      {quote.symbol}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="terminal-asset-display">
+                  <div className="terminal-asset-info">
+                    <strong className="terminal-asset-ticker">{selectedQuote.symbol}</strong>
+                    <span className="terminal-asset-name">{selectedQuote.name}</span>
+                    <span className="terminal-asset-type">{selectedQuote.type} · {selectedQuote.region ?? "US"}</span>
+                  </div>
+                  <div className="terminal-asset-price-block">
+                    <strong className="terminal-price-big">{selectedPriceText}</strong>
+                    <span className={`terminal-price-status-label${selectedQuote.priceAvailable ? " terminal-pos" : " terminal-neg"}`}>
+                      {priceLoading ? "Checking..." : selectedQuote.priceAvailable
+                        ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
+                        : selectedQuote.priceMessage ?? "No saved price"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="terminal-trade-controls">
+                  <div className="terminal-side-toggle">
+                    <button type="button" className={`terminal-side-btn buy${side === "buy" ? " active" : ""}`} onClick={() => setSide("buy")}>
+                      BUY
+                    </button>
+                    <button type="button" className={`terminal-side-btn sell${side === "sell" ? " active" : ""}`} onClick={() => setSide("sell")}>
+                      SELL
+                    </button>
+                  </div>
+
+                  <div className="terminal-qty-row">
+                    <label className="terminal-qty-label">
+                      <span>Shares</span>
+                      <input
+                        className="terminal-qty-input"
+                        min={1}
+                        step={1}
+                        type="number"
+                        value={quantity}
+                        onChange={(event) => setQuantity(Number(event.target.value))}
+                        required
+                      />
+                    </label>
+                    <div className="terminal-est-block">
+                      <span>Est. total</span>
+                      <strong>{formatUsd(estimatedNet)}</strong>
+                    </div>
+                    <div className="terminal-est-block">
+                      <span>Fee ({feeRateLabel})</span>
+                      <strong>{formatUsd(estimatedFee)}</strong>
+                    </div>
+                  </div>
+
+                  {clientTradeWarning ? <p className="terminal-warning">{clientTradeWarning}</p> : null}
+
+                  {!selectedQuote.priceAvailable ? (
+                    <button className="terminal-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
+                      Fetch latest price
+                    </button>
+                  ) : null}
+
+                  <button className="terminal-submit-btn" type="submit" disabled={!canTrade}>
+                    {priceLoading ? "Checking price..." : busy ? "Submitting..." : `Confirm ${side === "buy" ? "Buy" : "Sell"}`}
+                  </button>
+
+                  {account?.holdings.length ? (
+                    <Link className="terminal-thesis-link" href="/investment/thesis">
+                      Write Investment Thesis →
+                    </Link>
+                  ) : null}
+                </div>
+
+                {/* Leveraged position — collapsed */}
+                <details className="terminal-position-ticket">
+                  <summary>Open Leveraged Position (Long / Short / x1–x3)</summary>
+                  <div className="terminal-position-body">
+                    <div className="terminal-side-toggle">
+                      <button type="button" className={`terminal-side-btn${positionSide === "long" ? " active" : ""}`} onClick={() => setPositionSide("long")}>Long</button>
+                      <button type="button" className={`terminal-side-btn${positionSide === "short" ? " active" : ""}`} onClick={() => setPositionSide("short")}>Short</button>
+                    </div>
+                    <div className="terminal-side-toggle">
+                      {[1, 2, 3].map((level) => (
+                        <button key={level} type="button" className={`terminal-side-btn${positionLeverage === level ? " active" : ""}`} onClick={() => setPositionLeverage(level)}>
+                          x{level}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="terminal-pos-metrics">
+                      <div><span>Margin</span><strong>{formatUsd(estimatedPositionMargin)}</strong></div>
+                      <div><span>Exposure</span><strong>{formatUsd(estimatedGross)}</strong></div>
+                      <div><span>Required cash</span><strong>{formatUsd(estimatedPositionRequired)}</strong></div>
+                    </div>
+                    {positionWarning ? <p className="terminal-warning">{positionWarning}</p> : null}
+                    <button className="terminal-submit-btn" type="button" disabled={!canOpenPosition} onClick={() => void submitPosition()}>
+                      Open {positionSide === "short" ? "Short" : "Long"} x{positionLeverage}
+                    </button>
+                    <p className="terminal-disclaimer">Educational simulation only. No real money used. Losses are limited to margin.</p>
+                  </div>
+                </details>
+              </>
+            )}
+          </form>
+
+          {/* Holdings Table */}
+          <div className="terminal-section terminal-holdings-section">
+            <div className="terminal-section-header">
+              <span>Holdings</span>
+              <span className="terminal-holdings-count">{holdingsCount} position{holdingsCount !== 1 ? "s" : ""}</span>
+            </div>
+            {!account?.holdings.length ? (
+              <p className="terminal-empty-note">No holdings yet. Buy your first asset to get started.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="terminal-table">
+                  <thead>
+                    <tr>
+                      <th>Asset</th>
+                      <th>Shares</th>
+                      <th>Avg Price</th>
+                      <th>Current</th>
+                      <th>Value</th>
+                      <th>P&amp;L</th>
+                      <th>Weight</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {account.holdings.map((holding) => (
+                      <tr
+                        key={holding.symbol}
+                        onClick={() => {
+                          const q = quotes.find((q) => q.symbol === holding.symbol);
+                          if (q) void selectAsset(q);
+                          else void selectAsset({ symbol: holding.symbol, name: holding.assetName, type: "Stock", theme: "", referencePrice: holding.averageBuyPrice, region: "United States", currency: "USD", exchange: null, featured: false });
+                        }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <td>
+                          <strong>{holding.symbol}</strong>
+                          <span className="terminal-holding-name">{holding.assetName}</span>
+                        </td>
+                        <td>{holding.quantity}</td>
+                        <td>{formatUsd(holding.averageBuyPrice)}</td>
+                        <td>{formatUsd(holding.latestClose)}</td>
+                        <td>{formatUsd(holding.marketValue)}</td>
+                        <td className={holding.unrealizedGainLoss >= 0 ? "terminal-pos" : "terminal-neg"}>
+                          {formatUsd(holding.unrealizedGainLoss)}
+                          <span className="terminal-holding-pct">
+                            {holding.averageBuyPrice > 0 ? formatPercent(((holding.latestClose - holding.averageBuyPrice) / holding.averageBuyPrice) * 100) : ""}
+                          </span>
+                        </td>
+                        <td>{holding.weight.toFixed(1)}%</td>
+                        <td>
+                          <button
+                            className="terminal-sell-btn"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const q = quotes.find((q) => q.symbol === holding.symbol);
+                              if (q) void selectAsset(q);
+                              else void selectAsset({ symbol: holding.symbol, name: holding.assetName, type: "Stock", theme: "", referencePrice: holding.averageBuyPrice, region: "United States", currency: "USD", exchange: null, featured: false });
+                              setSide("sell");
+                            }}
+                          >
+                            Sell
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </main>
+
+        {/* RIGHT: Activity & Stats */}
+        <aside className="terminal-right">
+          {/* Open Positions */}
+          <div className="terminal-section">
+            <div className="terminal-section-header">
+              <span>Open Positions</span>
+              <span className="terminal-count">{openPositions.length}</span>
+            </div>
+            {!openPositions.length ? (
+              <p className="terminal-empty-note">No open leveraged positions.</p>
+            ) : (
+              <div className="terminal-position-list">
+                {openPositions.map((position) => (
+                  <div className="terminal-position-row" key={position.id}>
+                    <div className="terminal-pos-head">
+                      <div className="terminal-pos-head-left">
+                        <strong>{position.symbol}</strong>
+                        <span className={`terminal-pos-badge${position.side === "long" ? " terminal-pos" : " terminal-neg"}`}>
+                          {position.side.toUpperCase()} x{position.leverage}
+                        </span>
+                      </div>
+                      <span className={position.unrealizedPnl >= 0 ? "terminal-pos" : "terminal-neg"}>
+                        {formatUsd(position.unrealizedPnl)}
+                      </span>
+                    </div>
+                    <div className="terminal-pos-details">
+                      <span>Qty {position.quantity}</span>
+                      <span>Entry {formatUsd(position.entryPrice)}</span>
+                      <span>Now {formatUsd(position.currentPrice)}</span>
+                    </div>
+                    <button
+                      className="terminal-close-btn"
+                      type="button"
+                      disabled={busy || !marketStatus.isOpen}
+                      onClick={() => void closePosition(position)}
+                    >
+                      Close position
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Trades */}
+          <div className="terminal-section">
+            <div className="terminal-section-header">
+              <span>Recent Trades</span>
+            </div>
+            {!recentTrades.length ? (
+              <p className="terminal-empty-note">No trades yet.</p>
+            ) : (
+              <div className="terminal-trade-feed">
+                {recentTrades.map((trade) => (
+                  <div className="terminal-trade-row" key={trade.id}>
+                    <div className="terminal-trade-head">
+                      <span className={`terminal-trade-side${trade.side === "buy" ? " terminal-pos" : " terminal-neg"}`}>
+                        {(trade.action ?? trade.side).replaceAll("_", " ").toUpperCase()}
+                      </span>
+                      <strong>{trade.symbol}</strong>
+                      <span className="terminal-trade-time">{formatTradeTimestamp(trade.executedAt ?? trade.createdAt)}</span>
+                    </div>
+                    {trade.rejected ? (
+                      <span className="terminal-neg terminal-trade-detail">Rejected: {trade.rejectReason ?? ""}</span>
+                    ) : (
+                      <span className="terminal-trade-detail">
+                        {trade.quantity} shares · {formatUsd(trade.price)}
+                        {trade.leverage ? ` · x${trade.leverage}` : ""}
+                        {trade.realizedPnl ? ` · P/L ${formatUsd(trade.realizedPnl)}` : ""}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Competition info */}
+          {activeCompetition ? (
+            <div className="terminal-section">
+              <div className="terminal-section-header">
+                <span>Competition</span>
+                <span className={activeCompetition.runtimeStatus === "active" ? "terminal-pos" : "terminal-neg"}>
+                  {activeCompetition.runtimeStatus === "active" ? "Active" : activeCompetition.runtimeStatus === "not_started" ? "Not started" : "Closed"}
+                </span>
+              </div>
+              <div className="terminal-comp-details">
+                <div><span>Name</span><strong>{activeCompetition.name}</strong></div>
+                <div><span>Starting cash</span><strong>{formatUsd(activeCompetition.startingCash)}</strong></div>
+                <div><span>Start</span><strong>{formatDateTime(activeCompetition.startAt)}</strong></div>
+                <div><span>End</span><strong>{formatDateTime(activeCompetition.endAt)}</strong></div>
+                <div><span>Your rank</span><strong>{currentRankText}</strong></div>
+                <div><span>Diversification</span><strong>{portfolio?.diversificationScore ?? 0}/100</strong></div>
+                <div><span>Risk score</span><strong>{portfolio?.riskScore ?? 0}/100</strong></div>
+              </div>
+              <div className="terminal-scoring-note">
+                40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown
               </div>
             </div>
-            <div className="activity-list">
-              {recentTrades.length ? (
-                recentTrades.map((trade) => (
-                  <article className="activity-row" key={trade.id}>
-                    <span>
-                      {formatTradeTimestamp(trade.executedAt ?? trade.createdAt)} · {(trade.action ?? trade.side).replaceAll("_", " ").toUpperCase()} {trade.symbol}
-                    </span>
-                    <strong>
-                      {trade.rejected
-                        ? "Rejected"
-                        : `${trade.quantity} ${trade.quantity === 1 ? "share" : "shares"} · ${formatUsd(trade.price)}${
-                            trade.leverage ? ` · x${trade.leverage}` : ""
-                          }`}
-                    </strong>
-                    <small>
-                      {trade.rejected
-                        ? trade.rejectReason ?? "Rejected"
-                        : `${trade.assetName} · Trade ${formatUsd(trade.grossValue)} · Fee ${formatUsd(trade.feeAmount)} · ${
-                            trade.action?.startsWith("open") || trade.side === "buy" ? "Total" : "Net"
-                          } ${formatUsd(trade.netValue)}${
-                            trade.marginUsed ? ` · Margin ${formatUsd(trade.marginUsed)}` : ""
-                          }${
-                            trade.realizedPnl ? ` · Realized P/L ${formatUsd(trade.realizedPnl)}` : ""
-                          }`}
-                    </small>
-                  </article>
-                ))
-              ) : (
-                <p className="muted">Your trades will appear here after your first simulated order.</p>
-              )}
-            </div>
-          </section>
+          ) : null}
 
+          {/* Links */}
+          <div className="terminal-links">
+            <Link className="terminal-link-btn" href="/investment-challenge/rules">Rules</Link>
+            <Link className="terminal-link-btn" href="/investment-challenge/options">Options Simulator</Link>
+          </div>
         </aside>
-      </section>
+      </div>
 
-      <section className="panel stack-md investment-risk-panel rules-risk-panel">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Rules and risk</p>
-            <h2>Market closed means orders pause, not prices.</h2>
-          </div>
-        </div>
-        <p className="muted">
-          Latest saved prices remain visible from the Supabase cache. MarketData.app is called only through approved
-          endpoints to save API credits.
-        </p>
-        <div className="score-formula-note">
-          40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown control
-        </div>
-      </section>
-      <details className="panel finance-card-drawer">
-        <summary>
-          <div>
-            <p className="eyebrow">Finance cards</p>
-            <h2>Finance cards</h2>
-            <p className="muted small">Short explanations while you invest.</p>
-          </div>
-          <span className="finance-card-toggle">View all finance cards</span>
-        </summary>
-        <div className="investment-education-grid-v2">
+      {/* Educational content — collapsed */}
+      <details className="terminal-education-drawer">
+        <summary>Finance Cards</summary>
+        <div className="terminal-education-grid">
           {educationCards.map((card) => (
-            <article className="lesson-card stack-sm" key={card.title}>
-              <span className="mini-status open">{card.concept}</span>
+            <article className="terminal-edu-card" key={card.title}>
+              <span>{card.concept}</span>
               <h3>{card.title}</h3>
-              <p className="muted">{card.body}</p>
+              <p>{card.body}</p>
             </article>
           ))}
         </div>
