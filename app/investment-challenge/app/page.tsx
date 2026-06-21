@@ -51,20 +51,12 @@ export default async function InvestmentChallengeAppPage() {
   }
 
   return (
-    <section className="investment-section investment-dashboard-page shell section stack-xl">
+    <div style={{ height: "100vh", overflow: "hidden", background: "#0a0f1a" }}>
       <InvestmentChallengeDashboard
         initialCompetitionCode={access.competitionCode}
         initialAccountId={access.accountId}
         initialAccount={access.account}
       />
-      <section className="panel investment-disclaimer stack-sm">
-        <p className="eyebrow">Important disclaimer</p>
-        <h2>Educational simulation only.</h2>
-        <p>
-          Phronesia is a free educational simulation. No real money is used. This is not financial advice. Market data
-          is used only inside the student competition area.
-        </p>
-      </section>
-    </section>
+    </div>
   );
 }

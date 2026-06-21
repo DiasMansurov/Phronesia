@@ -19581,10 +19581,23 @@ main:has(.investment-dashboard-page) {
 .trading-terminal {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   background: #0a0f1a;
   color: #e2e8f0;
   font-family: inherit;
+  box-sizing: border-box;
+}
+.trading-terminal * {
+  box-sizing: border-box;
+}
+body:has(.trading-terminal) {
+  background: #0a0f1a;
+}
+main:has(.trading-terminal) {
+  background: #0a0f1a;
+  padding: 0 !important;
 }
 
 /* Header */
@@ -20899,11 +20912,12 @@ main:has(.investment-dashboard-page) {
 /* Zone C: 3-column grid */
 .t-grid {
   display: grid;
-  grid-template-columns: 220px 1fr 260px;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
   gap: 1px;
   background: #0a0f1a;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .t-col-left,
@@ -20912,6 +20926,8 @@ main:has(.investment-dashboard-page) {
   background: #111827;
   padding: 12px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 /* Left column: Asset browser */

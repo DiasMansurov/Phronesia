@@ -731,24 +731,6 @@ export function InvestmentChallengeDashboard({
                     </button>
                   );
                 })}
-                {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).length > 0 && (
-                  <>
-                    <div className="t-wl-divider" />
-                    {quickPickQuotes.filter((q) => !watchlistSymbols.includes(q.symbol)).map((quote) => (
-                      <button
-                        key={quote.symbol}
-                        className={`t-wl-row t-wl-sm${hasSelectedAsset && quote.symbol === symbol ? " t-wl-active" : ""}`}
-                        type="button"
-                        onClick={() => void selectAsset(quote)}
-                      >
-                        <div className="t-wl-left"><strong>{quote.symbol}</strong></div>
-                        <div className="t-wl-right">
-                          <strong>{quote.priceAvailable ? formatUsd(quote.latestClose) : "—"}</strong>
-                        </div>
-                      </button>
-                    ))}
-                  </>
-                )}
               </>
             )}
 
