@@ -16,27 +16,31 @@ export function AdminResultsRefreshButton() {
   async function refreshResults() {
     setState({ busy: true, message: "Refreshing held asset prices...", error: null });
     try {
-      const response = await fetch("/api/investment/admin/refresh-prices", {
+      const response = await fetch("/api/investment/admin/refresh-held-prices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ mode: "held" })
+        cache: "no-store"
       });
       const payload = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
-        held?: Array<{ ok?: boolean; symbol?: string; message?: string }>;
+        providerCallsMade?: number;
+        symbolsFromCache?: string[];
+        symbolsRefreshed?: string[];
+        nextRefreshAt?: string | null;
         error?: string;
       };
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Unable to refresh admin results.");
       }
-      const heldCount = Array.isArray(payload.held) ? payload.held.length : 0;
-      const warningCount = Array.isArray(payload.held) ? payload.held.filter((item) => !item.ok).length : 0;
+      const providerCallsMade = payload.providerCallsMade ?? 0;
+      const cachedCount = payload.symbolsFromCache?.length ?? 0;
+      const refreshedCount = payload.symbolsRefreshed?.length ?? 0;
       setState({
         busy: false,
-        message: warningCount
-          ? `Refreshed results with ${warningCount} price warning${warningCount === 1 ? "" : "s"}.`
-          : `Refreshed ${heldCount} held asset price${heldCount === 1 ? "" : "s"} and recalculated results.`,
+        message:
+          providerCallsMade > 0
+            ? `Refresh complete: ${refreshedCount} symbol${refreshedCount === 1 ? "" : "s"} refreshed, ${cachedCount} served from cache.`
+            : `No provider calls needed. ${cachedCount} symbol${cachedCount === 1 ? "" : "s"} served from cache.`,
         error: null
       });
       router.refresh();
@@ -52,7 +56,7 @@ export function AdminResultsRefreshButton() {
   return (
     <div className="admin-results-refresh-action">
       <button className="button secondary" type="button" onClick={refreshResults} disabled={state.busy}>
-        {state.busy ? "Refreshing..." : "Refresh Results"}
+        {state.busy ? "Refreshing..." : "Refresh prices now"}
       </button>
       {state.message ? <span className="admin-refresh-message positive-text">{state.message}</span> : null}
       {state.error ? <span className="admin-refresh-message negative-text">{state.error}</span> : null}
