@@ -21190,8 +21190,8 @@ main:has(.trading-terminal) {
   align-items: baseline;
 }
 
-.t-est-item span { font-size: 9px; color: #64748b; white-space: nowrap; }
-.t-est-item strong { font-size: 11px; color: #fff; }
+.t-est-item span { font-size: 13px; color: #8a9ab0; white-space: nowrap; }
+.t-est-item strong { font-size: 13px; color: #fff; }
 
 .t-trade-warning {
   background: #451a03;
@@ -21223,15 +21223,15 @@ main:has(.trading-terminal) {
 .t-leveraged-link {
   background: none;
   border: none;
-  color: #64748b;
-  font-size: 10px;
+  color: #a0aec0;
+  font-size: 13px;
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: none;
   text-align: left;
   padding: 2px 0;
 }
 
-.t-leveraged-link:hover { color: #94a3b8; }
+.t-leveraged-link:hover { color: #cbd5e1; }
 
 /* Leveraged position panel */
 .t-lev-panel {
@@ -21368,12 +21368,12 @@ main:has(.trading-terminal) {
   padding: 3px 0;
 }
 
-.t-comp-row span:first-child { font-size: 10px; color: #64748b; }
-.t-comp-row span:last-child { font-size: 10px; color: #fff; }
+.t-comp-row span:first-child { font-size: 13px; color: #8a9ab0; }
+.t-comp-row span:last-child { font-size: 13px; color: #fff; }
 
 .t-comp-scoring {
-  font-size: 9px;
-  color: #475569;
+  font-size: 12px;
+  color: #8a9ab0;
   line-height: 1.5;
   margin-bottom: 8px;
 }
