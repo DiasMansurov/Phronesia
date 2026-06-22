@@ -274,7 +274,20 @@ const MARKET_DATA_CLOSED_REFRESH_SECONDS = Math.max(12 * 60 * 60, MARKET_DATA_MI
 const MARKET_DATA_DISABLE_AUTO_REFRESH = /^(1|true|yes)$/i.test(process.env.MARKET_DATA_DISABLE_AUTO_REFRESH ?? "");
 const MARKET_DATA_STUDENT_PROVIDER_DISABLED = /^(1|true|yes)$/i.test(process.env.MARKET_DATA_STUDENT_PROVIDER_DISABLED ?? "true");
 const TEAM_PASSWORD_ITERATIONS = 210000;
-const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
+const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "300") || 300);
+const INVESTMENT_CRON_CORE_SYMBOLS = [
+  "AAPL",
+  "AMD",
+  "AMZN",
+  "BAC",
+  "COST",
+  "DIS",
+  "GLD",
+  "SPY",
+  "TSLA",
+  "MSFT",
+  "QQQ"
+];
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
 type MarketPriceResult =
@@ -2670,7 +2683,7 @@ async function getHeldInvestmentSymbols() {
 
 async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_CRON) {
   if (!supabaseConfigured()) {
-    return INVESTMENT_ASSETS.slice(0, Math.min(maxSymbols, 5)).map((asset) => asset.symbol);
+    return Array.from(new Set([...INVESTMENT_CRON_CORE_SYMBOLS, ...INVESTMENT_ASSETS.map((asset) => asset.symbol)])).slice(0, maxSymbols);
   }
 
   const prioritized: string[] = [];
@@ -2679,6 +2692,7 @@ async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_
     if (isSupportedSymbol(normalized) && !prioritized.includes(normalized)) prioritized.push(normalized);
   };
 
+  INVESTMENT_CRON_CORE_SYMBOLS.forEach(add);
   for (const symbol of await getHeldInvestmentSymbols()) add(symbol);
 
   try {
@@ -2706,9 +2720,11 @@ async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_
     // Migration may not exist yet on older deployments.
   }
 
-  for (const asset of INVESTMENT_ASSETS) {
-    if (prioritized.length >= Math.min(maxSymbols, 8)) break;
-    add(asset.symbol);
+  try {
+    const assets = await listInvestmentAssets();
+    assets.forEach((asset) => add(asset.symbol));
+  } catch {
+    INVESTMENT_ASSETS.forEach((asset) => add(asset.symbol));
   }
 
   return prioritized.slice(0, maxSymbols);
