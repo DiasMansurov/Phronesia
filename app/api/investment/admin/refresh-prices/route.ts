@@ -27,8 +27,8 @@ export async function POST(request: Request) {
     symbol = String(form?.get("symbol") ?? "");
   }
 
-  const selected = symbol.trim() ? await refreshPriceForSymbol(symbol.trim()) : null;
-  const featured = mode === "featured" || mode === "featured_and_held" ? await refreshFeaturedAssetPrices() : [];
+  const selected = symbol.trim() ? await refreshPriceForSymbol(symbol.trim(), { force: true }) : null;
+  const featured = mode === "featured" || mode === "featured_and_held" ? await refreshFeaturedAssetPrices({ force: true }) : [];
   const held = mode === "held" || mode === "featured_and_held" ? await refreshHeldAssetPrices() : [];
   const used = mode === "used" ? await refreshUsedAssetPrices() : [];
   const portfolios = await recalculatePortfolios();

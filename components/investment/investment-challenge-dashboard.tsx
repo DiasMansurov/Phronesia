@@ -42,6 +42,11 @@ type RefreshPricesPayload = {
     apiLimitReached?: boolean;
     error?: string;
     message?: string;
+    providerCalled?: boolean;
+    cacheFresh?: boolean;
+    cacheAgeSeconds?: number | null;
+    nextAllowedRefreshAt?: string | null;
+    secondsUntilRefreshAllowed?: number | null;
   }>;
   quotes?: InvestmentAssetQuote[];
   error?: string;
@@ -85,6 +90,37 @@ function featuredQuotes(): InvestmentAssetQuote[] {
 function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) {
   const filtered = quotes.filter((quote) => quote.symbol !== next.symbol);
   return [next, ...filtered];
+}
+
+function quoteHasSavedPrice(quote?: InvestmentAssetQuote | null) {
+  return Boolean(
+    quote &&
+      quote.priceAvailable &&
+      quote.priceSource !== "reference" &&
+      Number.isFinite(quote.latestClose) &&
+      quote.latestClose > 0
+  );
+}
+
+function minutesUntilRefresh(seconds?: number | null) {
+  if (!seconds || seconds <= 0) return "now";
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function priceFetchMessage(payload: {
+  providerCalled?: boolean;
+  secondsUntilRefreshAllowed?: number | null;
+  quote?: InvestmentAssetQuote | null;
+}) {
+  if (payload.providerCalled) return "Price refreshed.";
+  if (payload.providerCalled === false) {
+    return `Using saved price. Next refresh available in ${minutesUntilRefresh(payload.secondsUntilRefreshAllowed ?? payload.quote?.secondsUntilRefreshAllowed)}.`;
+  }
+  if (payload.quote?.priceAvailable) {
+    return `Using saved price. Next refresh available in ${minutesUntilRefresh(payload.secondsUntilRefreshAllowed ?? payload.quote.secondsUntilRefreshAllowed)}.`;
+  }
+  return "No saved price yet. Click Fetch price.";
 }
 
 export function InvestmentChallengeDashboard({
@@ -327,62 +363,40 @@ export function InvestmentChallengeDashboard({
     }
   }
 
-  async function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
-    const hasOptimisticPrice = Boolean(asset.priceAvailable || asset.latestClose || asset.referencePrice);
-    const optimistic: InvestmentAssetQuote = {
-      ...asset,
-      latestClose: asset.latestClose ?? asset.referencePrice,
-      priceDate: asset.priceDate ?? null,
-      provider: "search",
-      priceAvailable: Boolean(asset.priceAvailable),
-      priceSource: hasOptimisticPrice ? "reference" : "unavailable",
-      priceMessage: hasOptimisticPrice
-        ? "Checking saved cache and the approved MarketData.app stock price endpoint..."
-        : "Checking latest stock price..."
-    };
-    setSymbol(asset.symbol);
+  function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
+    const normalizedSymbol = asset.symbol.toUpperCase();
+    const savedQuote =
+      (account?.quotes ?? []).find((quote) => quote.symbol === normalizedSymbol && quoteHasSavedPrice(quote)) ??
+      market.quotes.find((quote) => quote.symbol === normalizedSymbol && quoteHasSavedPrice(quote)) ??
+      (quoteHasSavedPrice(asset as InvestmentAssetQuote) ? (asset as InvestmentAssetQuote) : null);
+    const selected: InvestmentAssetQuote =
+      savedQuote ??
+      ({
+        ...asset,
+        symbol: normalizedSymbol,
+        latestClose: 0,
+        priceDate: asset.priceDate ?? null,
+        provider: "unavailable",
+        priceAvailable: false,
+        priceSource: "unavailable",
+        priceMessage: "No saved price yet. Click Fetch price.",
+        fetchedAt: null,
+        cacheStatus: "missing",
+        providerCalled: false,
+        cacheFresh: false,
+        cacheAgeSeconds: null,
+        nextAllowedRefreshAt: null,
+        secondsUntilRefreshAllowed: null
+      } satisfies InvestmentAssetQuote);
+
+    setSymbol(normalizedSymbol);
     setHasSelectedAsset(true);
     setAssetQuery("");
-    setSelectedQuote(optimistic);
+    setSelectedQuote(selected);
     setAssetResults([]);
-    setAssetSearchStatus("Checking latest stock price...");
-    setPriceLoading(true);
-
-    try {
-      const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(asset.symbol)}`, {
-        cache: "no-store"
-      });
-      const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string };
-      if (response.ok && data.ok && data.quote) {
-        setSelectedQuote(data.quote);
-        setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
-        setAssetSearchStatus("");
-      } else {
-        const reason = data.reason ?? "MarketData.app stock price unavailable.";
-        setSelectedQuote({
-          ...optimistic,
-          latestClose: 0,
-          priceAvailable: false,
-          provider: "unavailable",
-          priceSource: "unavailable",
-          priceMessage: reason
-        });
-        setAssetSearchStatus(data.reason ?? "No saved price yet. Select the asset to fetch the latest price.");
-      }
-    } catch {
-      const reason = "No saved price yet. Select the asset to fetch the latest price.";
-      setSelectedQuote({
-        ...optimistic,
-        latestClose: 0,
-        priceAvailable: false,
-        provider: "unavailable",
-        priceSource: "unavailable",
-        priceMessage: reason
-      });
-      setAssetSearchStatus(reason);
-    } finally {
-      setPriceLoading(false);
-    }
+    setPriceLoading(false);
+    setAssetSearchStatus(savedQuote ? "Asset selected. Using saved price if available." : "No saved price yet. Click Fetch price.");
+    showToast("Asset selected. Using saved price if available.", "info");
   }
 
   function applySelectedQuote(nextQuote: InvestmentAssetQuote) {
@@ -400,11 +414,18 @@ export function InvestmentChallengeDashboard({
     setAssetSearchStatus(`${actionLabel} ${symbol} price from the backend endpoint...`);
     try {
       const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
-      const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string; error?: string };
+      const data = (await response.json()) as {
+        ok?: boolean;
+        quote?: InvestmentAssetQuote;
+        reason?: string;
+        error?: string;
+        providerCalled?: boolean;
+        secondsUntilRefreshAllowed?: number | null;
+      };
 
       if (response.ok && data.ok && data.quote?.priceAvailable && data.quote.latestClose > 0) {
         applySelectedQuote(data.quote);
-        showToast(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`, "success");
+        showToast(`${priceFetchMessage({ providerCalled: data.providerCalled ?? data.quote.providerCalled, secondsUntilRefreshAllowed: data.secondsUntilRefreshAllowed, quote: data.quote })} ${data.quote.symbol}: ${formatUsd(data.quote.latestClose)}.`, "success");
         setAssetSearchStatus("");
         return;
       }
@@ -444,7 +465,9 @@ export function InvestmentChallengeDashboard({
         const refreshedSelected = data.quotes.find((quote) => quote.symbol === symbol);
         if (refreshedSelected) setSelectedQuote(refreshedSelected);
       }
-      const resultMessage = data.result?.message ?? `${symbol} refreshed.`;
+      const resultMessage = data.result?.price
+        ? `${priceFetchMessage({ providerCalled: data.result.providerCalled, secondsUntilRefreshAllowed: data.result.secondsUntilRefreshAllowed })} ${symbol}: ${formatUsd(data.result.price)}.`
+        : data.result?.message ?? `${symbol} refreshed.`;
       showToast(resultMessage, "success");
       setAssetSearchStatus("");
       if (account) void loadAccount(account.account.id);
@@ -714,7 +737,7 @@ export function InvestmentChallengeDashboard({
                 type="button"
                 onClick={() => void selectAsset({ symbol: typedTickerCandidate, name: typedTickerCandidate, type: "Stock", theme: "US-listed asset", referencePrice: 0, region: "United States", currency: "USD", exchange: null, featured: false })}
               >
-                Use ticker {typedTickerCandidate} →
+                Select ticker {typedTickerCandidate}
               </button>
             )}
 
