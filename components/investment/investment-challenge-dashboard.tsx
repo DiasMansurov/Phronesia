@@ -734,16 +734,6 @@ export function InvestmentChallengeDashboard({
               </>
             )}
 
-            {hasSelectedAsset && (
-              <div className="t-price-actions">
-                <button className="t-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
-                  Fetch price
-                </button>
-                <button className="t-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
-                  Refresh
-                </button>
-              </div>
-            )}
           </aside>
 
           {/* Center column: Trade panel */}
