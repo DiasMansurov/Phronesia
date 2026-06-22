@@ -938,23 +938,6 @@ export function InvestmentChallengeDashboard({
 
             {/* Competition */}
             <div className="t-section-divider" />
-            <div className="t-section-label">Competition</div>
-
-            <div className="t-comp-rows">
-              <div className="t-comp-row">
-                <span>Start</span>
-                <span>{activeCompetition?.startAt ? new Date(activeCompetition.startAt).toLocaleDateString() : "—"}</span>
-              </div>
-              <div className="t-comp-row">
-                <span>End</span>
-                <span>{activeCompetition?.endAt ? new Date(activeCompetition.endAt).toLocaleDateString() : "—"}</span>
-              </div>
-              <div className="t-comp-row">
-                <span>Starting cash</span>
-                <span>{formatUsd(portfolio?.startingCash ?? INVESTMENT_STARTING_CASH)}</span>
-              </div>
-            </div>
-            <p className="t-comp-scoring">40% return · 20% risk-adjusted · 15% diversification · 15% thesis · 10% drawdown</p>
 
             <button className="t-right-btn" type="button" onClick={() => router.push("/investment-challenge/rules")}>Rules</button>
             <button className="t-right-btn t-thesis-btn" type="button" onClick={() => router.push("/investment/thesis")}>Thesis</button>
