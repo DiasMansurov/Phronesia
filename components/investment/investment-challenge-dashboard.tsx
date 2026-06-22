@@ -177,6 +177,25 @@ export function InvestmentChallengeDashboard({
     };
   }, [assetQuery]);
 
+  useEffect(() => {
+    const FIFTEEN_MIN = 15 * 60 * 1000;
+    const interval = setInterval(async () => {
+      await loadMarket();
+      if (hasSelectedAsset && symbol) {
+        try {
+          const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+          const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote };
+          if (response.ok && data.ok && data.quote) {
+            applySelectedQuote(data.quote);
+          }
+        } catch {
+          // silent fail — prices will update on next cycle
+        }
+      }
+    }, FIFTEEN_MIN);
+    return () => clearInterval(interval);
+  }, [hasSelectedAsset, symbol]);
+
   const quotes = account?.quotes ?? market.quotes;
   const marketStatus = account?.marketStatus ?? market.marketStatus;
   const activeCompetition = account?.competition ?? resolvedCompetition ?? null;
@@ -734,16 +753,6 @@ export function InvestmentChallengeDashboard({
               </>
             )}
 
-            {hasSelectedAsset && (
-              <div className="t-price-actions">
-                <button className="t-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
-                  Fetch price
-                </button>
-                <button className="t-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
-                  Refresh
-                </button>
-              </div>
-            )}
           </aside>
 
           {/* Center column: Trade panel */}
