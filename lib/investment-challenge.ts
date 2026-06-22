@@ -49,11 +49,6 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   fetchedAt?: string | null;
   currency?: string;
   cacheStatus?: "fresh" | "cached" | "stale" | "missing";
-  providerCalled?: boolean;
-  cacheFresh?: boolean;
-  cacheAgeSeconds?: number | null;
-  nextAllowedRefreshAt?: string | null;
-  secondsUntilRefreshAllowed?: number | null;
 };
 
 export type InvestmentAssetSearchResult = InvestmentAsset & {

@@ -263,31 +263,9 @@ const TEENVESTOR_CODE = "Teenvestor.school";
 const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
 const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
-const STUDENT_PRICE_UNAVAILABLE_MESSAGE =
-  "Price is not available yet. Please wait for the next scheduled update.";
-const configuredMarketDataMinRefreshSeconds = Number(process.env.MARKET_DATA_MIN_REFRESH_SECONDS ?? "900");
-const MARKET_DATA_MIN_REFRESH_SECONDS =
-  Number.isFinite(configuredMarketDataMinRefreshSeconds) && configuredMarketDataMinRefreshSeconds > 0
-    ? Math.max(60, configuredMarketDataMinRefreshSeconds)
-    : 900;
-const MARKET_DATA_CLOSED_REFRESH_SECONDS = Math.max(12 * 60 * 60, MARKET_DATA_MIN_REFRESH_SECONDS);
-const MARKET_DATA_DISABLE_AUTO_REFRESH = /^(1|true|yes)$/i.test(process.env.MARKET_DATA_DISABLE_AUTO_REFRESH ?? "");
-const MARKET_DATA_STUDENT_PROVIDER_DISABLED = /^(1|true|yes)$/i.test(process.env.MARKET_DATA_STUDENT_PROVIDER_DISABLED ?? "true");
+const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
 const TEAM_PASSWORD_ITERATIONS = 210000;
-const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "300") || 300);
-const INVESTMENT_CRON_CORE_SYMBOLS = [
-  "AAPL",
-  "AMD",
-  "AMZN",
-  "BAC",
-  "COST",
-  "DIS",
-  "GLD",
-  "SPY",
-  "TSLA",
-  "MSFT",
-  "QQQ"
-];
+const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
 type MarketPriceResult =
@@ -322,11 +300,6 @@ export type LatestClosePriceResult = {
   cached: boolean;
   error: string | null;
   fetchedAt?: string | null;
-  providerCalled?: boolean;
-  cacheFresh?: boolean;
-  cacheAgeSeconds?: number | null;
-  nextAllowedRefreshAt?: string | null;
-  secondsUntilRefreshAllowed?: number | null;
 };
 
 export type InvestmentPriceDebugResult = {
@@ -339,9 +312,6 @@ export type InvestmentPriceDebugResult = {
   cachedPrice: number | null;
   cachedFetchedAt: string | null;
   cacheFresh: boolean;
-  cacheAgeSeconds?: number | null;
-  nextAllowedRefreshAt?: string | null;
-  secondsUntilRefreshAllowed?: number | null;
   calledMarketDataApp: boolean;
   endpointUsed?: string | null;
   requestUrlWithoutToken?: string | null;
@@ -812,34 +782,12 @@ function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string
   };
 }
 
-function cachedQuoteToMarketPriceResult(symbol: string, cached: NonNullable<Awaited<ReturnType<typeof getCachedPrice>>>): MarketPriceResult {
-  return {
-    ok: true,
-    symbol: normalizeSymbol(symbol),
-    priceDate: cached.priceDate ?? todayIsoInEt(),
-    closePrice: cached.latestClose,
-    adjustedClosePrice: cached.latestClose,
-    volume: 0,
-    provider: "cache",
-    source: "cache",
-    message: cached.priceMessage ?? "Using saved price.",
-    raw: { cached: true, fetchedAt: cached.fetchedAt ?? null }
-  };
-}
-
-export async function getMarketDataStockPrice(symbol: string, options: { force?: boolean; reason?: string } = {}): Promise<MarketPriceResult> {
+export async function getMarketDataStockPrice(symbol: string): Promise<MarketPriceResult> {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) return marketDataFailure(normalized, "Symbol not found.", "symbol_not_found");
-  const cached = await getCachedPrice(normalized).catch(() => null);
-  const diagnostics = priceCacheDiagnostics(cached);
-  if (cached && !options.force && diagnostics.cacheFresh) {
-    logMarketDataCacheHit(normalized, diagnostics);
-    return cachedQuoteToMarketPriceResult(normalized, cached);
-  }
   const apiKey = getMarketDataApiKey();
   if (!apiKey) return marketDataFailure(normalized, "MarketData.app API key is not configured.");
 
-  logMarketDataProviderCall(normalized, options.reason ?? (cached ? "direct_stale_cache" : "direct_missing_cache"), diagnostics);
   const result = await fetchMarketDataApp(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalized)}/`);
   if (!result.data) {
     return marketDataFailure(
@@ -868,7 +816,7 @@ export async function getMarketDataStockPrice(symbol: string, options: { force?:
   return parseMarketDataStockPricePayload(result.data, normalized, 0, result.responseTextPreview);
 }
 
-export async function getMarketDataStockPrices(symbols: string[], options: { force?: boolean; reason?: string } = {}): Promise<Record<string, MarketPriceResult>> {
+export async function getMarketDataStockPrices(symbols: string[]): Promise<Record<string, MarketPriceResult>> {
   const uniqueSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(isSupportedSymbol)));
   if (!uniqueSymbols.length) return {};
   const apiKey = getMarketDataApiKey();
@@ -876,77 +824,49 @@ export async function getMarketDataStockPrices(symbols: string[], options: { for
     return Object.fromEntries(uniqueSymbols.map((symbol) => [symbol, marketDataFailure(symbol, "MarketData.app API key is not configured.")]));
   }
 
-  const cachedResults: Record<string, MarketPriceResult> = {};
-  const symbolsToFetch: string[] = [];
-  for (const symbol of uniqueSymbols) {
-    const cached = await getCachedPrice(symbol).catch(() => null);
-    const diagnostics = priceCacheDiagnostics(cached);
-    if (cached && !options.force && diagnostics.cacheFresh) {
-      logMarketDataCacheHit(symbol, diagnostics);
-      cachedResults[symbol] = cachedQuoteToMarketPriceResult(symbol, cached);
-    } else {
-      logMarketDataProviderCall(symbol, options.reason ?? (cached ? "batch_stale_cache" : "batch_missing_cache"), diagnostics);
-      symbolsToFetch.push(symbol);
-    }
-  }
-
-  if (!symbolsToFetch.length) return cachedResults;
-
-  const response = await fetchMarketDataApp(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/`, { symbols: symbolsToFetch.join(",") });
+  const response = await fetchMarketDataApp(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/`, { symbols: uniqueSymbols.join(",") });
   if (!response.data) {
-    return {
-      ...cachedResults,
-      ...Object.fromEntries(
-        symbolsToFetch.map((symbol) => [
+    return Object.fromEntries(
+      uniqueSymbols.map((symbol) => [
+        symbol,
+        marketDataFailure(
           symbol,
-          marketDataFailure(
-            symbol,
-            response.errorMessage ?? "MarketData.app returned a non-JSON response.",
-            "temporary_unavailable",
-            {
-              bearerAttempt: response.bearerAttempt,
-              queryTokenAttempt: response.queryTokenAttempt,
-              errorName: response.errorName,
-              errorCause: response.errorCause
-            },
-            response.responseTextPreview
-          )
-        ])
-      )
-    };
+          response.errorMessage ?? "MarketData.app returned a non-JSON response.",
+          "temporary_unavailable",
+          {
+            bearerAttempt: response.bearerAttempt,
+            queryTokenAttempt: response.queryTokenAttempt,
+            errorName: response.errorName,
+            errorCause: response.errorCause
+          },
+          response.responseTextPreview
+        )
+      ])
+    );
   }
   if (!response.responseOk) {
     const reason = response.httpStatus === 402 || response.httpStatus === 429 ? "API credit limit reached. Using saved prices when available." : "Market data temporarily unavailable.";
-    return {
-      ...cachedResults,
-      ...Object.fromEntries(
-        symbolsToFetch.map((symbol) => [
-          symbol,
-          marketDataFailure(
-            symbol,
-            reason,
-            response.httpStatus === 402 || response.httpStatus === 429 ? "rate_limit" : "temporary_unavailable",
-            response.data,
-            response.responseTextPreview
-          )
-        ])
-      )
-    };
+    return Object.fromEntries(
+      uniqueSymbols.map((symbol) => [
+        symbol,
+        marketDataFailure(symbol, reason, response.httpStatus === 402 || response.httpStatus === 429 ? "rate_limit" : "temporary_unavailable", response.data, response.responseTextPreview)
+      ])
+    );
   }
 
   const symbolsPayload = response.data.symbol;
-  const result: Record<string, MarketPriceResult> = { ...cachedResults };
+  const result: Record<string, MarketPriceResult> = {};
   if (Array.isArray(symbolsPayload)) {
     symbolsPayload.forEach((rawSymbol, index) => {
-      const parsed = parseMarketDataStockPricePayload(response.data!, String(rawSymbol ?? symbolsToFetch[index] ?? ""), index, response.responseTextPreview);
+      const parsed = parseMarketDataStockPricePayload(response.data!, String(rawSymbol ?? uniqueSymbols[index] ?? ""), index, response.responseTextPreview);
       result[parsed.symbol] = parsed;
     });
   } else {
-    const parsed = parseMarketDataStockPricePayload(response.data, symbolsToFetch[0], 0, response.responseTextPreview);
+    const parsed = parseMarketDataStockPricePayload(response.data, uniqueSymbols[0], 0, response.responseTextPreview);
     result[parsed.symbol] = parsed;
   }
 
-  for (const symbol of symbolsToFetch) {
+  for (const symbol of uniqueSymbols) {
     if (!result[symbol]) result[symbol] = marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable", response.data);
   }
   return result;
@@ -963,6 +883,8 @@ export async function getMarketDataAppBatchQuotes(symbols: string[]): Promise<Re
 export async function searchMarketDataAppAsset(query: string): Promise<InvestmentAssetSearchResult[]> {
   const normalized = normalizeSymbol(query);
   if (!isSupportedSymbol(normalized)) return [];
+  const quote = await getMarketDataStockPrice(normalized);
+  if (!quote.ok) return [];
   const featured = getInvestmentAsset(normalized);
   return [
     {
@@ -970,15 +892,15 @@ export async function searchMarketDataAppAsset(query: string): Promise<Investmen
       name: featured?.name ?? normalized,
       type: featured?.type ?? "Stock",
       theme: featured?.theme ?? "US-listed asset",
-      referencePrice: featured?.referencePrice ?? 0,
+      referencePrice: quote.closePrice,
       region: "United States",
       currency: "USD",
       exchange: featured?.exchange ?? null,
       featured: Boolean(featured?.featured),
       matchScore: 0.85,
-      priceAvailable: false,
-      latestClose: null,
-      priceDate: null
+      priceAvailable: true,
+      latestClose: quote.closePrice,
+      priceDate: quote.priceDate
     }
   ];
 }
@@ -989,8 +911,7 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
   const apiKey = getMarketDataApiKey();
   const cached = await getCachedPrice(normalized).catch(() => null);
   const marketStatus = getMarketStatus();
-  const cacheDiagnostics = priceCacheDiagnostics(cached, marketStatus);
-  const cacheFresh = cacheDiagnostics.cacheFresh;
+  const cacheFresh = cached ? isCachedQuoteFresh(cached, marketStatus) : false;
   const baseDebug = {
     symbol: normalized,
     provider,
@@ -1001,9 +922,6 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     cachedPrice: cached?.latestClose ?? null,
     cachedFetchedAt: cached?.fetchedAt ?? null,
     cacheFresh,
-    cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-    nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-    secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
     calledMarketDataApp: false,
     endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
     requestUrlWithoutToken: marketDataAppStockPriceUrlWithoutToken(normalized),
@@ -1033,19 +951,6 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     return { ...baseDebug, error: "MarketData.app API key is not configured.", errorMessage: "MarketData.app API key is not configured.", marketDataAppStatus: "missing_api_key" };
   }
 
-  if (cached && cacheFresh) {
-    logMarketDataCacheHit(normalized, cacheDiagnostics);
-    return {
-      ...baseDebug,
-      marketDataAppStatus: "skipped_cache_hit",
-      finalPrice: cached.latestClose,
-      tradingDay: cached.priceDate,
-      source: "cache",
-      error: null
-    };
-  }
-
-  logMarketDataProviderCall(normalized, cached ? "debug_stale_cache" : "debug_missing_cache", cacheDiagnostics);
   const calledMarketDataApp = true;
   const response = await fetchMarketDataApp(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalized)}/`);
 
@@ -1497,10 +1402,10 @@ export async function getAssetQuote(symbol: string) {
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? getInvestmentAsset(normalized) ?? null;
   await recordInvestmentAssetEvent(normalized, "select");
-  const latest = await getCachedAssetQuote(normalized, candidate ?? undefined);
+  const latest = await getLatestCloseQuote(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
 
   if (!candidate && !latest.priceAvailable) {
-    return { ok: false as const, asset: candidate, price: latest, reason: latest.priceMessage ?? STUDENT_PRICE_UNAVAILABLE_MESSAGE };
+    return { ok: false as const, reason: latest.priceMessage ?? "Symbol not found." };
   }
 
   const asset =
@@ -1524,54 +1429,6 @@ export async function getAssetQuote(symbol: string) {
   return { ok: true as const, asset, price: latest };
 }
 
-export async function getCachedAssetQuote(symbol: string, assetInput?: InvestmentAsset | null) {
-  const normalized = normalizeSymbol(symbol);
-  if (!isSupportedSymbol(normalized)) {
-    return {
-      latestClose: 0,
-      priceDate: null,
-      provider: "unavailable",
-      priceAvailable: false,
-      priceSource: "unavailable" as const,
-      priceMessage: "Invalid ticker format.",
-      fetchedAt: null,
-      currency: "USD",
-      cacheStatus: "missing" as const,
-      providerCalled: false,
-      cacheFresh: false,
-      cacheAgeSeconds: null,
-      nextAllowedRefreshAt: null,
-      secondsUntilRefreshAllowed: null
-    };
-  }
-
-  const cached = await getCachedPrice(normalized).catch(() => null);
-  if (cached && cached.priceAvailable && Number.isFinite(cached.latestClose) && cached.latestClose > 0) {
-    return {
-      ...cached,
-      providerCalled: false,
-      priceMessage: cached.priceMessage ?? "Using latest saved server price."
-    };
-  }
-
-  return {
-    latestClose: 0,
-    priceDate: null,
-    provider: "unavailable",
-    priceAvailable: false,
-    priceSource: "unavailable" as const,
-    priceMessage: STUDENT_PRICE_UNAVAILABLE_MESSAGE,
-    fetchedAt: null,
-    currency: assetInput?.currency ?? "USD",
-    cacheStatus: "missing" as const,
-    providerCalled: false,
-    cacheFresh: false,
-    cacheAgeSeconds: null,
-    nextAllowedRefreshAt: null,
-    secondsUntilRefreshAllowed: null
-  };
-}
-
 export async function validateAsset(symbol: string) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) {
@@ -1582,9 +1439,9 @@ export async function validateAsset(symbol: string) {
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? undefined;
   await recordInvestmentAssetEvent(normalized, "trade");
-  const latest = await getCachedAssetQuote(normalized, candidate);
+  const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
-    return { ok: false as const, reason: latest.priceMessage ?? STUDENT_PRICE_UNAVAILABLE_MESSAGE };
+    return { ok: false as const, reason: latest.priceMessage ?? "MarketData.app stock price unavailable." };
   }
 
   const asset =
@@ -1829,10 +1686,8 @@ async function resolveLatestClosePrice(
 
   const stored = await getCachedPrice(normalized);
   const marketStatus = getMarketStatus();
-  const cacheDiagnostics = priceCacheDiagnostics(stored, marketStatus);
-  const cacheFresh = cacheDiagnostics.cacheFresh;
-  if (stored && cacheFresh) {
-    logMarketDataCacheHit(normalized, cacheDiagnostics);
+  const cacheFresh = stored ? isCachedQuoteFresh(stored, marketStatus) : false;
+  if (stored && !refresh && cacheFresh) {
     return {
       result: {
         symbol: normalized,
@@ -1841,21 +1696,9 @@ async function resolveLatestClosePrice(
         source: "cache" as const,
         cached: true,
         error: null,
-        fetchedAt: stored.fetchedAt ?? null,
-        providerCalled: false,
-        cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
+        fetchedAt: stored.fetchedAt ?? null
       },
-      quote: {
-        ...stored,
-        providerCalled: false,
-        cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
-      },
+      quote: stored,
       debug: {
         symbol: normalized,
         provider: preferredMarketDataProvider(),
@@ -1864,9 +1707,6 @@ async function resolveLatestClosePrice(
         cachedPrice: stored.latestClose,
         cachedFetchedAt: stored.fetchedAt ?? null,
         cacheFresh: true,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
         calledMarketDataApp: false,
         endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus: "skipped_cache_hit",
@@ -1879,113 +1719,6 @@ async function resolveLatestClosePrice(
     };
   }
 
-  if (MARKET_DATA_STUDENT_PROVIDER_DISABLED && !refresh) {
-    if (stored) {
-      logMarketDataCacheHit(normalized, cacheDiagnostics);
-      const quote = {
-        ...stored,
-        priceMessage: `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
-        cacheStatus: stored.cacheStatus ?? "cached",
-        providerCalled: false,
-        cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
-      };
-      return {
-        result: {
-          symbol: normalized,
-          price: stored.latestClose,
-          tradingDay: stored.priceDate,
-          source: "cache" as const,
-          cached: true,
-          error: null,
-          fetchedAt: stored.fetchedAt ?? null,
-          providerCalled: false,
-          cacheFresh,
-          cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-          nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-          secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
-        },
-        quote,
-        debug: {
-          symbol: normalized,
-          provider: preferredMarketDataProvider(),
-          hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
-          cacheFound: true,
-          cachedPrice: stored.latestClose,
-          cachedFetchedAt: stored.fetchedAt ?? null,
-          cacheFresh,
-          cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-          nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-          secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
-          calledMarketDataApp: false,
-          endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
-          marketDataAppStatus: "student_provider_disabled_cache",
-          finalPrice: stored.latestClose,
-          tradingDay: stored.priceDate,
-          source: "cache" as const,
-          responseTextPreview: null,
-          error: null
-        } satisfies InvestmentPriceDebugResult
-      };
-    }
-
-    return {
-      result: {
-        symbol: normalized,
-        price: null,
-        tradingDay: null,
-        source: null,
-        cached: false,
-        error: STUDENT_PRICE_UNAVAILABLE_MESSAGE,
-        fetchedAt: null,
-        providerCalled: false,
-        cacheFresh: false,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
-      },
-      quote: {
-        latestClose: 0,
-        priceDate: null,
-        provider: "unavailable",
-        priceAvailable: false,
-        priceSource: "unavailable" as const,
-        priceMessage: STUDENT_PRICE_UNAVAILABLE_MESSAGE,
-        fetchedAt: null,
-        currency: asset?.currency ?? "USD",
-        cacheStatus: "missing" as const,
-        providerCalled: false,
-        cacheFresh: false,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
-      },
-      debug: {
-        symbol: normalized,
-        provider: preferredMarketDataProvider(),
-        hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
-        cacheFound: false,
-        cachedPrice: null,
-        cachedFetchedAt: null,
-        cacheFresh: false,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
-        calledMarketDataApp: false,
-        endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
-        marketDataAppStatus: "student_provider_disabled_missing_cache",
-        finalPrice: null,
-        tradingDay: null,
-        source: null,
-        responseTextPreview: null,
-        error: STUDENT_PRICE_UNAVAILABLE_MESSAGE
-      } satisfies InvestmentPriceDebugResult
-    };
-  }
-
-  logMarketDataProviderCall(normalized, stored ? (refresh ? "explicit_refresh_stale_cache" : "stale_cache") : "missing_cache", cacheDiagnostics);
   const marketData = await getMarketDataStockPrice(normalized);
   calledMarketDataApp = true;
   marketDataAppStatus = marketData.ok ? "ok" : providerStatus(marketData);
@@ -2005,12 +1738,7 @@ async function resolveLatestClosePrice(
       priceMessage: cacheSaveError ? `${marketData.message} Cache save failed, but the live price is shown for this session.` : marketData.message,
       fetchedAt: new Date().toISOString(),
       currency: asset?.currency ?? "USD",
-      cacheStatus: "fresh" as const,
-      providerCalled: true,
-      cacheFresh: false,
-      cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: new Date(Date.now() + priceCacheTtlSeconds(marketStatus) * 1000).toISOString(),
-      secondsUntilRefreshAllowed: priceCacheTtlSeconds(marketStatus)
+      cacheStatus: "fresh" as const
     };
     return {
       result: {
@@ -2020,12 +1748,7 @@ async function resolveLatestClosePrice(
         source: "marketdata_app" as const,
         cached: false,
         error: null,
-        fetchedAt: quote.fetchedAt,
-        providerCalled: true,
-        cacheFresh: false,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: quote.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: quote.secondsUntilRefreshAllowed
+        fetchedAt: quote.fetchedAt
       },
       quote,
       debug: {
@@ -2036,9 +1759,6 @@ async function resolveLatestClosePrice(
         cachedPrice: stored?.latestClose ?? null,
         cachedFetchedAt: stored?.fetchedAt ?? null,
         cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: quote.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: quote.secondsUntilRefreshAllowed,
         calledMarketDataApp,
         endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus,
@@ -2052,17 +1772,11 @@ async function resolveLatestClosePrice(
   }
 
   if (stored) {
-    logMarketDataCacheHit(normalized, cacheDiagnostics);
     const prefix = marketData.ok ? "Using saved price." : marketData.message;
     const quote = {
       ...stored,
       priceMessage: `${prefix} Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
-      cacheStatus: stored.cacheStatus ?? (cacheFresh ? "fresh" : "stale"),
-      providerCalled: calledMarketDataApp,
-      cacheFresh,
-      cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-      secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
+      cacheStatus: stored.cacheStatus ?? (cacheFresh ? "fresh" : "stale")
     };
     return {
       result: {
@@ -2072,12 +1786,7 @@ async function resolveLatestClosePrice(
         source: "cache" as const,
         cached: true,
         error: quote.priceMessage,
-        fetchedAt: stored.fetchedAt ?? null,
-        providerCalled: calledMarketDataApp,
-        cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
+        fetchedAt: stored.fetchedAt ?? null
       },
       quote,
       debug: {
@@ -2088,9 +1797,6 @@ async function resolveLatestClosePrice(
         cachedPrice: stored.latestClose,
         cachedFetchedAt: stored.fetchedAt ?? null,
         cacheFresh,
-        cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
         calledMarketDataApp,
         endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus,
@@ -2121,12 +1827,7 @@ async function resolveLatestClosePrice(
       source: null,
       cached: false,
       error,
-      fetchedAt: null,
-      providerCalled: calledMarketDataApp,
-      cacheFresh: false,
-      cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-      secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
+      fetchedAt: null
     },
     quote: {
       latestClose: 0,
@@ -2137,12 +1838,7 @@ async function resolveLatestClosePrice(
       priceMessage: error,
       fetchedAt: null,
       currency: asset?.currency ?? "USD",
-      cacheStatus: "missing" as const,
-      providerCalled: calledMarketDataApp,
-      cacheFresh: false,
-      cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-      secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed
+      cacheStatus: "missing" as const
     },
     debug: {
       symbol: normalized,
@@ -2152,9 +1848,6 @@ async function resolveLatestClosePrice(
       cachedPrice: null,
       cachedFetchedAt: null,
       cacheFresh: false,
-      cacheAgeSeconds: cacheDiagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: cacheDiagnostics.nextAllowedRefreshAt,
-      secondsUntilRefreshAllowed: cacheDiagnostics.secondsUntilRefreshAllowed,
       calledMarketDataApp,
       endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
       marketDataAppStatus,
@@ -2206,12 +1899,7 @@ async function getLatestCloseQuote(
       : "No saved price yet. Select the asset to fetch the latest price.",
     fetchedAt: null,
     currency: asset?.currency ?? "USD",
-    cacheStatus: "missing" as const,
-    providerCalled: resolved.result.providerCalled ?? false,
-    cacheFresh: resolved.result.cacheFresh ?? false,
-    cacheAgeSeconds: resolved.result.cacheAgeSeconds ?? null,
-    nextAllowedRefreshAt: resolved.result.nextAllowedRefreshAt ?? null,
-    secondsUntilRefreshAllowed: resolved.result.secondsUntilRefreshAllowed ?? null
+    cacheStatus: "missing" as const
   };
 }
 
@@ -2224,18 +1912,13 @@ export async function getCachedPrice(symbol: string) {
   const stored = await getStoredLatestPrice(normalizeSymbol(symbol));
   if (!stored) return null;
   const marketStatus = getMarketStatus();
-  const diagnostics = priceCacheDiagnostics(stored, marketStatus);
+  const cacheFresh = isCachedQuoteFresh(stored, marketStatus);
   return {
     ...stored,
     provider: stored.provider || MARKETDATA_APP_PROVIDER,
     priceSource: "cache" as const,
-    cacheStatus: diagnostics.cacheFresh ? ("fresh" as const) : marketStatus.isOpen ? ("stale" as const) : ("cached" as const),
-    priceMessage: `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
-    providerCalled: false,
-    cacheFresh: diagnostics.cacheFresh,
-    cacheAgeSeconds: diagnostics.cacheAgeSeconds,
-    nextAllowedRefreshAt: diagnostics.nextAllowedRefreshAt,
-    secondsUntilRefreshAllowed: diagnostics.secondsUntilRefreshAllowed
+    cacheStatus: cacheFresh ? ("fresh" as const) : marketStatus.isOpen ? ("stale" as const) : ("cached" as const),
+    priceMessage: `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`
   };
 }
 
@@ -2396,60 +2079,16 @@ function marketPriceMapFromQuotes(quotes: InvestmentAssetQuote[]) {
   );
 }
 
-function priceCacheTtlSeconds(marketStatus = getMarketStatus()) {
-  return marketStatus.isOpen ? MARKET_DATA_MIN_REFRESH_SECONDS : MARKET_DATA_CLOSED_REFRESH_SECONDS;
-}
-
-function cacheAgeSeconds(stored: { fetchedAt?: string | null }) {
-  if (!stored.fetchedAt) return null;
-  const fetchedAt = Date.parse(stored.fetchedAt);
-  if (!Number.isFinite(fetchedAt)) return null;
-  return Math.max(0, Math.floor((Date.now() - fetchedAt) / 1000));
-}
-
-function priceCacheDiagnostics(
-  stored: { fetchedAt?: string | null; priceDate?: string | null } | null,
-  marketStatus = getMarketStatus()
-) {
-  const ageSeconds = stored ? cacheAgeSeconds(stored) : null;
-  const ttlSeconds = priceCacheTtlSeconds(marketStatus);
-  const cacheFresh = Boolean(
-    stored &&
-      (ageSeconds !== null
-        ? ageSeconds < ttlSeconds
-        : !marketStatus.isOpen && Boolean(stored.priceDate || stored.fetchedAt))
-  );
-  const secondsUntilRefreshAllowed = cacheFresh && ageSeconds !== null ? Math.max(0, ttlSeconds - ageSeconds) : 0;
-  const nextAllowedRefreshAt =
-    stored?.fetchedAt && ageSeconds !== null
-      ? new Date(Date.parse(stored.fetchedAt) + ttlSeconds * 1000).toISOString()
-      : null;
-
-  return {
-    cacheFresh,
-    cacheAgeSeconds: ageSeconds,
-    nextAllowedRefreshAt,
-    secondsUntilRefreshAllowed
-  };
-}
-
-function logMarketDataCacheHit(symbol: string, diagnostics: ReturnType<typeof priceCacheDiagnostics>) {
-  console.log(
-    `MARKETDATA_CACHE_HIT symbol=${normalizeSymbol(symbol)} cacheAgeSeconds=${diagnostics.cacheAgeSeconds ?? "unknown"} nextAllowedRefreshAt=${diagnostics.nextAllowedRefreshAt ?? "unknown"}`
-  );
-}
-
-function logMarketDataProviderCall(symbol: string, reason: string, diagnostics: ReturnType<typeof priceCacheDiagnostics>) {
-  console.log(
-    `MARKETDATA_PROVIDER_CALL symbol=${normalizeSymbol(symbol)} reason=${reason} cacheAgeSeconds=${diagnostics.cacheAgeSeconds ?? "missing"}`
-  );
-}
-
 function isCachedQuoteFresh(
   stored: { fetchedAt?: string | null; priceDate?: string | null },
   marketStatus = getMarketStatus()
 ) {
-  return priceCacheDiagnostics(stored, marketStatus).cacheFresh;
+  if (!stored.fetchedAt && !stored.priceDate) return false;
+  if (!marketStatus.isOpen) return Boolean(stored.priceDate || stored.fetchedAt);
+  if (!stored.fetchedAt) return false;
+  const fetchedAt = Date.parse(stored.fetchedAt);
+  if (!Number.isFinite(fetchedAt)) return false;
+  return Date.now() - fetchedAt < MARKETDATA_CACHE_FRESH_MS;
 }
 
 export async function savePriceToCache(
@@ -2488,7 +2127,6 @@ export async function savePriceToCache(
 
 export async function updateDailyPrices() {
   await ensureInvestmentSeedData();
-  if (MARKET_DATA_DISABLE_AUTO_REFRESH) return [];
   return refreshUsedAssetPrices(MAX_MARKETDATA_SYMBOLS_PER_CRON);
 }
 
@@ -2503,25 +2141,20 @@ export type InvestmentPriceRefreshResult = {
   apiLimitReached?: boolean;
   error?: string;
   message?: string;
-  providerCalled?: boolean;
-  cacheFresh?: boolean;
-  cacheAgeSeconds?: number | null;
-  nextAllowedRefreshAt?: string | null;
-  secondsUntilRefreshAllowed?: number | null;
 };
 
-export async function refreshFeaturedAssetPrices(options: { force?: boolean } = {}) {
+export async function refreshFeaturedAssetPrices() {
   await ensureInvestmentSeedData();
   const assets = (await listInvestmentAssets()).filter((asset) => asset.featured);
-  return refreshPriceCache(assets.map((asset) => asset.symbol), { force: Boolean(options.force), maxSymbols: assets.length });
+  return refreshPriceCache(assets.map((asset) => asset.symbol), { force: true, maxSymbols: assets.length });
 }
 
 export async function refreshFeaturedPrices() {
   return refreshFeaturedAssetPrices();
 }
 
-export async function refreshPriceForSymbol(symbol: string, options: { force?: boolean } = {}) {
-  const [result] = await refreshPriceCache([symbol], { force: Boolean(options.force) });
+export async function refreshPriceForSymbol(symbol: string) {
+  const [result] = await refreshPriceCache([symbol], { force: true });
   return result;
 }
 
@@ -2539,9 +2172,7 @@ export async function refreshPriceCache(
 
   for (const symbol of uniqueSymbols) {
     const cached = await getCachedPrice(symbol);
-    const diagnostics = priceCacheDiagnostics(cached, marketStatus);
-    if (cached && !options.force && diagnostics.cacheFresh) {
-      logMarketDataCacheHit(symbol, diagnostics);
+    if (cached && !options.force && isCachedQuoteFresh(cached, marketStatus)) {
       results.push({
         symbol,
         success: true,
@@ -2550,23 +2181,17 @@ export async function refreshPriceCache(
         priceDate: cached.priceDate,
         tradingDay: cached.priceDate,
         source: "cache",
-        providerCalled: false,
-        cacheFresh: diagnostics.cacheFresh,
-        cacheAgeSeconds: diagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: diagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: diagnostics.secondsUntilRefreshAllowed,
-        message: `Using saved price. Next refresh available in ${Math.ceil((diagnostics.secondsUntilRefreshAllowed ?? 0) / 60)} minutes.`
+        message: `Using saved price from ${cached.fetchedAt ? new Date(cached.fetchedAt).toLocaleString("en-US") : cached.priceDate}.`
       });
       continue;
     }
-    logMarketDataProviderCall(symbol, options.force ? "admin_force_refresh" : cached ? "refresh_stale_cache" : "refresh_missing_cache", diagnostics);
     symbolsToFetch.push(symbol);
   }
 
   if (!symbolsToFetch.length) return results;
 
   const providerResults = preferredMarketDataProvider() === MARKETDATA_APP_PROVIDER
-    ? await getMarketDataStockPrices(symbolsToFetch, { force: Boolean(options.force), reason: options.force ? "admin_force_refresh" : "refresh_price_cache" })
+    ? await getMarketDataStockPrices(symbolsToFetch)
     : Object.fromEntries(symbolsToFetch.map((symbol) => [symbol, marketDataFailure(symbol, "MarketData.app provider is not enabled.")]));
 
   for (const symbol of symbolsToFetch) {
@@ -2583,20 +2208,13 @@ export async function refreshPriceCache(
         tradingDay: providerResult.priceDate,
         source: providerResult.provider,
         apiLimitReached: false,
-        providerCalled: true,
-        cacheFresh: false,
-        cacheAgeSeconds: null,
-        nextAllowedRefreshAt: new Date(Date.now() + priceCacheTtlSeconds(marketStatus) * 1000).toISOString(),
-        secondsUntilRefreshAllowed: priceCacheTtlSeconds(marketStatus),
         message: providerResult.message
       });
       continue;
     }
 
     const cached = await getCachedPrice(symbol);
-    const diagnostics = priceCacheDiagnostics(cached, marketStatus);
     if (cached) {
-      logMarketDataCacheHit(symbol, diagnostics);
       results.push({
         symbol,
         success: true,
@@ -2606,11 +2224,6 @@ export async function refreshPriceCache(
         tradingDay: cached.priceDate,
         source: "cache",
         apiLimitReached: providerResult.code === "rate_limit",
-        providerCalled: true,
-        cacheFresh: diagnostics.cacheFresh,
-        cacheAgeSeconds: diagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: diagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: diagnostics.secondsUntilRefreshAllowed,
         error: providerResult.message,
         message: `${providerResult.message} Using saved price from ${cached.fetchedAt ? new Date(cached.fetchedAt).toLocaleString("en-US") : cached.priceDate}.`
       });
@@ -2620,11 +2233,6 @@ export async function refreshPriceCache(
         success: false,
         ok: false,
         apiLimitReached: providerResult.code === "rate_limit",
-        providerCalled: true,
-        cacheFresh: false,
-        cacheAgeSeconds: diagnostics.cacheAgeSeconds,
-        nextAllowedRefreshAt: diagnostics.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: diagnostics.secondsUntilRefreshAllowed,
         error: providerResult.message,
         message: providerResult.message
       });
@@ -2640,7 +2248,6 @@ export async function refreshUsedAssetPrices(maxSymbols = MAX_MARKETDATA_SYMBOLS
 }
 
 export async function refreshFeaturedPricesIfNeeded() {
-  if (MARKET_DATA_DISABLE_AUTO_REFRESH) return [];
   return refreshPriceCache(INVESTMENT_ASSETS.map((asset) => asset.symbol), { force: false, maxSymbols: INVESTMENT_ASSETS.length });
 }
 
@@ -2683,7 +2290,7 @@ async function getHeldInvestmentSymbols() {
 
 async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_CRON) {
   if (!supabaseConfigured()) {
-    return Array.from(new Set([...INVESTMENT_CRON_CORE_SYMBOLS, ...INVESTMENT_ASSETS.map((asset) => asset.symbol)])).slice(0, maxSymbols);
+    return INVESTMENT_ASSETS.slice(0, Math.min(maxSymbols, 5)).map((asset) => asset.symbol);
   }
 
   const prioritized: string[] = [];
@@ -2692,7 +2299,6 @@ async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_
     if (isSupportedSymbol(normalized) && !prioritized.includes(normalized)) prioritized.push(normalized);
   };
 
-  INVESTMENT_CRON_CORE_SYMBOLS.forEach(add);
   for (const symbol of await getHeldInvestmentSymbols()) add(symbol);
 
   try {
@@ -2720,11 +2326,9 @@ async function getUsedInvestmentSymbols(maxSymbols = MAX_MARKETDATA_SYMBOLS_PER_
     // Migration may not exist yet on older deployments.
   }
 
-  try {
-    const assets = await listInvestmentAssets();
-    assets.forEach((asset) => add(asset.symbol));
-  } catch {
-    INVESTMENT_ASSETS.forEach((asset) => add(asset.symbol));
+  for (const asset of INVESTMENT_ASSETS) {
+    if (prioritized.length >= Math.min(maxSymbols, 8)) break;
+    add(asset.symbol);
   }
 
   return prioritized.slice(0, maxSymbols);
@@ -4092,7 +3696,7 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
   return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
     const resolvedPrice = resolveStoredInvestmentPrice(stored, asset.referencePrice);
-    const diagnostics = priceCacheDiagnostics(stored ? { fetchedAt: resolvedPrice.fetchedAt, priceDate: resolvedPrice.priceDate } : null);
+    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt: resolvedPrice.fetchedAt, priceDate: resolvedPrice.priceDate }) : false;
     return {
       ...asset,
       latestClose: resolvedPrice.price ?? asset.referencePrice,
@@ -4102,12 +3706,7 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       priceSource: stored ? ("cache" as const) : ("reference" as const),
       fetchedAt: resolvedPrice.fetchedAt,
       currency: stored ? rowString(stored, "currency") || "USD" : asset.currency ?? "USD",
-      cacheStatus: stored ? (diagnostics.cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
-      providerCalled: false,
-      cacheFresh: diagnostics.cacheFresh,
-      cacheAgeSeconds: diagnostics.cacheAgeSeconds,
-      nextAllowedRefreshAt: diagnostics.nextAllowedRefreshAt,
-      secondsUntilRefreshAllowed: diagnostics.secondsUntilRefreshAllowed,
+      cacheStatus: stored ? (cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
       priceMessage: resolvedPrice.priceDate
         ? `Using saved ${resolvedPrice.source} price from ${resolvedPrice.fetchedAt ? new Date(resolvedPrice.fetchedAt).toLocaleString("en-US") : resolvedPrice.priceDate}.`
         : "No saved price yet. Select the asset to fetch the latest price."
@@ -4279,12 +3878,7 @@ async function attachCachedPricesToSearchResults(results: InvestmentAssetSearchR
         latestClose: cached.latestClose,
         priceAvailable: cached.priceAvailable,
         priceDate: cached.priceDate,
-        referencePrice: cached.latestClose || asset.referencePrice,
-        providerCalled: false,
-        cacheFresh: cached.cacheFresh,
-        cacheAgeSeconds: cached.cacheAgeSeconds,
-        nextAllowedRefreshAt: cached.nextAllowedRefreshAt,
-        secondsUntilRefreshAllowed: cached.secondsUntilRefreshAllowed
+        referencePrice: cached.latestClose || asset.referencePrice
       };
     })
   );

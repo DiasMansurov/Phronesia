@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { requireInvestmentStudentAccess } from "@/lib/investment-access";
-import { listInvestmentAssetQuotes } from "@/lib/server-investments";
+import {
+  listInvestmentAssetQuotes,
+  recalculatePortfolios,
+  refreshFeaturedAssetPrices,
+  updateInvestmentLeaderboard
+} from "@/lib/server-investments";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,14 +17,19 @@ export async function POST() {
   if (access.errorResponse) return access.errorResponse;
 
   try {
+    const results = await refreshFeaturedAssetPrices();
+    const portfolios = await recalculatePortfolios();
+    await updateInvestmentLeaderboard(access.access.allowed ? access.access.competitionCode : undefined);
     const quotes = await listInvestmentAssetQuotes();
+    const apiLimitReached = results.some((result) => result.apiLimitReached);
 
     return NextResponse.json({
-      ok: false,
-      providerCalled: false,
-      error: "Student price refresh is disabled. Prices are updated automatically every 15 minutes during market hours.",
-      quotes
-    }, { status: 403 });
+      ok: true,
+      apiLimitReached,
+      results,
+      quotes,
+      portfolios
+    });
   } catch (error) {
     return NextResponse.json(
       {

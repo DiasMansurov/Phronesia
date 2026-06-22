@@ -34,21 +34,7 @@ export async function GET(request: Request) {
       priceMessage: validation.price.priceMessage,
       fetchedAt: validation.price.fetchedAt ?? null,
       currency: validation.price.currency,
-      cacheStatus: validation.price.cacheStatus,
-      providerCalled: validation.price.providerCalled ?? false,
-      cacheFresh: validation.price.cacheFresh ?? false,
-      cacheAgeSeconds: validation.price.cacheAgeSeconds ?? null,
-      nextAllowedRefreshAt: validation.price.nextAllowedRefreshAt ?? null,
-      secondsUntilRefreshAllowed: validation.price.secondsUntilRefreshAllowed ?? null
-    },
-    symbol: validation.asset.symbol,
-    finalPrice: validation.price.priceAvailable ? validation.price.latestClose : null,
-    source: validation.price.priceSource ?? "unavailable",
-    providerCalled: validation.price.providerCalled ?? false,
-    cacheFresh: validation.price.cacheFresh ?? false,
-    fetchedAt: validation.price.fetchedAt ?? null,
-    cacheAgeSeconds: validation.price.cacheAgeSeconds ?? null,
-    nextAllowedRefreshAt: validation.price.nextAllowedRefreshAt ?? null,
-    secondsUntilRefreshAllowed: validation.price.secondsUntilRefreshAllowed ?? null
+      cacheStatus: validation.price.cacheStatus
+    }
   });
 }

@@ -28,6 +28,29 @@ type MarketPayload = {
   educationalCards: InvestmentEducationalCard[];
 };
 
+type RefreshPricesPayload = {
+  ok?: boolean;
+  apiLimitReached?: boolean;
+  results?: Array<{
+    symbol: string;
+    ok?: boolean;
+    success?: boolean;
+    price?: number;
+    priceDate?: string | null;
+    tradingDay?: string | null;
+    source?: string;
+    apiLimitReached?: boolean;
+    error?: string;
+    message?: string;
+  }>;
+  quotes?: InvestmentAssetQuote[];
+  error?: string;
+};
+
+type RefreshSymbolPayload = RefreshPricesPayload & {
+  result?: NonNullable<RefreshPricesPayload["results"]>[number];
+};
+
 const closedMessage =
   "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
@@ -53,7 +76,7 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     provider: "educational_reference",
     priceAvailable: false,
     priceSource: "reference",
-    priceMessage: "Price is not available yet. Please wait for the next scheduled update.",
+    priceMessage: "No saved price yet. Select the asset to fetch the latest price.",
     fetchedAt: null,
     cacheStatus: "missing"
   }));
@@ -62,16 +85,6 @@ function featuredQuotes(): InvestmentAssetQuote[] {
 function mergeQuote(quotes: InvestmentAssetQuote[], next: InvestmentAssetQuote) {
   const filtered = quotes.filter((quote) => quote.symbol !== next.symbol);
   return [next, ...filtered];
-}
-
-function quoteHasSavedPrice(quote?: InvestmentAssetQuote | null) {
-  return Boolean(
-    quote &&
-      quote.priceAvailable &&
-      quote.priceSource !== "reference" &&
-      Number.isFinite(quote.latestClose) &&
-      quote.latestClose > 0
-  );
 }
 
 export function InvestmentChallengeDashboard({
@@ -164,14 +177,6 @@ export function InvestmentChallengeDashboard({
     };
   }, [assetQuery]);
 
-  useEffect(() => {
-    const FIFTEEN_MIN = 15 * 60 * 1000;
-    const interval = setInterval(async () => {
-      await loadMarket();
-    }, FIFTEEN_MIN);
-    return () => clearInterval(interval);
-  }, []);
-
   const quotes = account?.quotes ?? market.quotes;
   const marketStatus = account?.marketStatus ?? market.marketStatus;
   const activeCompetition = account?.competition ?? resolvedCompetition ?? null;
@@ -190,7 +195,7 @@ export function InvestmentChallengeDashboard({
     !hasSelectedAsset
       ? ""
     : !selectedQuote.priceAvailable
-      ? selectedQuote.priceMessage ?? "Price is not available yet. Please wait for the next scheduled update."
+      ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
       : activeCompetition?.runtimeStatus === "not_started"
         ? "Competition has not started yet. You can register and prepare your thesis, but trading is disabled."
       : activeCompetition?.runtimeStatus === "closed"
@@ -217,7 +222,7 @@ export function InvestmentChallengeDashboard({
     !hasSelectedAsset
       ? ""
       : !selectedQuote.priceAvailable
-        ? selectedQuote.priceMessage ?? "Price is not available yet. Please wait for the next scheduled update."
+        ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
         : activeCompetition?.runtimeStatus === "not_started"
           ? "Competition has not started yet."
         : activeCompetition?.runtimeStatus === "closed"
@@ -244,11 +249,11 @@ export function InvestmentChallengeDashboard({
   const selectedHasDisplayPrice =
     hasSelectedAsset && selectedQuote.priceAvailable && Number.isFinite(selectedQuote.latestClose) && selectedQuote.latestClose > 0;
   const selectedPriceText = priceLoading
-      ? "Checking..."
+    ? "Checking..."
     : selectedHasDisplayPrice
       ? formatUsd(selectedQuote.latestClose)
       : hasSelectedAsset
-        ? "Price pending"
+        ? "No saved price yet"
         : "Select an asset";
   const feeRateLabel = `${(INVESTMENT_TRANSACTION_FEE_RATE * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 
@@ -303,40 +308,62 @@ export function InvestmentChallengeDashboard({
     }
   }
 
-  function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
-    const normalizedSymbol = asset.symbol.toUpperCase();
-    const savedQuote =
-      (account?.quotes ?? []).find((quote) => quote.symbol === normalizedSymbol && quoteHasSavedPrice(quote)) ??
-      market.quotes.find((quote) => quote.symbol === normalizedSymbol && quoteHasSavedPrice(quote)) ??
-      (quoteHasSavedPrice(asset as InvestmentAssetQuote) ? (asset as InvestmentAssetQuote) : null);
-    const selected: InvestmentAssetQuote =
-      savedQuote ??
-      ({
-        ...asset,
-        symbol: normalizedSymbol,
-        latestClose: 0,
-        priceDate: asset.priceDate ?? null,
-        provider: "unavailable",
-        priceAvailable: false,
-        priceSource: "unavailable",
-        priceMessage: "Price is not available yet. Please wait for the next scheduled update.",
-        fetchedAt: null,
-        cacheStatus: "missing",
-        providerCalled: false,
-        cacheFresh: false,
-        cacheAgeSeconds: null,
-        nextAllowedRefreshAt: null,
-        secondsUntilRefreshAllowed: null
-      } satisfies InvestmentAssetQuote);
-
-    setSymbol(normalizedSymbol);
+  async function selectAsset(asset: InvestmentAssetSearchResult | InvestmentAssetQuote) {
+    const hasOptimisticPrice = Boolean(asset.priceAvailable || asset.latestClose || asset.referencePrice);
+    const optimistic: InvestmentAssetQuote = {
+      ...asset,
+      latestClose: asset.latestClose ?? asset.referencePrice,
+      priceDate: asset.priceDate ?? null,
+      provider: "search",
+      priceAvailable: Boolean(asset.priceAvailable),
+      priceSource: hasOptimisticPrice ? "reference" : "unavailable",
+      priceMessage: hasOptimisticPrice
+        ? "Checking saved cache and the approved MarketData.app stock price endpoint..."
+        : "Checking latest stock price..."
+    };
+    setSymbol(asset.symbol);
     setHasSelectedAsset(true);
     setAssetQuery("");
-    setSelectedQuote(selected);
+    setSelectedQuote(optimistic);
     setAssetResults([]);
-    setPriceLoading(false);
-    setAssetSearchStatus(savedQuote ? "Asset selected. Using saved price if available." : "Price is not available yet. Please wait for the next scheduled update.");
-    showToast("Asset selected. Using saved price if available.", "info");
+    setAssetSearchStatus("Checking latest stock price...");
+    setPriceLoading(true);
+
+    try {
+      const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(asset.symbol)}`, {
+        cache: "no-store"
+      });
+      const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string };
+      if (response.ok && data.ok && data.quote) {
+        setSelectedQuote(data.quote);
+        setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
+        setAssetSearchStatus("");
+      } else {
+        const reason = data.reason ?? "MarketData.app stock price unavailable.";
+        setSelectedQuote({
+          ...optimistic,
+          latestClose: 0,
+          priceAvailable: false,
+          provider: "unavailable",
+          priceSource: "unavailable",
+          priceMessage: reason
+        });
+        setAssetSearchStatus(data.reason ?? "No saved price yet. Select the asset to fetch the latest price.");
+      }
+    } catch {
+      const reason = "No saved price yet. Select the asset to fetch the latest price.";
+      setSelectedQuote({
+        ...optimistic,
+        latestClose: 0,
+        priceAvailable: false,
+        provider: "unavailable",
+        priceSource: "unavailable",
+        priceMessage: reason
+      });
+      setAssetSearchStatus(reason);
+    } finally {
+      setPriceLoading(false);
+    }
   }
 
   function applySelectedQuote(nextQuote: InvestmentAssetQuote) {
@@ -345,6 +372,70 @@ export function InvestmentChallengeDashboard({
     setSelectedQuote(nextQuote);
     setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, nextQuote) }));
     setAccount((current) => (current ? { ...current, quotes: mergeQuote(current.quotes, nextQuote) } : current));
+  }
+
+  async function fetchSelectedSymbolPrice(actionLabel = "Fetching") {
+    if (!hasSelectedAsset || !symbol) return;
+    setPriceLoading(true);
+    showToast(`${actionLabel} ${symbol} price from MarketData.app...`, "info");
+    setAssetSearchStatus(`${actionLabel} ${symbol} price from the backend endpoint...`);
+    try {
+      const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+      const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string; error?: string };
+
+      if (response.ok && data.ok && data.quote?.priceAvailable && data.quote.latestClose > 0) {
+        applySelectedQuote(data.quote);
+        showToast(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`, "success");
+        setAssetSearchStatus("");
+        return;
+      }
+
+      const message = data.reason ?? data.error ?? `${symbol} price is unavailable.`;
+      showToast(message, "error");
+      setAssetSearchStatus(message);
+    } catch {
+      const message = `${symbol} price endpoint is temporarily unavailable.`;
+      showToast(message, "error");
+      setAssetSearchStatus(message);
+    } finally {
+      setPriceLoading(false);
+    }
+  }
+
+  async function refreshSelectedSymbol() {
+    if (!symbol) return;
+    setPriceLoading(true);
+    showToast(`Refreshing ${symbol} server-side through /stocks/quotes...`, "info");
+    try {
+      const response = await fetch("/api/investment/refresh-symbol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol }),
+        cache: "no-store"
+      });
+      const data = (await response.json()) as RefreshSymbolPayload;
+      if (!response.ok || !data.ok) {
+        const message = data.error ?? data.result?.error ?? `Could not refresh ${symbol}.`;
+        showToast(message, "error");
+        setAssetSearchStatus(message);
+        return;
+      }
+      if (data.quotes?.length) {
+        setMarket((current) => ({ ...current, quotes: data.quotes as InvestmentAssetQuote[] }));
+        const refreshedSelected = data.quotes.find((quote) => quote.symbol === symbol);
+        if (refreshedSelected) setSelectedQuote(refreshedSelected);
+      }
+      const resultMessage = data.result?.message ?? `${symbol} refreshed.`;
+      showToast(resultMessage, "success");
+      setAssetSearchStatus("");
+      if (account) void loadAccount(account.account.id);
+    } catch {
+      const message = `Could not refresh ${symbol}.`;
+      showToast(message, "error");
+      setAssetSearchStatus(message);
+    } finally {
+      setPriceLoading(false);
+    }
   }
 
   async function submitTrade(event: React.FormEvent<HTMLFormElement>) {
@@ -604,7 +695,7 @@ export function InvestmentChallengeDashboard({
                 type="button"
                 onClick={() => void selectAsset({ symbol: typedTickerCandidate, name: typedTickerCandidate, type: "Stock", theme: "US-listed asset", referencePrice: 0, region: "United States", currency: "USD", exchange: null, featured: false })}
               >
-                Select ticker {typedTickerCandidate}
+                Use ticker {typedTickerCandidate} →
               </button>
             )}
 
@@ -643,6 +734,16 @@ export function InvestmentChallengeDashboard({
               </>
             )}
 
+            {hasSelectedAsset && (
+              <div className="t-price-actions">
+                <button className="t-btn-sm" type="button" onClick={() => void fetchSelectedSymbolPrice("Fetching")} disabled={priceLoading}>
+                  Fetch price
+                </button>
+                <button className="t-btn-sm" type="button" onClick={() => void refreshSelectedSymbol()} disabled={priceLoading}>
+                  Refresh
+                </button>
+              </div>
+            )}
           </aside>
 
           {/* Center column: Trade panel */}
@@ -670,7 +771,7 @@ export function InvestmentChallengeDashboard({
                     <div className="t-asset-source">
                       {priceLoading ? "Checking price..." : selectedQuote.priceAvailable
                         ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
-                        : selectedQuote.priceMessage ?? "Price will appear after the next scheduled update."}
+                        : selectedQuote.priceMessage ?? "No saved price"}
                     </div>
                   </div>
 
@@ -717,9 +818,15 @@ export function InvestmentChallengeDashboard({
                   ) : null}
 
                   {!selectedQuote.priceAvailable ? (
-                    <div className="t-trade-warning">
-                      Prices are updated automatically every 15 minutes during market hours. Price will appear after the next scheduled update.
-                    </div>
+                    <button
+                      className="t-btn-sm"
+                      type="button"
+                      style={{ marginBottom: 8 }}
+                      onClick={() => void fetchSelectedSymbolPrice("Fetching")}
+                      disabled={priceLoading}
+                    >
+                      Fetch latest price
+                    </button>
                   ) : null}
 
                   <button
@@ -884,8 +991,8 @@ export function InvestmentChallengeDashboard({
 
 function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.priceSource === "cache") return "Saved cache";
-  if (quote.priceSource === "marketdata_app") return "Saved server price";
-  if (quote.provider === "marketdata_app") return "Saved server price";
+  if (quote.priceSource === "marketdata_app") return "MarketData.app";
+  if (quote.provider === "marketdata_app") return "MarketData.app";
   if (quote.priceSource === "reference") return "Educational reference";
   return quote.provider || "Market data";
 }
