@@ -2072,11 +2072,22 @@ function portfolioPricesUsed(symbols: Iterable<string>, quoteMap: Map<string, In
 }
 
 function marketPriceMapFromQuotes(quotes: InvestmentAssetQuote[]) {
-  return new Map(
-    quotes
-      .filter((quote) => quote.priceAvailable && quote.priceSource !== "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0)
-      .map((quote) => [quote.symbol, quote.latestClose])
-  );
+  // Include reference prices as fallback so portfolio is always valued correctly
+  // Live/cached prices take priority; reference prices used when Supabase cache is empty
+  const map = new Map<string, number>();
+  // First pass: add reference prices as baseline
+  for (const quote of quotes) {
+    if (quote.priceSource === "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0) {
+      map.set(quote.symbol, quote.latestClose);
+    }
+  }
+  // Second pass: override with live/cached prices when available
+  for (const quote of quotes) {
+    if (quote.priceAvailable && quote.priceSource !== "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0) {
+      map.set(quote.symbol, quote.latestClose);
+    }
+  }
+  return map;
 }
 
 function isCachedQuoteFresh(
@@ -3702,14 +3713,16 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       latestClose: resolvedPrice.price ?? asset.referencePrice,
       priceDate: resolvedPrice.priceDate,
       provider: stored ? rowString(stored, "provider") || "stored" : "educational_reference",
-      priceAvailable: Boolean(stored),
+      priceAvailable: Boolean(stored) || (asset.referencePrice > 0),
       priceSource: stored ? ("cache" as const) : ("reference" as const),
       fetchedAt: resolvedPrice.fetchedAt,
       currency: stored ? rowString(stored, "currency") || "USD" : asset.currency ?? "USD",
       cacheStatus: stored ? (cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
       priceMessage: resolvedPrice.priceDate
         ? `Using saved ${resolvedPrice.source} price from ${resolvedPrice.fetchedAt ? new Date(resolvedPrice.fetchedAt).toLocaleString("en-US") : resolvedPrice.priceDate}.`
-        : "No saved price yet. Select the asset to fetch the latest price."
+        : stored
+          ? "No saved price yet. Select the asset to fetch the latest price."
+          : "Reference price. Live price updates every 15 min during market hours."
     };
   });
 }
