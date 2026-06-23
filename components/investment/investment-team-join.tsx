@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { INVESTMENT_ACCOUNT_STORAGE_KEY, formatUsd } from "@/lib/investment-challenge";
 import type { InvestmentAccountView, InvestmentCompetitionView } from "@/lib/server-investments";
@@ -18,6 +18,7 @@ export function InvestmentTeamJoin() {
   const [loginPassword, setLoginPassword] = useState("");
   const [status, setStatus] = useState("");
   const [busyAction, setBusyAction] = useState<"code" | "create" | "login" | null>(null);
+  const teamSubmitLocked = useRef(false);
 
   async function checkCompetition(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,6 +51,7 @@ export function InvestmentTeamJoin() {
 
   async function submitTeam(mode: "create" | "login", event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (teamSubmitLocked.current) return;
     if (!competition) {
       setStatus("Enter a valid competition code first.");
       return;
@@ -69,12 +71,16 @@ export function InvestmentTeamJoin() {
       return;
     }
 
+    teamSubmitLocked.current = true;
     setBusyAction(mode);
-    setStatus(mode === "create" ? "Creating team portfolio..." : "Opening team portfolio...");
+    setStatus("Processing, please wait");
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
     try {
       const response = await fetch("/api/investment/teams/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           competitionCode: competition.code,
           teamName,
@@ -98,9 +104,15 @@ export function InvestmentTeamJoin() {
       setStatus(data.message ?? "Welcome back to your team portfolio.");
       router.push(data.redirectTo ?? "/investment-challenge/app");
       router.refresh();
-    } catch {
-      setStatus("Team access is temporarily unavailable.");
+    } catch (error) {
+      setStatus(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Server is processing many teams right now. Please wait 1–2 minutes and try once again."
+          : "Team access is temporarily unavailable. Please wait 1–2 minutes and try once again."
+      );
     } finally {
+      window.clearTimeout(timeoutId);
+      teamSubmitLocked.current = false;
       setBusyAction(null);
     }
   }
@@ -176,7 +188,7 @@ export function InvestmentTeamJoin() {
           </div>
 
           <div className="investment-team-action-grid">
-            <form className="investment-team-action-card" onSubmit={(event) => submitTeam("create", event)}>
+            <form className="investment-team-action-card" aria-busy={busyAction === "create"} onSubmit={(event) => submitTeam("create", event)}>
               <div className="investment-team-action-header">
                 <span>Create Team</span>
                 <h3>Create new team</h3>
@@ -212,11 +224,11 @@ export function InvestmentTeamJoin() {
                 />
               </label>
               <button className="button primary" type="submit" disabled={Boolean(busyAction) || !competition}>
-                {busyAction === "create" ? "Creating..." : "Create team"}
+                {busyAction === "create" ? "Processing, please wait" : "Create team"}
               </button>
             </form>
 
-            <form className="investment-team-action-card" onSubmit={(event) => submitTeam("login", event)}>
+            <form className="investment-team-action-card" aria-busy={busyAction === "login"} onSubmit={(event) => submitTeam("login", event)}>
               <div className="investment-team-action-header">
                 <span>Log In</span>
                 <h3>Log in to existing team</h3>
@@ -242,7 +254,7 @@ export function InvestmentTeamJoin() {
                 />
               </label>
               <button className="button secondary" type="submit" disabled={Boolean(busyAction) || !competition}>
-                {busyAction === "login" ? "Opening..." : "Log in to team portfolio"}
+                {busyAction === "login" ? "Processing, please wait" : "Log in to team portfolio"}
               </button>
             </form>
           </div>

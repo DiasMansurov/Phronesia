@@ -11,7 +11,7 @@ import {
   type InvestmentMarketStatus,
   type TradeSide
 } from "@/lib/investment-challenge";
-import { pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from "crypto";
+import { pbkdf2, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { insertRow, selectRows, supabaseConfigured, updateRows, upsertRow } from "@/lib/supabase-rest";
 
 type Payload = Record<string, unknown>;
@@ -255,6 +255,13 @@ export type InvestmentTeamSessionView = {
   message: string;
 };
 
+export type InvestmentTeamAccessDiagnostics = {
+  steps: Record<string, number>;
+  supabaseErrorMessage: string | null;
+  supabaseErrorCode: string | null;
+  finalErrorReason: string | null;
+};
+
 const MARKET_CLOSED_MESSAGE =
   "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
@@ -264,7 +271,7 @@ const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
 const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
-const TEAM_PASSWORD_ITERATIONS = 210000;
+const TEAM_PASSWORD_ITERATIONS = 50000;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
@@ -383,19 +390,28 @@ function latestIso(...values: Array<string | null | undefined>) {
   return latest;
 }
 
-function hashTeamPassword(password: string) {
+function deriveTeamPasswordHash(password: string, salt: string, iterations: number) {
+  return new Promise<Buffer>((resolve, reject) => {
+    pbkdf2(password, salt, iterations, 32, "sha256", (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey);
+    });
+  });
+}
+
+async function hashTeamPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
-  const hash = pbkdf2Sync(password, salt, TEAM_PASSWORD_ITERATIONS, 32, "sha256").toString("hex");
+  const hash = (await deriveTeamPasswordHash(password, salt, TEAM_PASSWORD_ITERATIONS)).toString("hex");
   return `pbkdf2_sha256$${TEAM_PASSWORD_ITERATIONS}$${salt}$${hash}`;
 }
 
-function verifyTeamPassword(password: string, storedHash: string | null) {
+async function verifyTeamPassword(password: string, storedHash: string | null) {
   if (!storedHash) return false;
   const [scheme, iterationsRaw, salt, expectedHash] = storedHash.split("$");
   if (scheme !== "pbkdf2_sha256" || !iterationsRaw || !salt || !expectedHash) return false;
   const iterations = Number(iterationsRaw);
   if (!Number.isInteger(iterations) || iterations <= 0) return false;
-  const actualHash = pbkdf2Sync(password, salt, iterations, 32, "sha256");
+  const actualHash = await deriveTeamPasswordHash(password, salt, iterations);
   const expected = Buffer.from(expectedHash, "hex");
   if (actualHash.length !== expected.length) return false;
   return timingSafeEqual(actualHash, expected);
@@ -2709,7 +2725,11 @@ export async function createOrGetInvestmentAccount(input: {
   return buildInvestmentAccountView(accountId);
 }
 
-async function findInvestmentAccountByNormalizedTeamName(competitionId: string, normalizedTeamName: string) {
+async function findInvestmentAccountByNormalizedTeamName(
+  competitionId: string,
+  normalizedTeamName: string,
+  displayTeamName?: string
+) {
   if (!normalizedTeamName) return null;
 
   try {
@@ -2724,6 +2744,23 @@ async function findInvestmentAccountByNormalizedTeamName(competitionId: string, 
     // Older Supabase schemas may not have normalized_team_name yet.
   }
 
+  if (displayTeamName) {
+    try {
+      const rows = await selectRows("investment_accounts", {
+        select: "*",
+        competition_id: `eq.${competitionId}`,
+        team_name: `ilike.${displayTeamName}`,
+        limit: "10"
+      });
+      if (Array.isArray(rows)) {
+        const exact = rows.find((row) => normalizeInvestmentTeamNameKey(rowString(row, "team_name")) === normalizedTeamName);
+        if (exact) return exact;
+      }
+    } catch {
+      // Fall back to the legacy scan only for older schemas.
+    }
+  }
+
   try {
     const rows = await selectRows("investment_accounts", {
       select: "*",
@@ -2735,6 +2772,67 @@ async function findInvestmentAccountByNormalizedTeamName(competitionId: string, 
   } catch {
     return null;
   }
+}
+
+function investmentTeamAccessErrorDetails(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "Unknown team access error");
+  const jsonCode = message.match(/"code"\s*:\s*"([^"]+)"/i)?.[1] ?? null;
+  const postgresCode = message.match(/\b(23\d{3}|PGRST\d+)\b/i)?.[1] ?? null;
+  return { message, code: jsonCode ?? postgresCode };
+}
+
+function recordInvestmentTeamAccessError(diagnostics: InvestmentTeamAccessDiagnostics | undefined, error: unknown) {
+  if (!diagnostics) return;
+  const details = investmentTeamAccessErrorDetails(error);
+  diagnostics.supabaseErrorMessage = details.message;
+  diagnostics.supabaseErrorCode = details.code;
+}
+
+function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCompetitionView): InvestmentAccountView {
+  const startingCash = rowNumber(accountRow, "starting_cash", competition.startingCash);
+  const cash = rowNumber(accountRow, "cash_balance", rowNumber(accountRow, "cash", startingCash));
+  return {
+    account: {
+      id: rowString(accountRow, "id"),
+      competitionId: competition.id,
+      teamName: rowString(accountRow, "team_name"),
+      participantLogin: rowNullableString(accountRow, "participant_login"),
+      startingCash,
+      cash
+    },
+    competition,
+    holdings: [],
+    positions: [],
+    trades: [],
+    thesis: null,
+    quotes: [],
+    portfolio: {
+      startingCash,
+      cash,
+      holdingsValue: 0,
+      lockedMargin: 0,
+      totalExposure: 0,
+      unrealizedPnl: 0,
+      totalValue: cash,
+      dailyChange: 0,
+      totalReturn: startingCash > 0 ? ((cash - startingCash) / startingCash) * 100 : 0,
+      diversificationScore: 0,
+      riskScore: 100
+    },
+    portfolioDebug: {
+      cashBalance: cash,
+      legacyHoldingsCount: 0,
+      legacyHoldingsValue: 0,
+      openPositionsCount: 0,
+      lockedMargin: 0,
+      openExposure: 0,
+      unrealizedPnl: 0,
+      calculatedPortfolioValue: cash,
+      pricesUsed: []
+    },
+    marketStatus: getMarketStatus(),
+    currentRank: null
+  };
 }
 
 async function updateInvestmentAccountNormalizedName(accountRow: Payload, normalizedTeamName: string) {
@@ -2752,12 +2850,28 @@ export async function createOrEnterInvestmentTeam(input: {
   teamName: string;
   password: string;
   mode: "create" | "login";
-}): Promise<
+}, diagnostics?: InvestmentTeamAccessDiagnostics): Promise<
   | { ok: true; session: InvestmentTeamSessionView }
   | { ok: false; status: number; reason: string }
 > {
+  const fail = (status: number, reason: string) => {
+    if (diagnostics) diagnostics.finalErrorReason = reason;
+    return { ok: false as const, status, reason };
+  };
+  const timed = async <T>(step: string, operation: () => Promise<T>) => {
+    const startedAt = Date.now();
+    try {
+      return await operation();
+    } catch (error) {
+      recordInvestmentTeamAccessError(diagnostics, error);
+      throw error;
+    } finally {
+      if (diagnostics) diagnostics.steps[step] = Date.now() - startedAt;
+    }
+  };
+
   if (!supabaseConfigured()) {
-    return { ok: false, status: 503, reason: "Supabase is not configured for team portfolios yet." };
+    return fail(503, "Supabase is not configured for team portfolios yet.");
   }
 
   const competitionCode = input.competitionCode.trim();
@@ -2766,46 +2880,55 @@ export async function createOrEnterInvestmentTeam(input: {
   const password = input.password;
   const mode = input.mode;
 
-  if (!competitionCode) return { ok: false, status: 400, reason: "Competition code is required." };
-  if (!teamName) return { ok: false, status: 400, reason: "Team name is required." };
-  if (!password) return { ok: false, status: 400, reason: "Team password is required." };
-  if (mode !== "create" && mode !== "login") return { ok: false, status: 400, reason: "Choose whether to create a team or log in." };
+  if (!competitionCode) return fail(400, "Competition code is required.");
+  if (!teamName) return fail(400, "Team name is required.");
+  if (!password) return fail(400, "Team password is required.");
+  if (mode !== "create" && mode !== "login") return fail(400, "Choose whether to create a team or log in.");
 
-  const competition = await resolveExistingInvestmentCompetition(competitionCode);
-  if (!competition) return { ok: false, status: 404, reason: "Competition not found." };
+  const competition = await timed("competitionLookupMs", () => resolveExistingInvestmentCompetition(competitionCode));
+  if (!competition) return fail(404, "Competition not found.");
 
-  let accountRow = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
+  let accountRow = await timed("accountLookupMs", () =>
+    findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName, teamName)
+  );
   const created = mode === "create";
   const message = created ? "Team created successfully." : "Welcome back to your team portfolio.";
 
   if (mode === "login") {
     if (!accountRow) {
-      return { ok: false, status: 404, reason: "Team not found. Please check the spelling or create a new team." };
+      return fail(404, "Team not found. Please check the spelling or create a new team.");
     }
     const storedPasswordHash = rowNullableString(accountRow, "password_hash");
     if (storedPasswordHash) {
-      const passwordMatches = verifyTeamPassword(password, storedPasswordHash);
-      if (!passwordMatches) return { ok: false, status: 401, reason: "Invalid team password." };
+      const passwordMatches = await timed("passwordVerificationMs", () => verifyTeamPassword(password, storedPasswordHash));
+      if (!passwordMatches) return fail(401, "Invalid team password.");
     } else {
-      const passwordHash = hashTeamPassword(password);
+      const existingAccountId = rowString(accountRow, "id");
+      const passwordHash = await timed("passwordHashMs", () => hashTeamPassword(password));
       try {
-        const updated = await updateRows(
-          "investment_accounts",
-          { id: `eq.${rowString(accountRow, "id")}` },
-          { password_hash: passwordHash, last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+        const updated = await timed("legacyPasswordUpdateMs", () =>
+          updateRows(
+            "investment_accounts",
+            { id: `eq.${existingAccountId}` },
+            { password_hash: passwordHash, last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+          )
         );
         accountRow = Array.isArray(updated) && updated[0] ? updated[0] : { ...accountRow, password_hash: passwordHash };
-      } catch {
-        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+      } catch (error) {
+        recordInvestmentTeamAccessError(diagnostics, error);
+        return fail(500, "Team password storage is not configured yet.");
       }
     }
+    const normalizedStartedAt = Date.now();
     await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
+    if (diagnostics) diagnostics.steps.normalizedNameUpdateMs = Date.now() - normalizedStartedAt;
   } else {
     if (accountRow) {
       await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
-      return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+      return fail(409, "This team already exists. Please log in to the existing team instead.");
     }
 
+    const passwordHash = await timed("passwordHashMs", () => hashTeamPassword(password));
     const accountPayload = {
       competition_id: competition.id,
       team_name: teamName,
@@ -2814,48 +2937,60 @@ export async function createOrEnterInvestmentTeam(input: {
       starting_cash: competition.startingCash,
       cash: competition.startingCash,
       cash_balance: competition.startingCash,
-      password_hash: hashTeamPassword(password),
+      password_hash: passwordHash,
       last_login_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
     try {
-      await insertRow("investment_accounts", accountPayload);
+      await timed("accountInsertMs", () => insertRow("investment_accounts", accountPayload));
     } catch (error) {
+      recordInvestmentTeamAccessError(diagnostics, error);
       const message = error instanceof Error ? error.message : "";
       if (/duplicate|unique|409|23505/i.test(message)) {
-        return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+        return fail(409, "This team already exists. Please log in to the existing team instead.");
       }
       if (!/normalized_team_name|cash_balance|schema cache|column/i.test(message)) {
-        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+        return fail(500, "Team password storage is not configured yet.");
       }
       const { cash_balance: _cashBalance, normalized_team_name: _normalizedTeamName, ...legacyPayload } = accountPayload;
       try {
-        await insertRow("investment_accounts", legacyPayload);
+        await timed("legacyAccountInsertMs", () => insertRow("investment_accounts", legacyPayload));
       } catch (legacyError) {
+        recordInvestmentTeamAccessError(diagnostics, legacyError);
         const legacyMessage = legacyError instanceof Error ? legacyError.message : "";
         if (/duplicate|unique|409|23505/i.test(legacyMessage)) {
-          return { ok: false, status: 409, reason: "This team already exists. Please log in to the existing team instead." };
+          return fail(409, "This team already exists. Please log in to the existing team instead.");
         }
-        return { ok: false, status: 500, reason: "Team password storage is not configured yet." };
+        return fail(500, "Team password storage is not configured yet.");
       }
     }
-    accountRow = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
+    accountRow = await timed("createdAccountLookupMs", () =>
+      findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName, teamName)
+    );
     if (!accountRow) {
-      return { ok: false, status: 500, reason: "Could not create team portfolio." };
+      return fail(500, "Could not create team portfolio.");
     }
     await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
   }
 
-  await updateRows(
-    "investment_accounts",
-    { id: `eq.${rowString(accountRow, "id")}` },
-    { last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-  ).catch(() => null);
+  if (mode === "login") {
+    const lastLoginStartedAt = Date.now();
+    try {
+      await updateRows(
+        "investment_accounts",
+        { id: `eq.${rowString(accountRow, "id")}` },
+        { last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+      );
+    } catch (error) {
+      recordInvestmentTeamAccessError(diagnostics, error);
+      // Last-login telemetry is non-critical and must not block team access.
+    } finally {
+      if (diagnostics) diagnostics.steps.lastLoginUpdateMs = Date.now() - lastLoginStartedAt;
+    }
+  }
 
-  await recalculatePortfolios();
-  await updateInvestmentLeaderboard(competition.code);
-  const account = await buildInvestmentAccountView(rowString(accountRow, "id"));
-  if (!account) return { ok: false, status: 500, reason: "Could not load team portfolio." };
+  const account = buildTeamSessionAccount(accountRow, competition);
+  if (!account.account.id) return fail(500, "Could not load team portfolio.");
 
   return {
     ok: true,

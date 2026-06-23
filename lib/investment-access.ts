@@ -43,7 +43,11 @@ export type InvestmentAccess =
     };
 
 function getTeamSessionSecret() {
-  return process.env.INVESTMENT_TEAM_SESSION_SECRET?.trim() ?? "";
+  return process.env.INVESTMENT_TEAM_SESSION_SECRET?.trim() || process.env.TEAM_SESSION_SECRET?.trim() || "";
+}
+
+export function investmentTeamSessionConfigured() {
+  return Boolean(getTeamSessionSecret());
 }
 
 function base64UrlEncode(value: string) {

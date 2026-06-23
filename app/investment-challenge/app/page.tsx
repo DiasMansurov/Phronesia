@@ -33,7 +33,7 @@ export default async function InvestmentChallengeAppPage() {
             </h1>
             <p className="lede compact-lede">
               {access.reason === "missing_secret"
-                ? "Add INVESTMENT_TEAM_SESSION_SECRET in the deployment environment before students can enter protected team portfolios."
+                ? "Add TEAM_SESSION_SECRET or INVESTMENT_TEAM_SESSION_SECRET in the deployment environment before students can enter protected team portfolios."
                 : "Market prices, your team portfolio, trade tickets, and your own activity are available only after a valid competition code, team name, and team password."}
             </p>
             <div className="cta-row">
