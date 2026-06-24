@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { UserProfile } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Account",
@@ -30,7 +29,21 @@ export default async function AccountPage() {
   const { userId } = await auth();
 
   if (!userId) {
-    redirect("/sign-in?redirect_url=/account");
+    return (
+      <section className="shell section auth-page">
+        <div className="panel stack-md">
+          <p className="eyebrow">Investment competition access</p>
+          <h1>No website account is required.</h1>
+          <p className="muted">
+            For the competition, use Investment → competition code → team name → team password. You do not need Clerk,
+            email verification, or a separate Phronesia account.
+          </p>
+          <Link className="button primary" href="/investment-challenge/join">
+            Enter Investment Competition
+          </Link>
+        </div>
+      </section>
+    );
   }
 
   return (

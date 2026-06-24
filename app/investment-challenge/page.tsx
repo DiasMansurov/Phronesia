@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 const steps = [
-  ["01", "Join a competition", "Enter a student competition code or sign in with your Phronesia account."],
+  ["01", "Join a competition", "Enter the competition code, team name, and team password from your organizer."],
   ["02", "Build a virtual portfolio", "Inside the protected area, teams use $100,000 in virtual cash. No real money is used."],
   ["03", "Explain your thesis", "Students explain asset choices, risks, diversification, and macro factors."],
   ["04", "Reflect on results", "Rankings and score breakdowns help students learn from decisions, not just memorize terms."]

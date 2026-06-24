@@ -6,8 +6,6 @@ import { usePathname } from "next/navigation";
 import { Show, useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FocusEvent } from "react";
 
-import { AuthControls } from "@/components/site/auth-controls";
-
 const visibleLinks = [
   { href: "/", label: "Home" },
   { href: "/learn", label: "Learn" },
@@ -77,17 +75,16 @@ export function SiteNav() {
             {hasClerk ? (
               <Show when="signed-in">
                 <AdminResultsNavLink active={isActive("/results") || isActive("/investment-challenge/admin/results")} />
-                <NavLink
-                  href={investmentLink.href}
-                  label={investmentLink.label}
-                  active={isActive(investmentLink.href)}
-                  cta
-                />
               </Show>
             ) : null}
+            <NavLink
+              href={investmentLink.href}
+              label={investmentLink.label}
+              active={isActive(investmentLink.href)}
+              cta
+            />
           </nav>
         </div>
-        <AuthControls />
       </div>
     </header>
   );

@@ -26,6 +26,9 @@ export default function InvestmentChallengeJoinPage() {
             Enter your competition code manually, then use your team name and team password to create or return to the
             same shared team portfolio.
           </p>
+          <p className="investment-hero-note">
+            You do not need to create a separate Phronesia account. Use your team name and team password to enter the competition.
+          </p>
           <div className="premium-actions">
             <Link className="button secondary" href="/investment-challenge">
               Back to overview

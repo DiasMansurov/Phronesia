@@ -67,6 +67,7 @@ export type InvestmentHoldingView = {
   marketValue: number;
   unrealizedGainLoss: number;
   weight: number;
+  priceWarning?: string | null;
 };
 
 export type InvestmentPortfolioSummary = {
@@ -118,6 +119,7 @@ export type InvestmentPositionView = {
   openedAt: string;
   closedAt: string | null;
   updatedAt: string;
+  priceWarning?: string | null;
 };
 
 export type InvestmentThesisView = {
@@ -215,6 +217,7 @@ export type InvestmentAdminHoldingResult = {
   marketValue: number | null;
   unrealizedProfitLoss: number | null;
   allocationPercent: number;
+  priceWarning: string | null;
 };
 
 export type InvestmentAdminTradeResult = InvestmentTradeView & {
@@ -265,16 +268,17 @@ export type InvestmentTeamAccessDiagnostics = {
 const MARKET_CLOSED_MESSAGE =
   "US market is closed. Latest cached stock prices are still shown. Trading reopens at 9:30 AM ET.";
 
-const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,11}$/;
+const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
 const TEENVESTOR_CODE = "Teenvestor.school";
 const TEENVESTOR_SLUG = "teenvestor-school";
 const MARKETDATA_APP_PROVIDER = "marketdata_app";
 const MARKETDATA_STOCK_PRICE_ENDPOINT = "stocks/quotes";
 const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
+const MARKETDATA_PROVIDER_MAX_AGE_MS = 30 * 60 * 1000;
 const TEAM_PASSWORD_ITERATIONS = 50000;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
 type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
-type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "temporary_unavailable";
+type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "stale_price" | "temporary_unavailable";
 type MarketPriceResult =
   | {
       ok: true;
@@ -288,6 +292,12 @@ type MarketPriceResult =
       message: string;
       raw: unknown;
       responseTextPreview?: string | null;
+      providerTradingDay?: string | null;
+      providerUpdatedAt?: string | null;
+      providerUpdatedAtEt?: string | null;
+      isProviderStale?: false;
+      staleReason?: null;
+      canTrade?: boolean;
     }
   | {
       ok: false;
@@ -297,6 +307,12 @@ type MarketPriceResult =
       message: string;
       raw?: unknown;
       responseTextPreview?: string | null;
+      providerTradingDay?: string | null;
+      providerUpdatedAt?: string | null;
+      providerUpdatedAtEt?: string | null;
+      isProviderStale?: boolean;
+      staleReason?: string | null;
+      canTrade?: boolean;
     };
 
 export type LatestClosePriceResult = {
@@ -319,6 +335,12 @@ export type InvestmentPriceDebugResult = {
   cachedPrice: number | null;
   cachedFetchedAt: string | null;
   cacheFresh: boolean;
+  currentNyseDate?: string;
+  providerTradingDay?: string | null;
+  providerUpdatedAtET?: string | null;
+  isProviderStale?: boolean;
+  staleReason?: string | null;
+  canTrade?: boolean;
   calledMarketDataApp: boolean;
   endpointUsed?: string | null;
   requestUrlWithoutToken?: string | null;
@@ -542,7 +564,51 @@ function parseMarketDataTimestamp(value: unknown) {
     const parsed = new Date(raw);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
-  return new Date();
+  return null;
+}
+
+function formatProviderUpdatedAtEt(date: Date | null) {
+  if (!date) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short"
+  }).format(date);
+}
+
+function validateMarketDataFreshness(updatedValue: unknown, now = new Date()) {
+  const marketStatus = getMarketStatus(now);
+  const updatedAt = parseMarketDataTimestamp(updatedValue);
+  const providerTradingDay = updatedAt ? todayIsoInEt(updatedAt) : null;
+  const providerUpdatedAt = updatedAt?.toISOString() ?? null;
+  const providerUpdatedAtEt = formatProviderUpdatedAtEt(updatedAt);
+  let staleReason: string | null = null;
+
+  if (!updatedAt || !providerTradingDay) {
+    staleReason = "The provider did not return a valid updated timestamp.";
+  } else if (updatedAt.getTime() > now.getTime() + 5 * 60 * 1000) {
+    staleReason = "The provider timestamp is in the future.";
+  } else if (marketStatus.isOpen && providerTradingDay !== marketStatus.etDate) {
+    staleReason = `Provider quote is from ${providerTradingDay}, not the current NYSE date ${marketStatus.etDate}.`;
+  } else if (marketStatus.isOpen && now.getTime() - updatedAt.getTime() > MARKETDATA_PROVIDER_MAX_AGE_MS) {
+    staleReason = "The provider quote is older than 30 minutes during NYSE market hours.";
+  }
+
+  return {
+    currentNyseDate: marketStatus.etDate,
+    providerTradingDay,
+    providerUpdatedAt,
+    providerUpdatedAtEt,
+    isProviderStale: Boolean(staleReason),
+    staleReason,
+    canTrade: marketStatus.isOpen && !staleReason
+  };
 }
 
 function marketDataFailure(
@@ -551,7 +617,7 @@ function marketDataFailure(
   code: PriceFailureCode = "temporary_unavailable",
   raw?: unknown,
   responseTextPreview?: string | null
-): MarketPriceResult {
+): Extract<MarketPriceResult, { ok: false }> {
   return {
     ok: false,
     symbol: normalizeSymbol(symbol),
@@ -781,8 +847,27 @@ function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string
     return marketDataFailure(symbol, "MarketData.app stock price unavailable for this asset.", "price_unavailable", data, responseTextPreview);
   }
 
-  const timestamp = parseMarketDataTimestamp(parsedFields.updated ?? marketDataArrayField(data, "date", index) ?? marketDataArrayField(data, "time", index) ?? marketDataArrayField(data, "timestamp", index));
-  const tradingDay = todayIsoInEt(timestamp);
+  const updatedValue = parsedFields.updated ?? marketDataArrayField(data, "date", index) ?? marketDataArrayField(data, "time", index) ?? marketDataArrayField(data, "timestamp", index);
+  const freshness = validateMarketDataFreshness(updatedValue);
+  if (freshness.isProviderStale || !freshness.providerTradingDay || !freshness.providerUpdatedAt || !freshness.providerUpdatedAtEt) {
+    return {
+      ...marketDataFailure(
+        symbol,
+        "Fresh price is not available for this asset right now. Please try again later or choose another ticker.",
+        "stale_price",
+        data,
+        responseTextPreview
+      ),
+      providerTradingDay: freshness.providerTradingDay,
+      providerUpdatedAt: freshness.providerUpdatedAt,
+      providerUpdatedAtEt: freshness.providerUpdatedAtEt,
+      isProviderStale: true,
+      staleReason: freshness.staleReason,
+      canTrade: false
+    };
+  }
+
+  const tradingDay = freshness.providerTradingDay;
   return {
     ok: true,
     symbol,
@@ -794,7 +879,13 @@ function parseMarketDataStockPricePayload(data: Payload, requestedSymbol: string
     source: MARKETDATA_APP_PROVIDER,
     message: `Latest MarketData.app stock quote from ${tradingDay}.`,
     raw: { endpoint: MARKETDATA_STOCK_PRICE_ENDPOINT, payload: data },
-    responseTextPreview: responseTextPreview ?? null
+    responseTextPreview: responseTextPreview ?? null,
+    providerTradingDay: tradingDay,
+    providerUpdatedAt: freshness.providerUpdatedAt,
+    providerUpdatedAtEt: freshness.providerUpdatedAtEt,
+    isProviderStale: false,
+    staleReason: null,
+    canTrade: freshness.canTrade
   };
 }
 
@@ -938,6 +1029,12 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     cachedPrice: cached?.latestClose ?? null,
     cachedFetchedAt: cached?.fetchedAt ?? null,
     cacheFresh,
+    currentNyseDate: marketStatus.etDate,
+    providerTradingDay: null,
+    providerUpdatedAtET: null,
+    isProviderStale: false,
+    staleReason: null,
+    canTrade: false,
     calledMarketDataApp: false,
     endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
     requestUrlWithoutToken: marketDataAppStockPriceUrlWithoutToken(normalized),
@@ -997,6 +1094,7 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
   const parsed = parseMarketDataStockPricePayload(response.data, normalized, 0, response.responseTextPreview);
   if (!response.responseOk || !parsed.ok) {
     const message = parsed.ok ? "Market data temporarily unavailable." : parsed.message;
+    const cachedCanTrade = Boolean(cached && cacheFresh && marketStatus.isOpen);
     return {
       ...baseDebug,
       calledMarketDataApp,
@@ -1005,6 +1103,14 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
       marketDataAppStatus: String(firstValue(response.data.s ?? response.data.status) ?? providerStatus(parsed)),
       parsedFields,
       parsedPrice: null,
+      providerTradingDay: parsed.providerTradingDay ?? null,
+      providerUpdatedAtET: parsed.providerUpdatedAtEt ?? null,
+      isProviderStale: parsed.isProviderStale ?? false,
+      staleReason: parsed.staleReason ?? null,
+      canTrade: cachedCanTrade,
+      finalPrice: cachedCanTrade ? cached?.latestClose ?? null : null,
+      tradingDay: cachedCanTrade ? cached?.priceDate ?? null : parsed.providerTradingDay ?? null,
+      source: cachedCanTrade ? "cache" : null,
       responseTextPreview: response.responseTextPreview,
       errorName: response.errorName,
       errorMessage: message,
@@ -1031,6 +1137,11 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
       finalPrice: parsed.closePrice,
       tradingDay: parsed.priceDate,
       source: "marketdata_app",
+      providerTradingDay: parsed.providerTradingDay ?? parsed.priceDate,
+      providerUpdatedAtET: parsed.providerUpdatedAtEt ?? null,
+      isProviderStale: false,
+      staleReason: null,
+      canTrade: parsed.canTrade ?? marketStatus.isOpen,
       responseTextPreview: response.responseTextPreview,
       errorName: serialized.errorName,
       errorMessage: serialized.errorMessage ?? "Price fetched, but cache save failed.",
@@ -1053,6 +1164,11 @@ export async function debugMarketDataAppPrice(symbol: string): Promise<Investmen
     finalPrice: parsed.closePrice,
     tradingDay: parsed.priceDate,
     source: "marketdata_app",
+    providerTradingDay: parsed.providerTradingDay ?? parsed.priceDate,
+    providerUpdatedAtET: parsed.providerUpdatedAtEt ?? null,
+    isProviderStale: false,
+    staleReason: null,
+    canTrade: parsed.canTrade ?? marketStatus.isOpen,
     responseTextPreview: response.responseTextPreview,
     bearerAttempt: response.bearerAttempt,
     queryTokenAttempt: response.queryTokenAttempt,
@@ -1457,7 +1573,19 @@ export async function validateAsset(symbol: string) {
   await recordInvestmentAssetEvent(normalized, "trade");
   const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
   if (!latest.priceAvailable) {
-    return { ok: false as const, reason: latest.priceMessage ?? "MarketData.app stock price unavailable." };
+    return {
+      ok: false as const,
+      reason:
+        latest.isStale || /fresh price/i.test(latest.priceMessage ?? "")
+          ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
+          : "Price is not available for this asset right now. Please try again later."
+    };
+  }
+  if (getMarketStatus().isOpen && latest.canTrade === false) {
+    return {
+      ok: false as const,
+      reason: "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
+    };
   }
 
   const asset =
@@ -1754,7 +1882,12 @@ async function resolveLatestClosePrice(
       priceMessage: cacheSaveError ? `${marketData.message} Cache save failed, but the live price is shown for this session.` : marketData.message,
       fetchedAt: new Date().toISOString(),
       currency: asset?.currency ?? "USD",
-      cacheStatus: "fresh" as const
+      cacheStatus: "fresh" as const,
+      canTrade: marketData.canTrade ?? marketStatus.isOpen,
+      isStale: false,
+      staleReason: null,
+      providerUpdatedAt: marketData.providerUpdatedAt ?? null,
+      providerUpdatedAtEt: marketData.providerUpdatedAtEt ?? null
     };
     return {
       result: {
@@ -1792,7 +1925,13 @@ async function resolveLatestClosePrice(
     const quote = {
       ...stored,
       priceMessage: `${prefix} Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
-      cacheStatus: stored.cacheStatus ?? (cacheFresh ? "fresh" : "stale")
+      cacheStatus: stored.cacheStatus ?? (cacheFresh ? "fresh" : "stale"),
+      canTrade: marketStatus.isOpen && cacheFresh,
+      isStale: marketStatus.isOpen && !cacheFresh,
+      staleReason:
+        marketStatus.isOpen && !cacheFresh
+          ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
+          : null
     };
     return {
       result: {
@@ -1831,6 +1970,8 @@ async function resolveLatestClosePrice(
       ? "Symbol not found."
       : failure.code === "price_unavailable"
         ? "MarketData.app stock price unavailable for this asset."
+        : failure.code === "stale_price"
+          ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
         : failure.code === "rate_limit"
           ? "API credit limit reached. Using saved prices when available."
           : "No saved price yet. Select the asset to fetch the latest price.";
@@ -1854,7 +1995,12 @@ async function resolveLatestClosePrice(
       priceMessage: error,
       fetchedAt: null,
       currency: asset?.currency ?? "USD",
-      cacheStatus: "missing" as const
+      cacheStatus: "missing" as const,
+      canTrade: false,
+      isStale: failure.code === "stale_price",
+      staleReason: failure.staleReason ?? (failure.code === "stale_price" ? error : null),
+      providerUpdatedAt: failure.providerUpdatedAt ?? null,
+      providerUpdatedAtEt: failure.providerUpdatedAtEt ?? null
     },
     debug: {
       symbol: normalized,
@@ -1915,7 +2061,12 @@ async function getLatestCloseQuote(
       : "No saved price yet. Select the asset to fetch the latest price.",
     fetchedAt: null,
     currency: asset?.currency ?? "USD",
-    cacheStatus: "missing" as const
+    cacheStatus: "missing" as const,
+    canTrade: false,
+    isStale: false,
+    staleReason: null,
+    providerUpdatedAt: null,
+    providerUpdatedAtEt: null
   };
 }
 
@@ -1929,12 +2080,22 @@ export async function getCachedPrice(symbol: string) {
   if (!stored) return null;
   const marketStatus = getMarketStatus();
   const cacheFresh = isCachedQuoteFresh(stored, marketStatus);
+  const isStale = marketStatus.isOpen && !cacheFresh;
   return {
     ...stored,
     provider: stored.provider || MARKETDATA_APP_PROVIDER,
     priceSource: "cache" as const,
     cacheStatus: cacheFresh ? ("fresh" as const) : marketStatus.isOpen ? ("stale" as const) : ("cached" as const),
-    priceMessage: `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`
+    priceMessage: isStale
+      ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
+      : `Using saved price from ${stored.fetchedAt ? new Date(stored.fetchedAt).toLocaleString("en-US") : stored.priceDate}.`,
+    canTrade: marketStatus.isOpen && cacheFresh,
+    isStale,
+    staleReason: isStale
+      ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
+      : null,
+    providerUpdatedAt: stored.providerUpdatedAt ?? null,
+    providerUpdatedAtEt: stored.providerUpdatedAt ? formatProviderUpdatedAtEt(new Date(stored.providerUpdatedAt)) : null
   };
 }
 
@@ -2008,7 +2169,12 @@ async function resolvePortfolioQuotesForSymbols(
         priceMessage: cached.priceMessage ?? "Using latest cached price.",
         fetchedAt: cached.fetchedAt ?? null,
         currency: cached.currency ?? asset?.currency ?? "USD",
-        cacheStatus: cached.cacheStatus
+        cacheStatus: cached.cacheStatus,
+        canTrade: cached.canTrade,
+        isStale: cached.isStale,
+        staleReason: cached.staleReason,
+        providerUpdatedAt: cached.providerUpdatedAt,
+        providerUpdatedAtEt: cached.providerUpdatedAtEt
       });
       continue;
     }
@@ -2036,7 +2202,10 @@ async function resolvePortfolioQuotesForSymbols(
         priceMessage: "Using latest cached price.",
         fetchedAt: null,
         currency: asset?.currency ?? "USD",
-        cacheStatus: "cached"
+        cacheStatus: "cached",
+        canTrade: false,
+        isStale: getMarketStatus().isOpen,
+        staleReason: getMarketStatus().isOpen ? "Fresh price is temporarily unavailable for this asset." : null
       });
       continue;
     }
@@ -2063,7 +2232,10 @@ async function resolvePortfolioQuotesForSymbols(
       priceMessage: referencePrice ? "Using reference price as final fallback." : "Price unavailable.",
       fetchedAt: null,
       currency: asset?.currency ?? "USD",
-      cacheStatus: "missing"
+      cacheStatus: "missing",
+      canTrade: false,
+      isStale: false,
+      staleReason: null
     });
   }
 
@@ -2099,7 +2271,13 @@ function marketPriceMapFromQuotes(quotes: InvestmentAssetQuote[]) {
   }
   // Second pass: override with live/cached prices when available
   for (const quote of quotes) {
-    if (quote.priceAvailable && quote.priceSource !== "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0) {
+    if (
+      quote.priceAvailable &&
+      quote.isStale !== true &&
+      quote.priceSource !== "reference" &&
+      Number.isFinite(quote.latestClose) &&
+      quote.latestClose > 0
+    ) {
       map.set(quote.symbol, quote.latestClose);
     }
   }
@@ -2112,6 +2290,7 @@ function isCachedQuoteFresh(
 ) {
   if (!stored.fetchedAt && !stored.priceDate) return false;
   if (!marketStatus.isOpen) return Boolean(stored.priceDate || stored.fetchedAt);
+  if (!stored.priceDate || stored.priceDate !== marketStatus.etDate) return false;
   if (!stored.fetchedAt) return false;
   const fetchedAt = Date.parse(stored.fetchedAt);
   if (!Number.isFinite(fetchedAt)) return false;
@@ -2127,6 +2306,17 @@ export async function savePriceToCache(
 ) {
   const normalized = normalizeSymbol(symbol);
   if (!supabaseConfigured() || !price || !tradingDay) return null;
+  if (marketPrice?.isProviderStale) return null;
+
+  const stored = await getStoredLatestPrice(normalized).catch(() => null);
+  if (stored?.priceDate && stored.priceDate > tradingDay) return stored;
+  if (stored?.providerUpdatedAt && marketPrice?.providerUpdatedAt) {
+    const storedUpdatedAt = Date.parse(stored.providerUpdatedAt);
+    const incomingUpdatedAt = Date.parse(marketPrice.providerUpdatedAt);
+    if (Number.isFinite(storedUpdatedAt) && Number.isFinite(incomingUpdatedAt) && incomingUpdatedAt <= storedUpdatedAt) {
+      return stored;
+    }
+  }
 
   const asset = assetInput ?? (await resolveInvestmentAsset(normalized));
   await upsertInvestmentAsset({
@@ -3681,7 +3871,8 @@ export async function getInvestmentAdminTeamDetail(
     priceDate: holding.priceDate,
     marketValue: holding.latestClose > 0 ? holding.marketValue : null,
     unrealizedProfitLoss: holding.latestClose > 0 ? holding.unrealizedGainLoss : null,
-    allocationPercent: totalValue > 0 ? (holding.marketValue / totalValue) * 100 : 0
+    allocationPercent: totalValue > 0 ? (holding.marketValue / totalValue) * 100 : 0,
+    priceWarning: holding.priceWarning ?? null
   } satisfies InvestmentAdminHoldingResult));
 
   const positions = (accountView?.positions ?? []).map((position) => ({
@@ -3842,7 +4033,9 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
   return assets.map((asset) => {
     const stored = latestBySymbol.get(asset.symbol);
     const resolvedPrice = resolveStoredInvestmentPrice(stored, asset.referencePrice);
-    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt: resolvedPrice.fetchedAt, priceDate: resolvedPrice.priceDate }) : false;
+    const marketStatus = getMarketStatus();
+    const cacheFresh = stored ? isCachedQuoteFresh({ fetchedAt: resolvedPrice.fetchedAt, priceDate: resolvedPrice.priceDate }, marketStatus) : false;
+    const isStale = Boolean(stored && marketStatus.isOpen && !cacheFresh);
     return {
       ...asset,
       latestClose: resolvedPrice.price ?? asset.referencePrice,
@@ -3853,8 +4046,15 @@ export async function listInvestmentAssetQuotes(): Promise<InvestmentAssetQuote[
       fetchedAt: resolvedPrice.fetchedAt,
       currency: stored ? rowString(stored, "currency") || "USD" : asset.currency ?? "USD",
       cacheStatus: stored ? (cacheFresh ? ("fresh" as const) : ("cached" as const)) : ("missing" as const),
-      priceMessage: resolvedPrice.priceDate
-        ? `Using saved ${resolvedPrice.source} price from ${resolvedPrice.fetchedAt ? new Date(resolvedPrice.fetchedAt).toLocaleString("en-US") : resolvedPrice.priceDate}.`
+      canTrade: Boolean(stored && marketStatus.isOpen && cacheFresh),
+      isStale,
+      staleReason: isStale ? "Fresh price is temporarily unavailable for this asset." : null,
+      providerUpdatedAt: null,
+      providerUpdatedAtEt: null,
+      priceMessage: isStale
+        ? "Fresh price is temporarily unavailable for this asset."
+        : resolvedPrice.priceDate
+          ? `Using saved ${resolvedPrice.source} price from ${resolvedPrice.fetchedAt ? new Date(resolvedPrice.fetchedAt).toLocaleString("en-US") : resolvedPrice.priceDate}.`
         : stored
           ? "No saved price yet. Select the asset to fetch the latest price."
           : "Reference price. Live price updates every 15 min during market hours."
@@ -4279,13 +4479,23 @@ async function getStoredLatestPrice(symbol: string) {
     });
     if (!Array.isArray(rows) || !rows[0]) return null;
     const resolved = resolveStoredInvestmentPrice(rows[0]);
+    const raw = storedPriceRawPayload(rows[0]);
+    const providerTimestamp = raw
+      ? parseMarketDataTimestamp(
+          marketDataArrayField(raw, "updated") ??
+            marketDataArrayField(raw, "date") ??
+            marketDataArrayField(raw, "time") ??
+            marketDataArrayField(raw, "timestamp")
+        )
+      : null;
     return {
       latestClose: resolved.price ?? rowNumber(rows[0], "price", rowNumber(rows[0], "close_price")),
       priceDate: resolved.priceDate,
       provider: rowString(rows[0], "provider") || "stored",
       priceAvailable: true,
       fetchedAt: resolved.fetchedAt,
-      currency: rowString(rows[0], "currency") || "USD"
+      currency: rowString(rows[0], "currency") || "USD",
+      providerUpdatedAt: providerTimestamp?.toISOString() ?? null
     };
   } catch {
     try {
@@ -4302,7 +4512,8 @@ async function getStoredLatestPrice(symbol: string) {
         provider: rowString(rows[0], "provider") || "stored",
         priceAvailable: true,
         fetchedAt: rowNullableString(rows[0], "fetched_at") ?? rowNullableString(rows[0], "updated_at"),
-        currency: rowString(rows[0], "currency") || "USD"
+        currency: rowString(rows[0], "currency") || "USD",
+        providerUpdatedAt: null
       };
     } catch {
       return null;
@@ -4377,7 +4588,8 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
   const quantity = rowNumber(row, "quantity");
   const leverage = Math.max(1, rowNumber(row, "leverage", 1));
   const marginLocked = rowNumber(row, "margin_locked");
-  const currentPrice = priceMap.get(symbol) ?? rowNumber(row, "current_price", entryPrice);
+  const hasValidatedPrice = priceMap.has(symbol);
+  const currentPrice = status === "open" ? priceMap.get(symbol) ?? entryPrice : rowNumber(row, "current_price", entryPrice);
   const exposureValue = status === "open" ? quantity * currentPrice : rowNumber(row, "exposure_value", quantity * currentPrice);
   const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity, leverage) : 0;
   const unrealizedPnl = status === "open" ? Math.max(rawUnrealized, -marginLocked) : 0;
@@ -4398,7 +4610,8 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
     status,
     openedAt: rowString(row, "opened_at") || rowString(row, "created_at"),
     closedAt: rowNullableString(row, "closed_at"),
-    updatedAt: rowString(row, "updated_at") || rowString(row, "opened_at")
+    updatedAt: rowString(row, "updated_at") || rowString(row, "opened_at"),
+    priceWarning: status === "open" && !hasValidatedPrice ? "Fresh price unavailable; entry price is used for display." : null
   };
 }
 
@@ -4411,7 +4624,7 @@ async function liquidatePositionIfBreached(account: Payload, row: Payload, price
   const margin = rowNumber(row, "margin_locked");
   if (!symbol || !entryPrice || !quantity || !margin) return row;
 
-  const currentPrice = priceMap.get(symbol) ?? rowNumber(row, "current_price", entryPrice);
+  const currentPrice = priceMap.get(symbol) ?? entryPrice;
   const rawPnl = calculatePositionPnl(positionSide(row), entryPrice, currentPrice, quantity, leverage);
   if (rawPnl > -margin) return row;
 
@@ -4535,7 +4748,18 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
   );
   const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, baseQuoteList, assets, priceMapInput);
   const quoteMap = new Map(quoteList.map((quote) => [quote.symbol, quote]));
-  const priceMap = new Map(quoteList.map((quote) => [quote.symbol, quote.latestClose]));
+  const marketStatus = getMarketStatus();
+  const priceMap = new Map(
+    quoteList
+      .filter(
+        (quote) =>
+          quote.priceAvailable &&
+          (!marketStatus.isOpen || quote.isStale !== true) &&
+          Number.isFinite(quote.latestClose) &&
+          quote.latestClose > 0
+      )
+      .map((quote) => [quote.symbol, quote.latestClose])
+  );
   const holdingViews = Array.isArray(holdingsRows)
     ? holdingsRows
         .filter((row) => rowNumber(row, "quantity") > 0)
@@ -4544,9 +4768,9 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
           const asset = quoteMap.get(symbol) ?? getInvestmentAsset(symbol);
           const assetName = rowNullableString(row, "asset_name") ?? asset?.name ?? symbol;
           const rawPrice = priceMap.get(symbol);
-          const latestClose = (rawPrice !== undefined && rawPrice > 0) ? rawPrice : (asset?.referencePrice ?? 0);
           const quantity = rowNumber(row, "quantity");
           const averageBuyPrice = rowNumber(row, "average_buy_price");
+          const latestClose = rawPrice !== undefined && rawPrice > 0 ? rawPrice : averageBuyPrice || asset?.referencePrice || 0;
           const marketValue = quantity * latestClose;
           return {
             symbol,
@@ -4558,7 +4782,11 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
             priceDate: quoteMap.get(symbol)?.priceDate ?? null,
             marketValue,
             unrealizedGainLoss: (latestClose - averageBuyPrice) * quantity,
-            weight: 0
+            weight: 0,
+            priceWarning:
+              rawPrice === undefined
+                ? "Fresh price unavailable; average buy price is used for portfolio display."
+                : null
           };
         })
     : [];
@@ -4629,7 +4857,7 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     quotes: quoteList,
     portfolio,
     portfolioDebug,
-    marketStatus: getMarketStatus(),
+    marketStatus,
     currentRank
   };
 }

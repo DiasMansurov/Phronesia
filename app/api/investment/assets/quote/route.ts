@@ -34,7 +34,12 @@ export async function GET(request: Request) {
       priceMessage: validation.price.priceMessage,
       fetchedAt: validation.price.fetchedAt ?? null,
       currency: validation.price.currency,
-      cacheStatus: validation.price.cacheStatus
+      cacheStatus: validation.price.cacheStatus,
+      canTrade: validation.price.canTrade,
+      isStale: validation.price.isStale,
+      staleReason: validation.price.staleReason,
+      providerUpdatedAt: validation.price.providerUpdatedAt ?? null,
+      providerUpdatedAtEt: validation.price.providerUpdatedAtEt ?? null
     }
   });
 }

@@ -175,7 +175,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                   <td>{position.assetName}</td>
                   <td>{position.quantity}</td>
                   <td>{formatUsd(position.entryPrice)}</td>
-                  <td>{formatUsd(position.currentPrice)}</td>
+                  <td>
+                    <div>{formatUsd(position.currentPrice)}</div>
+                    {position.priceWarning ? <small className="muted">{position.priceWarning}</small> : null}
+                  </td>
                   <td>x{position.leverage}</td>
                   <td>{formatUsd(position.marginLocked)}</td>
                   <td>{formatUsd(position.exposureValue)}</td>
@@ -222,7 +225,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                   <td>{holding.assetName}</td>
                   <td>{holding.quantity}</td>
                   <td>{formatUsd(holding.averageBuyPrice)}</td>
-                  <td>{holding.latestPrice ? `${formatUsd(holding.latestPrice)} · ${holding.priceDate ?? "saved"}` : "Price unavailable"}</td>
+                  <td>
+                    <div>{holding.latestPrice ? `${formatUsd(holding.latestPrice)} · ${holding.priceDate ?? "saved"}` : "Price unavailable"}</div>
+                    {holding.priceWarning ? <small className="muted">{holding.priceWarning}</small> : null}
+                  </td>
                   <td>{holding.marketValue === null ? "Price unavailable" : formatUsd(holding.marketValue)}</td>
                   <td className={(holding.unrealizedProfitLoss ?? 0) >= 0 ? "positive-text" : "negative-text"}>
                     {holding.unrealizedProfitLoss === null ? "n/a" : formatUsd(holding.unrealizedProfitLoss)}

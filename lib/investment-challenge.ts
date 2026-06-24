@@ -49,6 +49,11 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   fetchedAt?: string | null;
   currency?: string;
   cacheStatus?: "fresh" | "cached" | "stale" | "missing";
+  canTrade?: boolean;
+  isStale?: boolean;
+  staleReason?: string | null;
+  providerUpdatedAt?: string | null;
+  providerUpdatedAtEt?: string | null;
 };
 
 export type InvestmentAssetSearchResult = InvestmentAsset & {
@@ -56,6 +61,9 @@ export type InvestmentAssetSearchResult = InvestmentAsset & {
   priceAvailable?: boolean;
   latestClose?: number | null;
   priceDate?: string | null;
+  canTrade?: boolean;
+  isStale?: boolean;
+  staleReason?: string | null;
 };
 
 export type InvestmentRecentBuyTradeContext = {

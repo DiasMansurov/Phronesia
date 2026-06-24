@@ -78,7 +78,10 @@ function featuredQuotes(): InvestmentAssetQuote[] {
     priceSource: "reference",
     priceMessage: "No saved price yet. Select the asset to fetch the latest price.",
     fetchedAt: null,
-    cacheStatus: "missing"
+    cacheStatus: "missing",
+    canTrade: false,
+    isStale: false,
+    staleReason: null
   }));
 }
 
@@ -196,6 +199,8 @@ export function InvestmentChallengeDashboard({
       ? ""
     : !selectedQuote.priceAvailable
       ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
+      : selectedQuote.canTrade === false && marketStatus.isOpen
+        ? selectedQuote.staleReason ?? "Fresh price is temporarily unavailable for this asset."
       : activeCompetition?.runtimeStatus === "not_started"
         ? "Competition has not started yet. You can register and prepare your thesis, but trading is disabled."
       : activeCompetition?.runtimeStatus === "closed"
@@ -215,6 +220,7 @@ export function InvestmentChallengeDashboard({
       !busy &&
       !priceLoading &&
       selectedQuote.priceAvailable &&
+      selectedQuote.canTrade !== false &&
       !(side === "buy" && estimatedNet > cashBalance + 0.00001) &&
       !(side === "sell" && quantity > ownedQuantity)
   );
@@ -223,6 +229,8 @@ export function InvestmentChallengeDashboard({
       ? ""
       : !selectedQuote.priceAvailable
         ? selectedQuote.priceMessage ?? "No saved price yet. Select the asset to fetch the latest price."
+        : selectedQuote.canTrade === false && marketStatus.isOpen
+          ? selectedQuote.staleReason ?? "Fresh price is temporarily unavailable for this asset."
         : activeCompetition?.runtimeStatus === "not_started"
           ? "Competition has not started yet."
         : activeCompetition?.runtimeStatus === "closed"
@@ -244,6 +252,7 @@ export function InvestmentChallengeDashboard({
       !busy &&
       !priceLoading &&
       selectedQuote.priceAvailable &&
+      selectedQuote.canTrade !== false &&
       !positionWarning
   );
   const selectedHasDisplayPrice =
@@ -319,7 +328,10 @@ export function InvestmentChallengeDashboard({
       priceSource: hasOptimisticPrice ? "reference" : "unavailable",
       priceMessage: hasOptimisticPrice
         ? "Checking saved cache and the approved MarketData.app stock price endpoint..."
-        : "Checking latest stock price..."
+        : "Checking latest stock price...",
+      canTrade: false,
+      isStale: false,
+      staleReason: null
     };
     setSymbol(asset.symbol);
     setHasSelectedAsset(true);
@@ -337,7 +349,11 @@ export function InvestmentChallengeDashboard({
       if (response.ok && data.ok && data.quote) {
         setSelectedQuote(data.quote);
         setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
-        setAssetSearchStatus("");
+        setAssetSearchStatus(
+          data.quote.isStale || (data.quote.canTrade === false && marketStatus.isOpen)
+            ? data.quote.staleReason ?? "Price is temporarily not updating from the provider. Trading will be available once a fresh price is received."
+            : ""
+        );
       } else {
         const reason = data.reason ?? "MarketData.app stock price unavailable.";
         setSelectedQuote({
@@ -383,10 +399,18 @@ export function InvestmentChallengeDashboard({
       const response = await fetch(`/api/investment/assets/quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
       const data = (await response.json()) as { ok?: boolean; quote?: InvestmentAssetQuote; reason?: string; error?: string };
 
-      if (response.ok && data.ok && data.quote?.priceAvailable && data.quote.latestClose > 0) {
+      if (response.ok && data.ok && data.quote) {
         applySelectedQuote(data.quote);
-        showToast(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`, "success");
-        setAssetSearchStatus("");
+        if (data.quote.canTrade === false && marketStatus.isOpen) {
+          const warning = data.quote.staleReason ?? "Fresh price is temporarily unavailable for this asset.";
+          showToast(warning, "error");
+          setAssetSearchStatus(warning);
+        } else if (data.quote.priceAvailable && data.quote.latestClose > 0) {
+          showToast(`${data.quote.symbol} price loaded: ${formatUsd(data.quote.latestClose)} from ${sourceLabel(data.quote)}.`, "success");
+          setAssetSearchStatus("");
+        } else {
+          setAssetSearchStatus(data.quote.priceMessage ?? `${symbol} price is unavailable.`);
+        }
         return;
       }
 
@@ -423,7 +447,15 @@ export function InvestmentChallengeDashboard({
       if (data.quotes?.length) {
         setMarket((current) => ({ ...current, quotes: data.quotes as InvestmentAssetQuote[] }));
         const refreshedSelected = data.quotes.find((quote) => quote.symbol === symbol);
-        if (refreshedSelected) setSelectedQuote(refreshedSelected);
+        if (refreshedSelected) {
+          setSelectedQuote(refreshedSelected);
+          if (refreshedSelected.canTrade === false && marketStatus.isOpen) {
+            const warning = refreshedSelected.staleReason ?? "Fresh price is temporarily unavailable for this asset.";
+            showToast(warning, "error");
+            setAssetSearchStatus(warning);
+            return;
+          }
+        }
       }
       const resultMessage = data.result?.message ?? `${symbol} refreshed.`;
       showToast(resultMessage, "success");
@@ -759,7 +791,9 @@ export function InvestmentChallengeDashboard({
                     <div className="t-asset-ticker">{selectedQuote.symbol}</div>
                     <div className="t-asset-price">{selectedPriceText}</div>
                     <div className="t-asset-source">
-                      {priceLoading ? "Checking price..." : selectedQuote.priceAvailable
+                      {priceLoading ? "Checking price..." : selectedQuote.isStale
+                        ? selectedQuote.staleReason ?? "Fresh price is temporarily unavailable for this asset."
+                        : selectedQuote.priceAvailable
                         ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
                         : selectedQuote.priceMessage ?? "No saved price"}
                     </div>
@@ -807,7 +841,7 @@ export function InvestmentChallengeDashboard({
                     <div className="t-trade-warning">{clientTradeWarning}</div>
                   ) : null}
 
-                  {!selectedQuote.priceAvailable ? (
+                  {!selectedQuote.priceAvailable || selectedQuote.canTrade === false ? (
                     <button
                       className="t-btn-sm"
                       type="button"
