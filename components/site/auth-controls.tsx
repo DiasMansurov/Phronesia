@@ -32,9 +32,6 @@ export function AuthControls() {
           <Link className="button secondary" href="/sign-in">
             Sign In
           </Link>
-          <Link className="button primary" href="/sign-up">
-            Sign Up
-          </Link>
         </div>
       </Show>
       <Show when="signed-in">

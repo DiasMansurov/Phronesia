@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { Show, useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FocusEvent } from "react";
 
+import { AuthControls } from "@/components/site/auth-controls";
+
 const visibleLinks = [
   { href: "/", label: "Home" },
   { href: "/learn", label: "Learn" },
@@ -85,6 +87,7 @@ export function SiteNav() {
             />
           </nav>
         </div>
+        <AuthControls />
       </div>
     </header>
   );
