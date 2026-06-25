@@ -12,7 +12,7 @@ type CsvRow = Record<string, unknown>;
 export async function GET(request: Request) {
   const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) {
-    return NextResponse.json({ ok: false, error: "Admin access required" }, { status: 403 });
+    return noStoreJson({ ok: false, error: "Admin access required" }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -106,7 +106,7 @@ export async function GET(request: Request) {
       "status"
     ], "teenvestor-investment-leaderboard.csv");
   } catch (error) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         ok: false,
         error: error instanceof Error ? error.message : String(error ?? "Failed to export admin results.")
@@ -121,9 +121,16 @@ function csvResponse(rows: CsvRow[], headers: string[], filename: string) {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store, no-cache, must-revalidate"
     }
   });
+}
+
+function noStoreJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
 }
 
 function escapeCsv(value: unknown) {

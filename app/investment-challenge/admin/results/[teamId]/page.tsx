@@ -101,7 +101,7 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
         <Metric label="Return" value={formatPercent(overview.returnPercent)} tone={overview.returnPercent >= 0 ? "positive" : "negative"} />
         <Metric label="Locked margin" value={formatUsd(overview.lockedMargin)} />
         <Metric label="Open exposure" value={formatUsd(overview.totalExposure)} />
-        <Metric label="Unrealized P/L" value={formatUsd(overview.unrealizedPnl)} tone={overview.unrealizedPnl >= 0 ? "positive" : "negative"} />
+        <Metric label="Unrealized P/L" value={formatUsd(overview.totalUnrealizedPnl)} tone={overview.totalUnrealizedPnl >= 0 ? "positive" : "negative"} />
         <Metric label="Open positions" value={overview.openPositionsCount.toString()} />
       </section>
 
@@ -116,7 +116,9 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <div><dt>Holdings value</dt><dd>{formatUsd(overview.holdingsValue)}</dd></div>
             <div><dt>Locked margin</dt><dd>{formatUsd(overview.lockedMargin)}</dd></div>
             <div><dt>Total exposure</dt><dd>{formatUsd(overview.totalExposure)}</dd></div>
-            <div><dt>Unrealized P/L</dt><dd className={overview.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.unrealizedPnl)}</dd></div>
+            <div><dt>Holdings unrealized P/L</dt><dd className={overview.holdingsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.holdingsUnrealizedPnl)}</dd></div>
+            <div><dt>Positions unrealized P/L</dt><dd className={overview.positionsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.positionsUnrealizedPnl)}</dd></div>
+            <div><dt>Total unrealized P/L</dt><dd className={overview.totalUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.totalUnrealizedPnl)}</dd></div>
             <div><dt>Total portfolio value</dt><dd>{formatUsd(overview.totalPortfolioValue)}</dd></div>
             <div><dt>Profit / loss</dt><dd className={overview.profitLoss >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.profitLoss)}</dd></div>
             <div><dt>Return</dt><dd className={overview.returnPercent >= 0 ? "positive-text" : "negative-text"}>{formatPercent(overview.returnPercent)}</dd></div>
@@ -141,6 +143,35 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <span>Competition: <strong>{detail.competition?.runtimeStatus ?? "n/a"}</strong></span>
           </div>
         </article>
+      </section>
+
+      <section className="panel stack-md investment-admin-results-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Portfolio formula</p>
+            <h2>Canonical snapshot breakdown.</h2>
+            <p className="muted small">
+              These numbers come from the same server-side rows used in the holdings and open positions tables.
+            </p>
+          </div>
+        </div>
+        <dl className="investment-admin-detail-list">
+          <div><dt>Cash</dt><dd>{formatUsd(overview.formulaBreakdown.cash)}</dd></div>
+          <div><dt>Normal holdings value</dt><dd>{formatUsd(overview.formulaBreakdown.normalHoldingsValue)}</dd></div>
+          <div><dt>Locked margin</dt><dd>{formatUsd(overview.formulaBreakdown.lockedMargin)}</dd></div>
+          <div><dt>Open exposure</dt><dd>{formatUsd(overview.formulaBreakdown.openExposure)}</dd></div>
+          <div><dt>Positions unrealized P/L</dt><dd className={overview.formulaBreakdown.positionsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.positionsUnrealizedPnl)}</dd></div>
+          <div><dt>Total portfolio value</dt><dd>{formatUsd(overview.formulaBreakdown.totalPortfolioValue)}</dd></div>
+          <div><dt>Holdings unrealized P/L</dt><dd className={overview.formulaBreakdown.holdingsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.holdingsUnrealizedPnl)}</dd></div>
+          <div><dt>Total unrealized P/L</dt><dd className={overview.formulaBreakdown.totalUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.totalUnrealizedPnl)}</dd></div>
+        </dl>
+        <p className="muted small">
+          Total portfolio value = cash + normal holdings value + locked margin + positions unrealized P/L =
+          {" "}
+          {formatUsd(overview.formulaBreakdown.cash)} + {formatUsd(overview.formulaBreakdown.normalHoldingsValue)} + {formatUsd(overview.formulaBreakdown.lockedMargin)} + {formatUsd(overview.formulaBreakdown.positionsUnrealizedPnl)}
+          {" "}
+          = {formatUsd(overview.formulaBreakdown.totalPortfolioValue)}.
+        </p>
       </section>
 
       <section className="panel stack-md investment-admin-results-panel">

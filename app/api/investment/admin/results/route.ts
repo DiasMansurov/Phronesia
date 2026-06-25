@@ -7,17 +7,23 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+function noStoreJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 export async function GET(request: Request) {
   const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) {
-    return NextResponse.json({ ok: false, error: "Admin access required" }, { status: 403 });
+    return noStoreJson({ ok: false, error: "Admin access required" }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);
   const competitionCode = searchParams.get("competitionCode") || "Teenvestor.school";
   try {
     const bundle = await listInvestmentAdminResults(competitionCode);
-    return NextResponse.json({
+    return noStoreJson({
       ok: true,
       persisted: bundle.persisted,
       competition: bundle.competition,
@@ -26,7 +32,7 @@ export async function GET(request: Request) {
       teams: bundle.teams.map(adminTeamApiRow)
     });
   } catch (error) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         ok: false,
         error: error instanceof Error ? error.message : String(error ?? "Failed to load admin results.")
@@ -49,7 +55,12 @@ function adminTeamApiRow(team: InvestmentAdminTeamResult) {
     locked_margin: team.lockedMargin,
     open_exposure: team.totalExposure,
     unrealized_pnl: team.unrealizedPnl,
+    holdings_unrealized_pnl: team.holdingsUnrealizedPnl,
+    positions_unrealized_pnl: team.positionsUnrealizedPnl,
+    total_unrealized_pnl: team.totalUnrealizedPnl,
+    open_position_value: team.openPositionValue,
     total_portfolio_value: team.totalPortfolioValue,
+    formula_breakdown: team.formulaBreakdown,
     profit_loss: team.profitLoss,
     return_percent: team.returnPercent,
     trades_count: team.tradesCount,

@@ -7,6 +7,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+function noStoreJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 type RouteContext = {
   params: Promise<{ teamId: string }>;
 };
@@ -14,7 +20,7 @@ type RouteContext = {
 export async function GET(request: Request, context: RouteContext) {
   const organizer = await requireInvestmentAdmin();
   if (organizer.errorResponse) {
-    return NextResponse.json({ ok: false, error: "Admin access required" }, { status: 403 });
+    return noStoreJson({ ok: false, error: "Admin access required" }, { status: 403 });
   }
 
   const { teamId } = await context.params;
@@ -24,12 +30,12 @@ export async function GET(request: Request, context: RouteContext) {
     const detail = await getInvestmentAdminTeamDetail(teamId, competitionCode);
 
     if (!detail.overview) {
-      return NextResponse.json({ ok: false, error: "Team was not found in this competition." }, { status: 404 });
+      return noStoreJson({ ok: false, error: "Team was not found in this competition." }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, ...detail });
+    return noStoreJson({ ok: true, ...detail });
   } catch (error) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         ok: false,
         error: error instanceof Error ? error.message : String(error ?? "Failed to load team details.")

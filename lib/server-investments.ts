@@ -77,11 +77,29 @@ export type InvestmentPortfolioSummary = {
   lockedMargin: number;
   totalExposure: number;
   unrealizedPnl: number;
+  holdingsUnrealizedPnl: number;
+  totalUnrealizedPnl: number;
+  openPositionValue: number;
   totalValue: number;
   dailyChange: number;
   totalReturn: number;
   diversificationScore: number;
   riskScore: number;
+  formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
+};
+
+export type InvestmentPortfolioFormulaBreakdown = {
+  cash: number;
+  normalHoldingsValue: number;
+  lockedMargin: number;
+  openExposure: number;
+  holdingsUnrealizedPnl: number;
+  positionsUnrealizedPnl: number;
+  totalUnrealizedPnl: number;
+  openPositionValue: number;
+  totalPortfolioValue: number;
+  profitLoss: number;
+  returnPercent: number;
 };
 
 export type InvestmentPortfolioDebug = {
@@ -91,8 +109,12 @@ export type InvestmentPortfolioDebug = {
   openPositionsCount: number;
   lockedMargin: number;
   openExposure: number;
+  holdingsUnrealizedPnl: number;
   unrealizedPnl: number;
+  totalUnrealizedPnl: number;
+  openPositionValue: number;
   calculatedPortfolioValue: number;
+  formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
   pricesUsed: Array<{
     symbol: string;
     price: number | null;
@@ -192,7 +214,12 @@ export type InvestmentAdminTeamResult = {
   lockedMargin: number;
   totalExposure: number;
   unrealizedPnl: number;
+  holdingsUnrealizedPnl: number;
+  positionsUnrealizedPnl: number;
+  totalUnrealizedPnl: number;
+  openPositionValue: number;
   totalPortfolioValue: number;
+  formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
   portfolioDebug: InvestmentPortfolioDebug;
   profitLoss: number;
   returnPercent: number;
@@ -2886,7 +2913,7 @@ export async function createOrGetInvestmentAccount(input: {
   const existing = await findInvestmentAccountByNormalizedTeamName(competition.id, normalizedTeamName);
   if (existing) {
     await updateInvestmentAccountNormalizedName(existing, normalizedTeamName);
-    return buildInvestmentAccountView(rowString(existing, "id"));
+    return calculateInvestmentPortfolio(rowString(existing, "id"));
   }
 
   const accountPayload = {
@@ -2911,7 +2938,7 @@ export async function createOrGetInvestmentAccount(input: {
   const accountId = rowString(rows[0], "id");
   await updateInvestmentAccountNormalizedName(rows[0], normalizedTeamName);
   await recalculatePortfolios();
-  return buildInvestmentAccountView(accountId);
+  return calculateInvestmentPortfolio(accountId);
 }
 
 async function findInvestmentAccountByNormalizedTeamName(
@@ -2980,6 +3007,20 @@ function recordInvestmentTeamAccessError(diagnostics: InvestmentTeamAccessDiagno
 function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCompetitionView): InvestmentAccountView {
   const startingCash = rowNumber(accountRow, "starting_cash", competition.startingCash);
   const cash = rowNumber(accountRow, "cash_balance", rowNumber(accountRow, "cash", startingCash));
+  const totalReturn = startingCash > 0 ? ((cash - startingCash) / startingCash) * 100 : 0;
+  const formulaBreakdown: InvestmentPortfolioFormulaBreakdown = {
+    cash,
+    normalHoldingsValue: 0,
+    lockedMargin: 0,
+    openExposure: 0,
+    holdingsUnrealizedPnl: 0,
+    positionsUnrealizedPnl: 0,
+    totalUnrealizedPnl: 0,
+    openPositionValue: 0,
+    totalPortfolioValue: cash,
+    profitLoss: cash - startingCash,
+    returnPercent: totalReturn
+  };
   return {
     account: {
       id: rowString(accountRow, "id"),
@@ -3002,11 +3043,15 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       lockedMargin: 0,
       totalExposure: 0,
       unrealizedPnl: 0,
+      holdingsUnrealizedPnl: 0,
+      totalUnrealizedPnl: 0,
+      openPositionValue: 0,
       totalValue: cash,
       dailyChange: 0,
-      totalReturn: startingCash > 0 ? ((cash - startingCash) / startingCash) * 100 : 0,
+      totalReturn,
       diversificationScore: 0,
-      riskScore: 100
+      riskScore: 100,
+      formulaBreakdown
     },
     portfolioDebug: {
       cashBalance: cash,
@@ -3015,8 +3060,12 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       openPositionsCount: 0,
       lockedMargin: 0,
       openExposure: 0,
+      holdingsUnrealizedPnl: 0,
       unrealizedPnl: 0,
+      totalUnrealizedPnl: 0,
+      openPositionValue: 0,
       calculatedPortfolioValue: cash,
+      formulaBreakdown,
       pricesUsed: []
     },
     marketStatus: getMarketStatus(),
@@ -3219,9 +3268,13 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     legacyHoldingsValue: view.portfolio.holdingsValue,
     lockedMargin: view.portfolio.lockedMargin,
     openExposure: view.portfolio.totalExposure,
-    unrealizedPnl: view.portfolio.unrealizedPnl,
+    unrealizedPnl: view.portfolio.formulaBreakdown.totalUnrealizedPnl,
+    holdingsUnrealizedPnl: view.portfolio.formulaBreakdown.holdingsUnrealizedPnl,
+    positionsUnrealizedPnl: view.portfolio.formulaBreakdown.positionsUnrealizedPnl,
+    totalUnrealizedPnl: view.portfolio.formulaBreakdown.totalUnrealizedPnl,
+    openPositionValue: view.portfolio.formulaBreakdown.openPositionValue,
     portfolioValue: view.portfolio.totalValue,
-    profitLoss: view.portfolio.totalValue - view.portfolio.startingCash,
+    profitLoss: view.portfolio.formulaBreakdown.profitLoss,
     returnPercent: view.portfolio.totalReturn,
     holdingsCount: view.holdings.length,
     openPositionsCount: openPositions.length,
@@ -3229,7 +3282,8 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     holdings: view.holdings,
     openPositions,
     pricesUsed: view.portfolioDebug.pricesUsed,
-    portfolioDebug: view.portfolioDebug
+    portfolioDebug: view.portfolioDebug,
+    formulaBreakdown: view.portfolio.formulaBreakdown
   };
 }
 
@@ -3321,7 +3375,7 @@ export async function executeInvestmentTrade(input: {
   }
 
   await recalculatePortfolios();
-  const view = await buildInvestmentAccountView(rowString(account, "id"));
+  const view = await calculateInvestmentPortfolio(rowString(account, "id"));
   return { ok: true as const, account: view, price, fee, gross, net: input.side === "buy" ? gross + fee : gross - fee };
 }
 
@@ -3356,7 +3410,7 @@ export async function openInvestmentPosition(input: {
   const price = latest.latestClose;
   if (!price || !Number.isFinite(price) || price <= 0) return { ok: false as const, reason: "Price unavailable." };
 
-  const currentView = await buildInvestmentAccountView(rowString(account, "id"));
+  const currentView = await calculateInvestmentPortfolio(rowString(account, "id"));
   const portfolioValue = Math.max(currentView?.portfolio.totalValue ?? rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH)), 1);
   const currentExposure = currentView?.portfolio.totalExposure ?? 0;
   const exposure = quantity * price;
@@ -3423,7 +3477,7 @@ export async function openInvestmentPosition(input: {
 
   await recalculatePortfolios();
   await updateInvestmentLeaderboard(competition.code);
-  const view = await buildInvestmentAccountView(rowString(account, "id"));
+  const view = await calculateInvestmentPortfolio(rowString(account, "id"));
   return { ok: true as const, account: view, price, fee, margin, exposure };
 }
 
@@ -3499,7 +3553,7 @@ export async function closeInvestmentPosition(input: { accountId: string; positi
 
   await recalculatePortfolios();
   await updateInvestmentLeaderboard(competition.code);
-  const view = await buildInvestmentAccountView(rowString(account, "id"));
+  const view = await calculateInvestmentPortfolio(rowString(account, "id"));
   return { ok: true as const, account: view, price, fee, margin, exposure, realizedPnl, liquidated };
 }
 
@@ -3766,7 +3820,8 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
           lastTradeActivity,
           lastPositionActivity
         );
-        const profitLoss = view.portfolio.totalValue - view.portfolio.startingCash;
+        const formulaBreakdown = view.portfolio.formulaBreakdown;
+        const profitLoss = formulaBreakdown.profitLoss;
 
         return {
           rank: 0,
@@ -3779,8 +3834,13 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
           holdingsValue: view.portfolio.holdingsValue,
           lockedMargin: view.portfolio.lockedMargin,
           totalExposure: view.portfolio.totalExposure,
-          unrealizedPnl: view.portfolio.unrealizedPnl,
+          unrealizedPnl: formulaBreakdown.totalUnrealizedPnl,
+          holdingsUnrealizedPnl: formulaBreakdown.holdingsUnrealizedPnl,
+          positionsUnrealizedPnl: formulaBreakdown.positionsUnrealizedPnl,
+          totalUnrealizedPnl: formulaBreakdown.totalUnrealizedPnl,
+          openPositionValue: formulaBreakdown.openPositionValue,
           totalPortfolioValue: view.portfolio.totalValue,
+          formulaBreakdown,
           portfolioDebug: view.portfolioDebug,
           profitLoss,
           returnPercent: view.portfolio.totalReturn,
@@ -3862,12 +3922,25 @@ export async function getInvestmentAdminTeamDetail(
   const results = await listInvestmentAdminResults(competition.code);
   const overviewBase = results.teams.find((team) => team.teamId === teamId) ?? null;
   const [accountView, tradeRows] = await Promise.all([
-    buildInvestmentAccountView(teamId),
+    calculateInvestmentPortfolio(teamId, competition.id),
     selectRows("investment_trades", { select: "*", account_id: `eq.${teamId}`, order: "created_at.desc", limit: "3000" })
   ]);
+  const openPositions = accountView?.positions.filter((position) => position.status === "open") ?? [];
+  const tradesCount = await getTradeCount(teamId);
+  const lastTradeActivity = accountView ? latestIso(...accountView.trades.map((trade) => trade.executedAt ?? trade.createdAt)) : null;
+  const lastPositionActivity = accountView
+    ? latestIso(...accountView.positions.map((position) => position.closedAt ?? position.updatedAt ?? position.openedAt))
+    : null;
+  const lastActivity = latestIso(
+    rowNullableString(account, "last_login_at"),
+    rowNullableString(account, "updated_at"),
+    rowNullableString(account, "created_at"),
+    lastTradeActivity,
+    lastPositionActivity
+  );
   const totalValue =
-    overviewBase?.totalPortfolioValue ??
     accountView?.portfolio.totalValue ??
+    overviewBase?.totalPortfolioValue ??
     rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
 
   const holdings = (accountView?.holdings ?? []).map((holding) => ({
@@ -3896,9 +3969,37 @@ export async function getInvestmentAdminTeamDetail(
   return {
     persisted: true,
     competition,
-    overview: overviewBase
+    overview: accountView
       ? {
-          ...overviewBase,
+          rank: overviewBase?.rank ?? 0,
+          teamId,
+          competitionId: competition.id,
+          competitionCode: competition.code,
+          teamName: accountView.account.teamName || rowString(account, "team_name"),
+          startingCash: accountView.portfolio.startingCash,
+          cashBalance: accountView.portfolio.cash,
+          holdingsValue: accountView.portfolio.holdingsValue,
+          lockedMargin: accountView.portfolio.lockedMargin,
+          totalExposure: accountView.portfolio.totalExposure,
+          unrealizedPnl: accountView.portfolio.formulaBreakdown.totalUnrealizedPnl,
+          holdingsUnrealizedPnl: accountView.portfolio.formulaBreakdown.holdingsUnrealizedPnl,
+          positionsUnrealizedPnl: accountView.portfolio.formulaBreakdown.positionsUnrealizedPnl,
+          totalUnrealizedPnl: accountView.portfolio.formulaBreakdown.totalUnrealizedPnl,
+          openPositionValue: accountView.portfolio.formulaBreakdown.openPositionValue,
+          totalPortfolioValue: accountView.portfolio.totalValue,
+          formulaBreakdown: accountView.portfolio.formulaBreakdown,
+          portfolioDebug: accountView.portfolioDebug,
+          profitLoss: accountView.portfolio.formulaBreakdown.profitLoss,
+          returnPercent: accountView.portfolio.totalReturn,
+          tradesCount,
+          holdingsCount: accountView.holdings.length,
+          openPositionsCount: openPositions.length,
+          lastActivity,
+          status: competition.runtimeStatus === "closed"
+            ? "closed"
+            : tradesCount || accountView.holdings.length || openPositions.length
+              ? "active"
+              : "registered",
           createdAt: rowNullableString(account, "created_at"),
           lastLoginAt: rowNullableString(account, "last_login_at"),
           updatedAt: rowNullableString(account, "updated_at")
@@ -4802,19 +4903,36 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
   const cash = rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
   const startingCash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
   const holdingsValue = holdingViews.reduce((sum, holding) => sum + holding.marketValue, 0);
+  const holdingsUnrealizedPnl = holdingViews.reduce((sum, holding) => sum + holding.unrealizedGainLoss, 0);
   const normalizedPositionRows = await Promise.all(positionRows.map((row) => liquidatePositionIfBreached(account, row, priceMap)));
   const positionViews = normalizedPositionRows.map((row) => mapPositionRow(row, priceMap));
   const openPositions = positionViews.filter((position) => position.status === "open");
   const lockedMargin = openPositions.reduce((sum, position) => sum + position.marginLocked, 0);
   const totalExposure = openPositions.reduce((sum, position) => sum + position.exposureValue, 0);
   const unrealizedPnl = openPositions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
-  const totalValue = cash + holdingsValue + lockedMargin + unrealizedPnl;
+  const openPositionValue = lockedMargin + unrealizedPnl;
+  const totalUnrealizedPnl = holdingsUnrealizedPnl + unrealizedPnl;
+  const totalValue = cash + holdingsValue + openPositionValue;
   const dailyChange = previousSnapshotValue ? ((totalValue - previousSnapshotValue) / previousSnapshotValue) * 100 : 0;
   holdingViews.forEach((holding) => {
     holding.weight = totalValue > 0 ? (holding.marketValue / totalValue) * 100 : 0;
   });
 
   const thesisRow = Array.isArray(thesisRows) && thesisRows[0] ? thesisRows[0] : null;
+  const totalReturn = startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0;
+  const formulaBreakdown: InvestmentPortfolioFormulaBreakdown = {
+    cash,
+    normalHoldingsValue: holdingsValue,
+    lockedMargin,
+    openExposure: totalExposure,
+    holdingsUnrealizedPnl,
+    positionsUnrealizedPnl: unrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
+    totalPortfolioValue: totalValue,
+    profitLoss: totalValue - startingCash,
+    returnPercent: totalReturn
+  };
   const portfolio = {
     startingCash,
     cash,
@@ -4822,11 +4940,15 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     lockedMargin,
     totalExposure,
     unrealizedPnl,
+    holdingsUnrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
     totalValue,
     dailyChange,
-    totalReturn: startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0,
+    totalReturn,
     diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
-    riskScore: calculateRiskScore(holdingViews, totalValue)
+    riskScore: calculateRiskScore(holdingViews, totalValue),
+    formulaBreakdown
   };
   const portfolioDebug = {
     cashBalance: cash,
@@ -4835,8 +4957,12 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     openPositionsCount: openPositions.length,
     lockedMargin,
     openExposure: totalExposure,
+    holdingsUnrealizedPnl,
     unrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
     calculatedPortfolioValue: totalValue,
+    formulaBreakdown,
     pricesUsed: portfolioPricesUsed(portfolioSymbols, quoteMap)
   };
   const currentRank = await getLeaderboardRowForAccount(accountId, competitionView);
