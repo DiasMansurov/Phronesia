@@ -3141,21 +3141,7 @@ export async function createOrEnterInvestmentTeam(input: {
       const passwordMatches = await timed("passwordVerificationMs", () => verifyTeamPassword(password, storedPasswordHash));
       if (!passwordMatches) return fail(401, "Invalid team password.");
     } else {
-      const existingAccountId = rowString(accountRow, "id");
-      const passwordHash = await timed("passwordHashMs", () => hashTeamPassword(password));
-      try {
-        const updated = await timed("legacyPasswordUpdateMs", () =>
-          updateRows(
-            "investment_accounts",
-            { id: `eq.${existingAccountId}` },
-            { password_hash: passwordHash, last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-          )
-        );
-        accountRow = Array.isArray(updated) && updated[0] ? updated[0] : { ...accountRow, password_hash: passwordHash };
-      } catch (error) {
-        recordInvestmentTeamAccessError(diagnostics, error);
-        return fail(500, "Team password storage is not configured yet.");
-      }
+      return fail(401, "This team does not have a password set. Please contact the organizer to reset access.");
     }
     const normalizedStartedAt = Date.now();
     await updateInvestmentAccountNormalizedName(accountRow, normalizedTeamName);
