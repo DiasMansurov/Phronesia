@@ -2260,21 +2260,20 @@ function portfolioPricesUsed(symbols: Iterable<string>, quoteMap: Map<string, In
 }
 
 function marketPriceMapFromQuotes(quotes: InvestmentAssetQuote[]) {
-  // Include reference prices as fallback so portfolio is always valued correctly
-  // Live/cached prices take priority; reference prices used when Supabase cache is empty
+  // Portfolio valuation should use the latest saved platform price even when it is
+  // too stale for new trades. Trading freshness and portfolio mark-to-market are
+  // separate concerns.
   const map = new Map<string, number>();
-  // First pass: add reference prices as baseline
   for (const quote of quotes) {
     if (quote.priceSource === "reference" && Number.isFinite(quote.latestClose) && quote.latestClose > 0) {
       map.set(quote.symbol, quote.latestClose);
     }
   }
-  // Second pass: override with live/cached prices when available
   for (const quote of quotes) {
     if (
       quote.priceAvailable &&
-      quote.isStale !== true &&
       quote.priceSource !== "reference" &&
+      quote.priceSource !== "unavailable" &&
       Number.isFinite(quote.latestClose) &&
       quote.latestClose > 0
     ) {
@@ -3195,14 +3194,23 @@ export async function createOrEnterInvestmentTeam(input: {
 
 export async function getInvestmentAccountView(accountId: string) {
   if (!supabaseConfigured()) return null;
-  return buildInvestmentAccountView(accountId);
+  return calculateInvestmentPortfolio(accountId);
+}
+
+export async function calculateInvestmentPortfolio(accountId: string, competitionId?: string | null) {
+  if (!supabaseConfigured()) return null;
+  const quotes = await listInvestmentAssetQuotes();
+  const priceMap = marketPriceMapFromQuotes(quotes);
+  const view = await buildInvestmentAccountView(accountId, priceMap);
+  if (!view) return null;
+  if (competitionId && view.account.competitionId !== competitionId) return null;
+  return view;
 }
 
 export async function calculateTeamPortfolioValue(teamId: string, competitionId?: string | null) {
   if (!supabaseConfigured()) return null;
-  const view = await buildInvestmentAccountView(teamId);
+  const view = await calculateInvestmentPortfolio(teamId, competitionId);
   if (!view) return null;
-  if (competitionId && view.account.competitionId !== competitionId) return null;
   const openPositions = view.positions.filter((position) => position.status === "open");
   return {
     startingCash: view.portfolio.startingCash,
