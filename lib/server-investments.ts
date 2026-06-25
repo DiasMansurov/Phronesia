@@ -12,7 +12,7 @@ import {
   type TradeSide
 } from "@/lib/investment-challenge";
 import { pbkdf2, randomBytes, randomUUID, timingSafeEqual } from "crypto";
-import { insertRow, selectRows, supabaseConfigured, updateRows, upsertRow } from "@/lib/supabase-rest";
+import { deleteRows, insertRow, selectRows, supabaseConfigured, updateRows, upsertRow } from "@/lib/supabase-rest";
 
 type Payload = Record<string, unknown>;
 
@@ -2357,6 +2357,23 @@ export async function savePriceToCache(
     featured: Boolean(asset?.featured)
   });
 
+  // Sanity check: reject prices that deviate more than 40% from the last known valid saved price.
+  const recentRows = await selectRows("investment_daily_prices", {
+    select: "close_price",
+    symbol: `eq.${normalized}`,
+    limit: "1",
+    order: "price_date.desc"
+  }).catch(() => null);
+  if (Array.isArray(recentRows) && recentRows[0]) {
+    const lastPrice = Number(recentRows[0].close_price);
+    if (lastPrice > 0) {
+      const deviation = Math.abs(price - lastPrice) / lastPrice;
+      if (deviation > 0.40) {
+        return { ok: false, reason: `Suspicious price rejected: ${normalized} new=${price} last=${lastPrice} deviation=${(deviation * 100).toFixed(1)}%` };
+      }
+    }
+  }
+
   return upsertInvestmentDailyPrice({
     symbol: normalized,
     priceDate: tradingDay,
@@ -2371,6 +2388,15 @@ export async function savePriceToCache(
 export async function updateDailyPrices() {
   await ensureInvestmentSeedData();
   return refreshUsedAssetPrices(MAX_MARKETDATA_SYMBOLS_PER_CRON);
+}
+
+export async function deleteInvalidDailyPrice(symbol: string, maxValidPrice: number, minValidPrice: number) {
+  // Deletes saved daily prices for a symbol that fall outside the valid price range.
+  // Used to clean up data provider errors like GE saved at $160 instead of ~$379.
+  return deleteRows("investment_daily_prices", {
+    symbol: `eq.${symbol.toUpperCase()}`,
+    close_price: `lt.${minValidPrice}`
+  });
 }
 
 export type InvestmentPriceRefreshResult = {

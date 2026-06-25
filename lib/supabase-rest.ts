@@ -118,3 +118,24 @@ export async function updateRows(table: string, query: Record<string, string>, p
 
   return (await response.json()) as Payload[];
 }
+
+export async function deleteRows(table: string, query: Record<string, string>) {
+  const config = getBaseConfig();
+  if (!config) {
+    return { ok: false, reason: "missing_env" as const };
+  }
+
+  const params = new URLSearchParams(query);
+  const response = await fetch(`${config.url}/rest/v1/${table}?${params.toString()}`, {
+    method: "DELETE",
+    headers: config.headers,
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase delete failed for ${table}: ${response.status} ${text}`);
+  }
+
+  return { ok: true as const };
+}
