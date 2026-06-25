@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { setInvestmentTeamSessionCookie } from "@/lib/investment-access";
 import {
-  OFFICIAL_TEENVESTOR_COMPETITION_LOGIN,
   getOlympiadByAccessCode,
   getOlympiadByAccessCodeIncludingInactive,
   getOlympiadScenario,
   isOfficialTeenvestorCompetitionLogin
 } from "@/lib/olympiads";
-import { createOrGetInvestmentAccount } from "@/lib/server-investments";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { login?: string; teamName?: string };
@@ -16,35 +13,11 @@ export async function POST(request: Request) {
   const teamName = body.teamName?.trim() ?? "";
 
   if (login && isOfficialTeenvestorCompetitionLogin(login)) {
-    if (!teamName) {
-      return NextResponse.json({ error: "Team name is required." }, { status: 400 });
-    }
-
-    if (!process.env.INVESTMENT_TEAM_SESSION_SECRET?.trim()) {
-      return NextResponse.json({ error: "Team session secret is not configured." }, { status: 500 });
-    }
-
-    const account = await createOrGetInvestmentAccount({
-      competitionCode: OFFICIAL_TEENVESTOR_COMPETITION_LOGIN,
-      participantLogin: login,
-      teamName
-    });
-
-    if (!account) {
-      return NextResponse.json({ error: "Competition access is temporarily unavailable." }, { status: 503 });
-    }
-
-    const cookieResult = await setInvestmentTeamSessionCookie(account);
-    if (!cookieResult.ok) {
-      return NextResponse.json({ error: cookieResult.reason }, { status: 500 });
-    }
-
+    // Send to the password-protected join flow — never bypass authentication here.
     return NextResponse.json({
       ok: true,
       mode: "investment",
-      redirectTo: "/investment-challenge/app",
-      competition: account.competition,
-      account
+      redirectTo: "/investment-challenge/join"
     });
   }
 
