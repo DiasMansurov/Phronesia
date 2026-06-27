@@ -142,6 +142,10 @@ export type InvestmentPositionView = {
   closedAt: string | null;
   updatedAt: string;
   priceWarning?: string | null;
+  exitPrice?: number | null;
+  correctRealizedPnl?: number | null;
+  closingCommission?: number | null;
+  cashReturned?: number | null;
 };
 
 export type InvestmentThesisView = {
@@ -3519,11 +3523,18 @@ export async function closeInvestmentPosition(input: { accountId: string; positi
   const leverage = Math.max(1, rowNumber(position, "leverage", 1));
   const margin = rowNumber(position, "margin_locked");
   const exposure = quantity * price;
-  const rawPnl = calculatePositionPnl(side, rowNumber(position, "entry_price"), price, quantity, leverage);
-  const liquidated = rawPnl <= -margin;
-  const realizedPnl = liquidated ? -margin : Math.max(rawPnl, -margin);
-  const fee = liquidated ? 0 : exposure * INVESTMENT_TRANSACTION_FEE_RATE;
-  const cashReturned = Math.max(0, liquidated ? 0 : margin + realizedPnl - fee);
+  const closeMetrics = calculateCorrectedPositionCloseMetrics({
+    side,
+    entryPrice: rowNumber(position, "entry_price"),
+    exitPrice: price,
+    quantity,
+    marginLocked: margin,
+    closingCommission: exposure * INVESTMENT_TRANSACTION_FEE_RATE
+  });
+  const liquidated = closeMetrics.liquidated;
+  const realizedPnl = closeMetrics.correctRealizedPnl;
+  const fee = closeMetrics.closingCommission;
+  const cashReturned = closeMetrics.cashReturned;
   const now = new Date().toISOString();
 
   await updateRows(
@@ -3968,15 +3979,44 @@ export async function getInvestmentAdminTeamDetail(
     priceWarning: holding.priceWarning ?? null
   } satisfies InvestmentAdminHoldingResult));
 
+  const rawTradeRows = Array.isArray(tradeRows) ? tradeRows : [];
+  const positionById = new Map((accountView?.positions ?? []).map((position) => [position.id, position]));
+  const openTradeByPositionId = new Map<string, Payload>();
+  for (const row of rawTradeRows) {
+    const action = rowString(row, "action");
+    const positionId = rowNullableString(row, "position_id");
+    if (positionId && isPositionOpenAction(action)) openTradeByPositionId.set(positionId, row);
+  }
+  const closeMetricsByPositionId = new Map<string, CorrectedPositionCloseMetrics>();
+  for (const row of rawTradeRows) {
+    const positionId = rowNullableString(row, "position_id");
+    if (!positionId) continue;
+    const metrics = correctedCloseMetricsForTradeView(row, positionById.get(positionId), openTradeByPositionId.get(positionId));
+    if (metrics) closeMetricsByPositionId.set(positionId, metrics);
+  }
+
   const positions = (accountView?.positions ?? []).map((position) => ({
     ...position,
+    exitPrice: closeMetricsByPositionId.get(position.id)?.exitPrice ?? position.exitPrice ?? null,
+    correctRealizedPnl: closeMetricsByPositionId.get(position.id)?.correctRealizedPnl ?? position.correctRealizedPnl ?? null,
+    closingCommission: closeMetricsByPositionId.get(position.id)?.closingCommission ?? position.closingCommission ?? null,
+    cashReturned: closeMetricsByPositionId.get(position.id)?.cashReturned ?? position.cashReturned ?? null,
     marketValue: position.status === "open" ? position.marginLocked + position.unrealizedPnl : 0
   } satisfies InvestmentAdminPositionResult));
 
-  const trades = (Array.isArray(tradeRows) ? tradeRows : []).map((row) => ({
-    ...mapTradeRow(row),
-    teamName: overviewBase?.teamName ?? rowString(account, "team_name")
-  }));
+  const trades = rawTradeRows.map((row) => {
+    const mapped = mapTradeRow(row);
+    const positionId = rowNullableString(row, "position_id");
+    const metrics = positionId ? closeMetricsByPositionId.get(positionId) : null;
+    return {
+      ...mapped,
+      grossValue: metrics?.grossValue ?? mapped.grossValue,
+      feeAmount: metrics?.closingCommission ?? mapped.feeAmount,
+      netValue: metrics?.cashReturned ?? mapped.netValue,
+      realizedPnl: metrics?.correctRealizedPnl ?? mapped.realizedPnl,
+      teamName: overviewBase?.teamName ?? rowString(account, "team_name")
+    };
+  });
 
   return {
     persisted: true,
@@ -4695,10 +4735,44 @@ function positionStatus(row: Payload): "open" | "closed" | "liquidated" {
   return "open";
 }
 
-function calculatePositionPnl(side: "long" | "short", entryPrice: number, currentPrice: number, quantity: number, leverage: number) {
+function calculatePositionPnl(side: "long" | "short", entryPrice: number, currentPrice: number, quantity: number) {
   return side === "short"
-    ? (entryPrice - currentPrice) * quantity * leverage
-    : (currentPrice - entryPrice) * quantity * leverage;
+    ? (entryPrice - currentPrice) * quantity
+    : (currentPrice - entryPrice) * quantity;
+}
+
+type CorrectedPositionCloseMetrics = {
+  exitPrice: number;
+  grossValue: number;
+  correctRealizedPnl: number;
+  closingCommission: number;
+  cashReturned: number;
+  liquidated: boolean;
+};
+
+function calculateCorrectedPositionCloseMetrics(input: {
+  action?: string | null;
+  side: "long" | "short";
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  marginLocked: number;
+  closingCommission: number;
+}): CorrectedPositionCloseMetrics {
+  const rawPnl = calculatePositionPnl(input.side, input.entryPrice, input.exitPrice, input.quantity);
+  const liquidated = input.action === "liquidated" || rawPnl <= -input.marginLocked;
+  const correctRealizedPnl = liquidated ? -input.marginLocked : Math.max(rawPnl, -input.marginLocked);
+  const closingCommission = liquidated ? 0 : input.closingCommission;
+  const cashReturned = Math.max(0, liquidated ? 0 : input.marginLocked + correctRealizedPnl - closingCommission);
+
+  return {
+    exitPrice: input.exitPrice,
+    grossValue: input.quantity * input.exitPrice,
+    correctRealizedPnl,
+    closingCommission,
+    cashReturned,
+    liquidated
+  };
 }
 
 function mapPositionRow(row: Payload, priceMap: Map<string, number>): InvestmentPositionView {
@@ -4712,8 +4786,9 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
   const hasValidatedPrice = priceMap.has(symbol);
   const currentPrice = status === "open" ? priceMap.get(symbol) ?? entryPrice : rowNumber(row, "current_price", entryPrice);
   const exposureValue = status === "open" ? quantity * currentPrice : rowNumber(row, "exposure_value", quantity * currentPrice);
-  const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity, leverage) : 0;
+  const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity) : 0;
   const unrealizedPnl = status === "open" ? Math.max(rawUnrealized, -marginLocked) : 0;
+  const realizedPnl = rowNumber(row, "realized_pnl");
 
   return {
     id: rowString(row, "id"),
@@ -4727,12 +4802,16 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
     marginLocked,
     exposureValue,
     unrealizedPnl,
-    realizedPnl: rowNumber(row, "realized_pnl"),
+    realizedPnl,
     status,
     openedAt: rowString(row, "opened_at") || rowString(row, "created_at"),
     closedAt: rowNullableString(row, "closed_at"),
     updatedAt: rowString(row, "updated_at") || rowString(row, "opened_at"),
-    priceWarning: status === "open" && !hasValidatedPrice ? "Fresh price unavailable; entry price is used for display." : null
+    priceWarning: status === "open" && !hasValidatedPrice ? "Fresh price unavailable; entry price is used for display." : null,
+    exitPrice: status === "open" ? null : currentPrice,
+    correctRealizedPnl: status === "open" ? null : realizedPnl,
+    closingCommission: null,
+    cashReturned: null
   };
 }
 
@@ -4746,7 +4825,7 @@ async function liquidatePositionIfBreached(account: Payload, row: Payload, price
   if (!symbol || !entryPrice || !quantity || !margin) return row;
 
   const currentPrice = priceMap.get(symbol) ?? entryPrice;
-  const rawPnl = calculatePositionPnl(positionSide(row), entryPrice, currentPrice, quantity, leverage);
+  const rawPnl = calculatePositionPnl(positionSide(row), entryPrice, currentPrice, quantity);
   if (rawPnl > -margin) return row;
 
   const now = new Date().toISOString();
@@ -4801,6 +4880,170 @@ async function liquidatePositionIfBreached(account: Payload, row: Payload, price
   }
 }
 
+function isPositionOpenAction(action: string) {
+  return action === "open_long" || action === "open_short";
+}
+
+function isPositionCloseAction(action: string) {
+  return action === "close_long" || action === "close_short" || action === "liquidated";
+}
+
+function correctedCloseMetricsForTrade(
+  trade: Payload,
+  position: Payload | undefined,
+  openTrade: Payload | undefined
+): CorrectedPositionCloseMetrics | null {
+  const action = rowString(trade, "action");
+  if (!isPositionCloseAction(action)) return null;
+
+  const side = position
+    ? positionSide(position)
+    : rowString(trade, "side") === "short" || action === "close_short"
+      ? "short"
+      : "long";
+  const entryPrice = rowNumber(position ?? {}, "entry_price", rowNumber(openTrade ?? {}, "price"));
+  const exitPrice = rowNumber(trade, "price", rowNumber(position ?? {}, "current_price"));
+  const quantity = rowNumber(trade, "quantity", rowNumber(position ?? {}, "quantity", rowNumber(openTrade ?? {}, "quantity")));
+  const marginLocked = rowNumber(trade, "margin_used", rowNumber(position ?? {}, "margin_locked"));
+  const closingCommission = rowNumber(trade, "fee_amount");
+
+  if (!entryPrice || !exitPrice || !quantity || !marginLocked) return null;
+  return calculateCorrectedPositionCloseMetrics({
+    action,
+    side,
+    entryPrice,
+    exitPrice,
+    quantity,
+    marginLocked,
+    closingCommission
+  });
+}
+
+function correctedCloseMetricsForTradeView(
+  trade: Payload,
+  position: InvestmentPositionView | undefined,
+  openTrade: Payload | undefined
+): CorrectedPositionCloseMetrics | null {
+  const action = rowString(trade, "action");
+  if (!isPositionCloseAction(action)) return null;
+
+  const side = position?.side ?? (rowString(trade, "side") === "short" || action === "close_short" ? "short" : "long");
+  const entryPrice = position?.entryPrice ?? rowNumber(openTrade ?? {}, "price");
+  const exitPrice = rowNumber(trade, "price", position?.currentPrice ?? 0);
+  const quantity = rowNumber(trade, "quantity", position?.quantity ?? rowNumber(openTrade ?? {}, "quantity"));
+  const marginLocked = rowNumber(trade, "margin_used", position?.marginLocked ?? 0);
+  const closingCommission = rowNumber(trade, "fee_amount");
+
+  if (!entryPrice || !exitPrice || !quantity || !marginLocked) return null;
+  return calculateCorrectedPositionCloseMetrics({
+    action,
+    side,
+    entryPrice,
+    exitPrice,
+    quantity,
+    marginLocked,
+    closingCommission
+  });
+}
+
+async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
+  if (!supabaseConfigured()) return account;
+  const accountId = rowString(account, "id");
+  if (!accountId) return account;
+
+  const [tradeRows, positionRows] = await Promise.all([
+    selectRows("investment_trades", { select: "*", account_id: `eq.${accountId}`, order: "created_at.asc", limit: "5000" }),
+    listPositionRowsForAccount(accountId)
+  ]);
+
+  if (!Array.isArray(tradeRows)) return account;
+
+  const positionById = new Map<string, Payload>();
+  for (const position of positionRows) {
+    const positionId = rowString(position, "id");
+    if (positionId) positionById.set(positionId, position);
+  }
+
+  const openTradeByPositionId = new Map<string, Payload>();
+  for (const trade of tradeRows) {
+    const action = rowString(trade, "action");
+    const positionId = rowNullableString(trade, "position_id");
+    if (positionId && isPositionOpenAction(action)) openTradeByPositionId.set(positionId, trade);
+  }
+
+  let cash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
+  const positionUpdates: Promise<unknown>[] = [];
+
+  for (const trade of tradeRows) {
+    if (Boolean(trade.rejected)) continue;
+    const action = rowString(trade, "action");
+    const side = rowString(trade, "side");
+    const gross = rowNumber(trade, "gross_value", rowNumber(trade, "gross_amount", rowNumber(trade, "price") * rowNumber(trade, "quantity")));
+    const fee = rowNumber(trade, "fee_amount");
+    const net = rowNumber(trade, "net_value", rowNumber(trade, "net_amount"));
+
+    if (isPositionOpenAction(action)) {
+      const margin = rowNumber(trade, "margin_used", Math.max(0, net - fee));
+      cash -= margin + fee;
+      continue;
+    }
+
+    if (isPositionCloseAction(action)) {
+      const positionId = rowNullableString(trade, "position_id");
+      const position = positionId ? positionById.get(positionId) : undefined;
+      const metrics = correctedCloseMetricsForTrade(trade, position, positionId ? openTradeByPositionId.get(positionId) : undefined);
+      if (metrics) {
+        cash += metrics.cashReturned;
+
+        if (positionId && position) {
+          const expectedStatus = metrics.liquidated ? "liquidated" : "closed";
+          const needsPositionUpdate =
+            Math.abs(rowNumber(position, "realized_pnl") - metrics.correctRealizedPnl) > 0.005 ||
+            Math.abs(rowNumber(position, "current_price") - metrics.exitPrice) > 0.005 ||
+            Math.abs(rowNumber(position, "exposure_value") - metrics.grossValue) > 0.005 ||
+            positionStatus(position) !== expectedStatus;
+          if (needsPositionUpdate) {
+            positionUpdates.push(
+              updateRows(
+                "investment_positions",
+                { id: `eq.${positionId}` },
+                {
+                  current_price: metrics.exitPrice,
+                  exposure_value: metrics.grossValue,
+                  unrealized_pnl: 0,
+                  realized_pnl: metrics.correctRealizedPnl,
+                  status: expectedStatus,
+                  updated_at: new Date().toISOString()
+                }
+              ).catch(() => null)
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    if (side === "buy") {
+      cash -= net || gross + fee;
+    } else if (side === "sell") {
+      cash += net || Math.max(0, gross - fee);
+    }
+  }
+
+  if (positionUpdates.length) await Promise.all(positionUpdates);
+
+  const currentCash = rowNumber(account, "cash", rowNumber(account, "cash_balance", cash));
+  if (Math.abs(currentCash - cash) <= 0.005) return account;
+
+  await updateInvestmentAccountCash(accountId, cash);
+  return {
+    ...account,
+    cash,
+    cash_balance: cash,
+    updated_at: new Date().toISOString()
+  };
+}
+
 async function updateInvestmentAccountCash(accountId: string, cash: number) {
   const payload = { cash, cash_balance: cash, updated_at: new Date().toISOString() };
   try {
@@ -4813,8 +5056,9 @@ async function updateInvestmentAccountCash(accountId: string, cash: number) {
 }
 
 async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
-  const account = await getAccountRow(accountId);
+  let account = await getAccountRow(accountId);
   if (!account) return null;
+  account = await reconcileInvestmentAccountCashFromTrades(account);
   const [holdingsRows, positionRows, quotes, thesisRows, previousSnapshotValue, assets, competition] = await Promise.all([
     selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "symbol.asc" }),
     listPositionRowsForAccount(accountId),

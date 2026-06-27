@@ -195,6 +195,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                 <th>Margin locked</th>
                 <th>Exposure</th>
                 <th>Unrealized P/L</th>
+                <th>Exit price</th>
+                <th>Correct realized P/L</th>
+                <th>Closing commission</th>
+                <th>Cash returned</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -214,6 +218,12 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                   <td>{formatUsd(position.marginLocked)}</td>
                   <td>{formatUsd(position.exposureValue)}</td>
                   <td className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</td>
+                  <td>{position.exitPrice ? formatUsd(position.exitPrice) : "n/a"}</td>
+                  <td className={(position.correctRealizedPnl ?? 0) >= 0 ? "positive-text" : "negative-text"}>
+                    {position.correctRealizedPnl === null || position.correctRealizedPnl === undefined ? "n/a" : formatUsd(position.correctRealizedPnl)}
+                  </td>
+                  <td>{position.closingCommission === null || position.closingCommission === undefined ? "n/a" : formatUsd(position.closingCommission)}</td>
+                  <td>{position.cashReturned === null || position.cashReturned === undefined ? "n/a" : formatUsd(position.cashReturned)}</td>
                   <td>{position.status}</td>
                 </tr>
               ))}
