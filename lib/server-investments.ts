@@ -4973,6 +4973,9 @@ async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
 
   let cash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
   const positionUpdates: Promise<unknown>[] = [];
+  // Track position IDs already handled so legacy trades (stored without action column)
+  // don't fall through to the buy/sell block with wrong cash direction for shorts.
+  const handledPositionIds = new Set<string>();
 
   for (const trade of tradeRows) {
     if (Boolean(trade.rejected)) continue;
@@ -4981,15 +4984,16 @@ async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
     const gross = rowNumber(trade, "gross_value", rowNumber(trade, "gross_amount", rowNumber(trade, "price") * rowNumber(trade, "quantity")));
     const fee = rowNumber(trade, "fee_amount");
     const net = rowNumber(trade, "net_value", rowNumber(trade, "net_amount"));
+    const positionId = rowNullableString(trade, "position_id");
 
     if (isPositionOpenAction(action)) {
       const margin = rowNumber(trade, "margin_used", Math.max(0, net - fee));
       cash -= margin + fee;
+      if (positionId) handledPositionIds.add(positionId);
       continue;
     }
 
     if (isPositionCloseAction(action)) {
-      const positionId = rowNullableString(trade, "position_id");
       const position = positionId ? positionById.get(positionId) : undefined;
       const metrics = correctedCloseMetricsForTrade(trade, position, positionId ? openTradeByPositionId.get(positionId) : undefined);
       if (metrics) {
@@ -5019,6 +5023,37 @@ async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
             );
           }
         }
+      }
+      if (positionId) handledPositionIds.add(positionId);
+      continue;
+    }
+
+    // Handle position trades stored in legacy format (action column not present in DB):
+    // open_short was stored as side="sell", open_long as side="buy", close_short as side="buy".
+    // Without the action column the buy/sell block would add cash for short opens instead of removing it.
+    if (positionId) {
+      if (!handledPositionIds.has(positionId)) {
+        // First trade for this position = open trade → deduct margin + fee
+        const margin = rowNumber(trade, "margin_used", Math.max(0, net - fee));
+        cash -= margin + fee;
+        handledPositionIds.add(positionId);
+      } else {
+        // Subsequent trade = close trade → return cash using corrected metrics
+        const position = positionById.get(positionId);
+        const exitPrice = rowNumber(trade, "price");
+        if (position && exitPrice > 0) {
+          const metrics = calculateCorrectedPositionCloseMetrics({
+            action: null,
+            side: positionSide(position),
+            entryPrice: rowNumber(position, "entry_price"),
+            exitPrice,
+            quantity: rowNumber(position, "quantity"),
+            marginLocked: rowNumber(position, "margin_locked"),
+            closingCommission: rowNumber(trade, "fee_amount")
+          });
+          cash += metrics.cashReturned;
+        }
+        handledPositionIds.add(positionId);
       }
       continue;
     }
