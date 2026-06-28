@@ -71,6 +71,13 @@ export type InvestmentHoldingView = {
   priceSource?: string | null;
 };
 
+export type InvestmentOfficialStatus =
+  | "official_valid"
+  | "under_review"
+  | "legacy_trades_detected"
+  | "recalculation_failed"
+  | "corrupted_balance_detected";
+
 export type InvestmentPortfolioSummary = {
   startingCash: number;
   cash: number;
@@ -90,6 +97,12 @@ export type InvestmentPortfolioSummary = {
   suspiciousTradesCount: number;
   liquidatedPositionsCount: number;
   warnings: string[];
+  officialStatus: InvestmentOfficialStatus;
+  underReview: boolean;
+  legacyTradesDetected: boolean;
+  recalculationFailed: boolean;
+  corruptedBalanceDetected: boolean;
+  ignoredLegacyTrades: number;
   diversificationScore: number;
   riskScore: number;
   formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
@@ -133,6 +146,12 @@ export type InvestmentPortfolioDebug = {
   suspiciousTradesCount: number;
   liquidatedPositionsCount: number;
   warnings: string[];
+  officialStatus: InvestmentOfficialStatus;
+  underReview: boolean;
+  legacyTradesDetected: boolean;
+  recalculationFailed: boolean;
+  corruptedBalanceDetected: boolean;
+  ignoredLegacyTrades: number;
   formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
   pricesUsed: Array<{
     symbol: string;
@@ -225,7 +244,7 @@ export type InvestmentTradeView = {
   priceTimestamp: string | null;
   rejected: boolean;
   rejectReason: string | null;
-  officialStatus?: "applied" | "ignored" | "suspicious";
+  officialStatus?: "applied" | "ignored" | "suspicious" | "legacy_under_review";
   officialWarning?: string | null;
 };
 
@@ -256,6 +275,12 @@ export type InvestmentAdminTeamResult = {
   suspiciousTradesCount: number;
   liquidatedPositionsCount: number;
   warnings: string[];
+  officialStatus: InvestmentOfficialStatus;
+  underReview: boolean;
+  legacyTradesDetected: boolean;
+  recalculationFailed: boolean;
+  corruptedBalanceDetected: boolean;
+  ignoredLegacyTrades: number;
   tradesCount: number;
   holdingsCount: number;
   openPositionsCount: number;
@@ -3017,29 +3042,12 @@ export async function cacheOptionChain(symbol: string, expiration?: string) {
 }
 
 export async function recalculatePortfolios() {
-  if (!supabaseConfigured()) return { updated: 0, persisted: false };
-  await ensureInvestmentSeedData();
-
-  const accounts = await selectRows("investment_accounts", {
-    select: "*",
-    order: "created_at.asc",
-    limit: "1000"
-  });
-  if (!Array.isArray(accounts)) return { updated: 0, persisted: false };
-
-  const quotes = await listInvestmentAssetQuotes();
-  const priceMap = marketPriceMapFromQuotes(quotes);
-  let updated = 0;
-
-  for (const account of accounts) {
-    const view = await buildInvestmentAccountView(rowString(account, "id"), priceMap);
-    if (!view) continue;
-    await upsertPortfolioSnapshot(view);
-    updated += 1;
-  }
-
-  await updateInvestmentLeaderboard();
-  return { updated, persisted: true };
+  return {
+    updated: 0,
+    persisted: supabaseConfigured(),
+    disabled: true,
+    reason: "Automatic portfolio recalculation is temporarily disabled while legacy trade classification is under review."
+  };
 }
 
 export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string | null) {
@@ -3092,6 +3100,11 @@ export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string
           drawdownScore * 0.1
       );
       const profitLoss = view.portfolio.totalValue - view.portfolio.startingCash;
+      const rowStatus = view.portfolio.underReview
+        ? "under_review"
+        : competition.runtimeStatus === "closed"
+          ? "closed"
+          : "active";
 
       scored.push({
         rank: 0,
@@ -3113,12 +3126,17 @@ export async function updateInvestmentLeaderboard(competitionCodeOrSlug?: string
         thesisScore,
         drawdownScore,
         overallScore,
-        status: competition.runtimeStatus === "closed" ? "closed" : "active",
+        status: rowStatus,
         updatedAt: new Date().toISOString()
       });
     }
 
-    scored.sort((a, b) => b.totalValue - a.totalValue || b.totalReturn - a.totalReturn || b.overallScore - a.overallScore);
+    scored.sort((a, b) => {
+      const aUnderReview = a.status === "under_review";
+      const bUnderReview = b.status === "under_review";
+      if (aUnderReview !== bUnderReview) return aUnderReview ? 1 : -1;
+      return b.totalValue - a.totalValue || b.totalReturn - a.totalReturn || b.overallScore - a.overallScore;
+    });
     scored.forEach((row, index) => {
       row.rank = index + 1;
     });
@@ -3450,6 +3468,12 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       suspiciousTradesCount: 0,
       liquidatedPositionsCount: 0,
       warnings: [],
+      officialStatus: "official_valid",
+      underReview: false,
+      legacyTradesDetected: false,
+      recalculationFailed: false,
+      corruptedBalanceDetected: false,
+      ignoredLegacyTrades: 0,
       diversificationScore: 0,
       riskScore: 100,
       formulaBreakdown
@@ -3473,6 +3497,12 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       suspiciousTradesCount: 0,
       liquidatedPositionsCount: 0,
       warnings: [],
+      officialStatus: "official_valid",
+      underReview: false,
+      legacyTradesDetected: false,
+      recalculationFailed: false,
+      corruptedBalanceDetected: false,
+      ignoredLegacyTrades: 0,
       formulaBreakdown,
       pricesUsed: []
     },
@@ -3676,6 +3706,12 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     suspiciousTradesCount: view.portfolio.suspiciousTradesCount,
     liquidatedPositionsCount: view.portfolio.liquidatedPositionsCount,
     warnings: view.portfolio.warnings,
+    officialStatus: view.portfolio.officialStatus,
+    underReview: view.portfolio.underReview,
+    legacyTradesDetected: view.portfolio.legacyTradesDetected,
+    recalculationFailed: view.portfolio.recalculationFailed,
+    corruptedBalanceDetected: view.portfolio.corruptedBalanceDetected,
+    ignoredLegacyTrades: view.portfolio.ignoredLegacyTrades,
     holdingsCount: view.holdings.length,
     openPositionsCount: openPositions.length,
     tradesCount: await getTradeCount(teamId),
@@ -4125,8 +4161,6 @@ export async function listInvestmentAdminBundle() {
   if (!supabaseConfigured()) {
     return { accounts: [], holdings: [], trades: [], theses: [], snapshots: [], leaderboard: [], competitions: [], stats: null, persisted: false };
   }
-  // Refresh leaderboard with latest cached prices before reading so values are not stale.
-  await updateInvestmentLeaderboard().catch(() => null);
   const [accounts, holdings, trades, theses, snapshots, leaderboard, competitionRows] = await Promise.all([
     selectRows("investment_accounts", { select: "*", order: "created_at.desc", limit: "500" }),
     selectRows("investment_holdings", { select: "*", order: "updated_at.desc", limit: "1000" }),
@@ -4195,8 +4229,6 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
     };
   }
 
-  await updateInvestmentLeaderboard(competition.code).catch(() => null);
-
   const accounts = await selectRows("investment_accounts", {
     select: "*",
     competition_id: `eq.${competition.id}`,
@@ -4257,11 +4289,19 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
           suspiciousTradesCount: formulaBreakdown.suspiciousTradesCount,
           liquidatedPositionsCount: formulaBreakdown.liquidatedPositionsCount,
           warnings: view.portfolio.warnings,
+          officialStatus: view.portfolio.officialStatus,
+          underReview: view.portfolio.underReview,
+          legacyTradesDetected: view.portfolio.legacyTradesDetected,
+          recalculationFailed: view.portfolio.recalculationFailed,
+          corruptedBalanceDetected: view.portfolio.corruptedBalanceDetected,
+          ignoredLegacyTrades: view.portfolio.ignoredLegacyTrades,
           tradesCount,
           holdingsCount: view.holdings.length,
           openPositionsCount: openPositions.length,
           lastActivity,
-          status: competition.runtimeStatus === "closed"
+          status: view.portfolio.underReview
+            ? "under_review"
+            : competition.runtimeStatus === "closed"
             ? "closed"
             : tradesCount || view.holdings.length || openPositions.length
               ? "active"
@@ -4271,7 +4311,10 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
     )
   ).filter((team): team is InvestmentAdminTeamResult => Boolean(team));
 
-  teams.sort((a, b) => b.totalPortfolioValue - a.totalPortfolioValue || b.returnPercent - a.returnPercent || a.teamName.localeCompare(b.teamName));
+  teams.sort((a, b) => {
+    if (a.underReview !== b.underReview) return a.underReview ? 1 : -1;
+    return b.totalPortfolioValue - a.totalPortfolioValue || b.returnPercent - a.returnPercent || a.teamName.localeCompare(b.teamName);
+  });
   teams.forEach((team, index) => {
     team.rank = index + 1;
   });
@@ -4530,11 +4573,19 @@ export async function getInvestmentAdminTeamDetail(
           suspiciousTradesCount: accountView.portfolio.formulaBreakdown.suspiciousTradesCount,
           liquidatedPositionsCount: accountView.portfolio.formulaBreakdown.liquidatedPositionsCount,
           warnings: accountView.portfolio.warnings,
+          officialStatus: accountView.portfolio.officialStatus,
+          underReview: accountView.portfolio.underReview,
+          legacyTradesDetected: accountView.portfolio.legacyTradesDetected,
+          recalculationFailed: accountView.portfolio.recalculationFailed,
+          corruptedBalanceDetected: accountView.portfolio.corruptedBalanceDetected,
+          ignoredLegacyTrades: accountView.portfolio.ignoredLegacyTrades,
           tradesCount,
           holdingsCount: accountView.holdings.length,
           openPositionsCount: openPositions.length,
           lastActivity,
-          status: competition.runtimeStatus === "closed"
+          status: accountView.portfolio.underReview
+            ? "under_review"
+            : competition.runtimeStatus === "closed"
             ? "closed"
             : tradesCount || accountView.holdings.length || openPositions.length
               ? "active"
@@ -5586,6 +5637,8 @@ type OfficialPositionLedger = InvestmentPositionView & {
 type OfficialTradeDiagnostics = {
   ignoredTradesCount: number;
   suspiciousTradesCount: number;
+  ignoredLegacyTrades: number;
+  corruptedBalanceDetected: boolean;
   warnings: string[];
 };
 
@@ -5623,6 +5676,36 @@ function tradeExecutionIssue(row: Payload) {
   return null;
 }
 
+function hasExplicitNormalTradeType(row: Payload) {
+  const action = rowString(row, "action").toLowerCase();
+  const type = rowString(row, "trade_type").toLowerCase();
+  return action === "normal_buy" || action === "normal_sell" || type === "normal_buy" || type === "normal_sell";
+}
+
+function hasReliableNormalTradeMetadata(row: Payload) {
+  const positionId = rowNullableString(row, "position_id");
+  if (positionId) return false;
+  const action = rowString(row, "action");
+  if (action && !hasExplicitNormalTradeType(row)) return false;
+  const leverageRaw = row.leverage;
+  const leverage = rowNumber(row, "leverage");
+  if (leverageRaw !== null && leverageRaw !== undefined && !isNaLike(leverageRaw) && leverage > 1) return false;
+  if (row.margin_used !== null && row.margin_used !== undefined && !isNaLike(row.margin_used) && rowNumber(row, "margin_used") > 0) return false;
+  if (row.exposure_value !== null && row.exposure_value !== undefined && !isNaLike(row.exposure_value) && rowNumber(row, "exposure_value") > 0) return false;
+
+  const priceSource = rowNullableString(row, "price_source");
+  const priceTimestamp = rowNullableString(row, "price_timestamp") ?? rowNullableString(row, "executed_at");
+  const hasGross = row.gross_value !== null && row.gross_value !== undefined || row.gross_amount !== null && row.gross_amount !== undefined;
+  const hasNet = row.net_value !== null && row.net_value !== undefined || row.net_amount !== null && row.net_amount !== undefined;
+  const hasFee = row.fee_amount !== null && row.fee_amount !== undefined;
+  return Boolean(priceSource && !isNaLike(priceSource) && priceTimestamp && !isNaLike(priceTimestamp) && hasGross && hasNet && hasFee);
+}
+
+function legacyReviewReason(row: Payload, detail: string) {
+  const symbol = normalizeSymbol(rowString(row, "symbol")) || "Unknown";
+  return `${symbol} legacy trade under review: ${detail}`;
+}
+
 function priceDeviationWarning(symbol: string, price: number, anchor: number | undefined) {
   if (!anchor || !Number.isFinite(anchor) || anchor <= 0 || !Number.isFinite(price) || price <= 0) return null;
   const deviation = Math.abs(price - anchor) / anchor;
@@ -5649,7 +5732,12 @@ function officialQuoteForSymbol(
   };
 }
 
-function officialTradeView(row: Payload, status: "applied" | "ignored" | "suspicious", warning: string | null, overrides: Partial<InvestmentTradeView> = {}) {
+function officialTradeView(
+  row: Payload,
+  status: "applied" | "ignored" | "suspicious" | "legacy_under_review",
+  warning: string | null,
+  overrides: Partial<InvestmentTradeView> = {}
+) {
   return {
     ...mapTradeRow(row),
     ...overrides,
@@ -5671,13 +5759,21 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
   let officialCash = startingCash;
   let totalCommissions = 0;
   let realizedPnl = 0;
-  const diagnostics: OfficialTradeDiagnostics = { ignoredTradesCount: 0, suspiciousTradesCount: 0, warnings: [] };
+  const diagnostics: OfficialTradeDiagnostics = {
+    ignoredTradesCount: 0,
+    suspiciousTradesCount: 0,
+    ignoredLegacyTrades: 0,
+    corruptedBalanceDetected: false,
+    warnings: []
+  };
   const holdings = new Map<string, OfficialHoldingLedger>();
   const openPositions = new Map<string, OfficialPositionLedger>();
   const allPositions = new Map<string, OfficialPositionLedger>();
   const trustedTradePrice = new Map<string, number>();
   const officialTrades: InvestmentTradeView[] = [];
   const storedPositionById = new Map<string, Payload>();
+  const matchedPositionTradeIds = new Set<string>();
+  const legacyShortCandidates = new Set<string>();
 
   for (const position of input.storedPositions) {
     const id = rowString(position, "id");
@@ -5685,6 +5781,81 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
   }
 
   const sortedTrades = input.rawTrades.slice().sort((a, b) => tradeSortTime(a) - tradeSortTime(b));
+  const tradesByPositionId = new Map<string, Payload[]>();
+  for (const row of sortedTrades) {
+    const positionId = rowNullableString(row, "position_id");
+    if (!positionId) continue;
+    const list = tradesByPositionId.get(positionId) ?? [];
+    list.push(row);
+    tradesByPositionId.set(positionId, list);
+  }
+
+  for (const positionRow of input.storedPositions) {
+    const id = rowString(positionRow, "id");
+    const symbol = normalizeSymbol(rowString(positionRow, "symbol"));
+    const quantity = rowNumber(positionRow, "quantity");
+    const entryPrice = rowNumber(positionRow, "entry_price");
+    const marginLocked = rowNumber(positionRow, "margin_locked");
+    if (!id || !symbol || !quantity || !entryPrice || !marginLocked) continue;
+
+    const relatedTrades = tradesByPositionId.get(id) ?? [];
+    relatedTrades.forEach((trade) => matchedPositionTradeIds.add(tradeId(trade)));
+    const openTrade = relatedTrades.find((trade) => isPositionOpenAction(rowString(trade, "action"))) ?? relatedTrades[0];
+    const closeTrade =
+      relatedTrades.find((trade) => isPositionCloseAction(rowString(trade, "action"))) ??
+      relatedTrades.find((trade) => tradeId(trade) !== tradeId(openTrade ?? {}));
+    const side = positionSide(positionRow);
+    const status = positionStatus(positionRow);
+    const assetName = rowNullableString(positionRow, "asset_name") ?? input.quoteMap.get(symbol)?.name ?? getInvestmentAsset(symbol)?.name ?? symbol;
+    const openingCommission = openTrade ? rowNumber(openTrade, "fee_amount") : 0;
+    const closingCommission = status === "open" ? null : closeTrade ? rowNumber(closeTrade, "fee_amount") : 0;
+    const openedAt = rowString(positionRow, "opened_at") || rowString(openTrade ?? {}, "created_at") || new Date().toISOString();
+    const closedAt = status === "open" ? null : rowNullableString(positionRow, "closed_at") ?? rowNullableString(closeTrade ?? {}, "created_at");
+    const quote = officialQuoteForSymbol(symbol, input.quoteMap, input.priceMap, entryPrice);
+    const currentPrice = status === "open"
+      ? quote.currentPrice
+      : rowNumber(positionRow, "current_price", rowNumber(closeTrade ?? {}, "price", entryPrice));
+    const rawPnl = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity) : calculatePositionPnl(side, entryPrice, currentPrice, quantity);
+    const cashReturned = status === "open" ? null : Math.max(0, marginLocked + rawPnl - (closingCommission ?? 0));
+    const positionValue = status === "open" ? Math.max(0, marginLocked + rawPnl) : 0;
+    const effectiveStatus = status === "open" && positionValue <= 0 ? "liquidated" : status;
+
+    officialCash -= marginLocked + openingCommission;
+    totalCommissions += openingCommission;
+    if (effectiveStatus !== "open") {
+      officialCash += cashReturned ?? 0;
+      realizedPnl += rawPnl;
+      totalCommissions += closingCommission ?? 0;
+    }
+
+    const position: OfficialPositionLedger = {
+      id,
+      symbol,
+      assetName,
+      side,
+      quantity,
+      entryPrice,
+      currentPrice,
+      leverage: Math.max(1, rowNumber(positionRow, "leverage", 1)),
+      marginLocked,
+      exposureValue: quantity * currentPrice,
+      unrealizedPnl: effectiveStatus === "open" ? rawPnl : 0,
+      realizedPnl: effectiveStatus === "open" ? 0 : rawPnl,
+      status: effectiveStatus,
+      openedAt,
+      closedAt,
+      updatedAt: rowString(positionRow, "updated_at") || closedAt || openedAt,
+      priceWarning: effectiveStatus === "open" ? quote.priceWarning : null,
+      exitPrice: effectiveStatus === "open" ? null : currentPrice,
+      openingCommission,
+      correctRealizedPnl: effectiveStatus === "open" ? null : rawPnl,
+      closingCommission,
+      cashReturned,
+      positionValue
+    };
+    if (effectiveStatus === "open") openPositions.set(id, position);
+    allPositions.set(id, position);
+  }
 
   for (const row of sortedTrades) {
     const action = rowString(row, "action");
@@ -5696,6 +5867,18 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
     const feeRate = rowNumber(row, "fee_rate", INVESTMENT_TRANSACTION_FEE_RATE);
     const commission = rowNumber(row, "fee_amount", gross * feeRate);
     const positionId = rowNullableString(row, "position_id") ?? (isPositionOpenAction(action) ? `legacy-${tradeId(row)}` : null);
+
+    if (rowNullableString(row, "position_id")) {
+      if (matchedPositionTradeIds.has(tradeId(row))) {
+        officialTrades.push(officialTradeView(row, "applied", "Leveraged trade accounted through investment_positions source of truth."));
+      } else {
+        diagnostics.ignoredTradesCount += 1;
+        diagnostics.ignoredLegacyTrades += 1;
+        diagnostics.warnings.push(legacyReviewReason(row, "position_id exists, but matching investment_positions row was not found."));
+        officialTrades.push(officialTradeView(row, "legacy_under_review", "Matching leveraged position row was not found; excluded from official scoring."));
+      }
+      continue;
+    }
 
     if (Boolean(row.rejected)) {
       diagnostics.ignoredTradesCount += 1;
@@ -5717,6 +5900,27 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
       diagnostics.suspiciousTradesCount += 1;
       diagnostics.warnings.push(suspicious);
       officialTrades.push(officialTradeView(row, "suspicious", suspicious));
+      continue;
+    }
+
+    const isLeveragedAction = isPositionOpenAction(action) || isPositionCloseAction(action);
+    const isNormalSide = side === "buy" || side === "sell";
+    const explicitNormal = hasExplicitNormalTradeType(row);
+    if (!isLeveragedAction && isNormalSide && !explicitNormal && !hasReliableNormalTradeMetadata(row)) {
+      diagnostics.ignoredTradesCount += 1;
+      diagnostics.ignoredLegacyTrades += 1;
+      const warning = legacyReviewReason(row, "missing reliable normal-trade metadata, so it is excluded from official cash/holdings.");
+      diagnostics.warnings.push(warning);
+      if (side === "sell") legacyShortCandidates.add(symbol);
+      officialTrades.push(officialTradeView(row, "legacy_under_review", warning));
+      continue;
+    }
+    if (!isLeveragedAction && side === "buy" && legacyShortCandidates.has(symbol) && !explicitNormal) {
+      diagnostics.ignoredTradesCount += 1;
+      diagnostics.ignoredLegacyTrades += 1;
+      const warning = legacyReviewReason(row, "BUY follows an ambiguous legacy SELL/short candidate, so it is not treated as a normal holding.");
+      diagnostics.warnings.push(warning);
+      officialTrades.push(officialTradeView(row, "legacy_under_review", warning));
       continue;
     }
 
@@ -5844,9 +6048,11 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
       const holding = holdings.get(symbol);
       if (!holding || holding.quantity + 0.00001 < quantity) {
         diagnostics.ignoredTradesCount += 1;
-        const warning = "Normal sell ignored because the team does not have enough normal shares.";
+        diagnostics.ignoredLegacyTrades += 1;
+        legacyShortCandidates.add(symbol);
+        const warning = "Normal sell ignored because the team does not have enough confirmed normal shares. It may be a legacy short open and is under review.";
         diagnostics.warnings.push(`${symbol} ${warning}`);
-        officialTrades.push(officialTradeView(row, "ignored", warning));
+        officialTrades.push(officialTradeView(row, "legacy_under_review", warning));
         continue;
       }
       const averageBuyPrice = holding.quantity > 0 ? holding.totalCost / holding.quantity : 0;
@@ -5922,6 +6128,27 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
   const totalReturn = startingCash > 0 ? ((totalPortfolioValue - startingCash) / startingCash) * 100 : 0;
   const dailyChange = input.previousSnapshotValue ? ((totalPortfolioValue - input.previousSnapshotValue) / input.previousSnapshotValue) * 100 : 0;
   const liquidatedPositionsCount = positionViews.filter((position) => position.status === "liquidated").length;
+  const corruptedBalanceDetected =
+    officialCash < -0.01 ||
+    !Number.isFinite(totalPortfolioValue) ||
+    totalPortfolioValue < 0 ||
+    (startingCash > 0 && officialCash > startingCash * 10 && (normalHoldingsValue > startingCash || totalExposure > startingCash));
+  if (corruptedBalanceDetected && !diagnostics.corruptedBalanceDetected) {
+    diagnostics.corruptedBalanceDetected = true;
+    diagnostics.warnings.push("Corrupted balance detected: official scoring will mark this team under review instead of publishing a fake value.");
+  }
+  const underReview =
+    diagnostics.ignoredLegacyTrades > 0 ||
+    diagnostics.suspiciousTradesCount > 0 ||
+    diagnostics.corruptedBalanceDetected ||
+    diagnostics.ignoredTradesCount > 0;
+  const officialStatus: InvestmentOfficialStatus = diagnostics.corruptedBalanceDetected
+    ? "corrupted_balance_detected"
+    : diagnostics.ignoredLegacyTrades > 0
+      ? "legacy_trades_detected"
+      : underReview
+        ? "under_review"
+        : "official_valid";
 
   holdingViews.forEach((holding) => {
     holding.weight = totalPortfolioValue > 0 ? (holding.marketValue / totalPortfolioValue) * 100 : 0;
@@ -5965,6 +6192,12 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
     suspiciousTradesCount: diagnostics.suspiciousTradesCount,
     liquidatedPositionsCount,
     warnings: diagnostics.warnings,
+    officialStatus,
+    underReview,
+    legacyTradesDetected: diagnostics.ignoredLegacyTrades > 0,
+    recalculationFailed: false,
+    corruptedBalanceDetected: diagnostics.corruptedBalanceDetected,
+    ignoredLegacyTrades: diagnostics.ignoredLegacyTrades,
     diversificationScore: calculateDiversificationScore(holdingViews, totalPortfolioValue),
     riskScore: calculateRiskScore(holdingViews, totalPortfolioValue),
     formulaBreakdown
@@ -5994,6 +6227,12 @@ async function calculateOfficialInvestmentPortfolioSnapshot(input: {
     suspiciousTradesCount: diagnostics.suspiciousTradesCount,
     liquidatedPositionsCount,
     warnings: diagnostics.warnings,
+    officialStatus,
+    underReview,
+    legacyTradesDetected: diagnostics.ignoredLegacyTrades > 0,
+    recalculationFailed: false,
+    corruptedBalanceDetected: diagnostics.corruptedBalanceDetected,
+    ignoredLegacyTrades: diagnostics.ignoredLegacyTrades,
     formulaBreakdown,
     pricesUsed: portfolioPricesUsed(portfolioSymbols, input.quoteMap)
   };
@@ -6100,10 +6339,6 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
 
   const startingCash = officialSnapshot.portfolio.startingCash;
   const cash = officialSnapshot.portfolio.cash;
-  const storedCash = rowNumber(account, "cash", rowNumber(account, "cash_balance", cash));
-  if (Math.abs(storedCash - cash) > 0.005) {
-    await updateInvestmentAccountCash(accountId, cash).catch(() => null);
-  }
 
   const thesisRow = Array.isArray(thesisRows) && thesisRows[0] ? thesisRows[0] : null;
   const currentRank = await getLeaderboardRowForAccount(accountId, competitionView);
