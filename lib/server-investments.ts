@@ -68,6 +68,7 @@ export type InvestmentHoldingView = {
   unrealizedGainLoss: number;
   weight: number;
   priceWarning?: string | null;
+  priceSource?: string | null;
 };
 
 export type InvestmentPortfolioSummary = {
@@ -76,6 +77,7 @@ export type InvestmentPortfolioSummary = {
   holdingsValue: number;
   lockedMargin: number;
   totalExposure: number;
+  realizedPnl: number;
   unrealizedPnl: number;
   holdingsUnrealizedPnl: number;
   totalUnrealizedPnl: number;
@@ -83,6 +85,11 @@ export type InvestmentPortfolioSummary = {
   totalValue: number;
   dailyChange: number;
   totalReturn: number;
+  totalCommissions: number;
+  ignoredTradesCount: number;
+  suspiciousTradesCount: number;
+  liquidatedPositionsCount: number;
+  warnings: string[];
   diversificationScore: number;
   riskScore: number;
   formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
@@ -93,6 +100,7 @@ export type InvestmentPortfolioFormulaBreakdown = {
   normalHoldingsValue: number;
   lockedMargin: number;
   openExposure: number;
+  realizedPnl: number;
   holdingsUnrealizedPnl: number;
   positionsUnrealizedPnl: number;
   totalUnrealizedPnl: number;
@@ -100,6 +108,10 @@ export type InvestmentPortfolioFormulaBreakdown = {
   totalPortfolioValue: number;
   profitLoss: number;
   returnPercent: number;
+  totalCommissions: number;
+  ignoredTradesCount: number;
+  suspiciousTradesCount: number;
+  liquidatedPositionsCount: number;
 };
 
 export type InvestmentPortfolioDebug = {
@@ -107,13 +119,20 @@ export type InvestmentPortfolioDebug = {
   legacyHoldingsCount: number;
   legacyHoldingsValue: number;
   openPositionsCount: number;
+  closedPositionsCount: number;
   lockedMargin: number;
   openExposure: number;
+  realizedPnl: number;
   holdingsUnrealizedPnl: number;
   unrealizedPnl: number;
   totalUnrealizedPnl: number;
   openPositionValue: number;
   calculatedPortfolioValue: number;
+  totalCommissions: number;
+  ignoredTradesCount: number;
+  suspiciousTradesCount: number;
+  liquidatedPositionsCount: number;
+  warnings: string[];
   formulaBreakdown: InvestmentPortfolioFormulaBreakdown;
   pricesUsed: Array<{
     symbol: string;
@@ -143,9 +162,11 @@ export type InvestmentPositionView = {
   updatedAt: string;
   priceWarning?: string | null;
   exitPrice?: number | null;
+  openingCommission?: number | null;
   correctRealizedPnl?: number | null;
   closingCommission?: number | null;
   cashReturned?: number | null;
+  positionValue?: number | null;
 };
 
 export type InvestmentThesisView = {
@@ -204,6 +225,8 @@ export type InvestmentTradeView = {
   priceTimestamp: string | null;
   rejected: boolean;
   rejectReason: string | null;
+  officialStatus?: "applied" | "ignored" | "suspicious";
+  officialWarning?: string | null;
 };
 
 export type InvestmentAdminTeamResult = {
@@ -227,6 +250,12 @@ export type InvestmentAdminTeamResult = {
   portfolioDebug: InvestmentPortfolioDebug;
   profitLoss: number;
   returnPercent: number;
+  realizedPnl: number;
+  totalCommissions: number;
+  ignoredTradesCount: number;
+  suspiciousTradesCount: number;
+  liquidatedPositionsCount: number;
+  warnings: string[];
   tradesCount: number;
   holdingsCount: number;
   openPositionsCount: number;
@@ -308,7 +337,20 @@ const MARKETDATA_CACHE_FRESH_MS = 15 * 60 * 1000;
 const MARKETDATA_PROVIDER_MAX_AGE_MS = 30 * 60 * 1000;
 const TEAM_PASSWORD_ITERATIONS = 50000;
 const MAX_MARKETDATA_SYMBOLS_PER_CRON = Math.max(1, Number(process.env.MAX_MARKETDATA_SYMBOLS_PER_CRON ?? "50") || 50);
-type PriceSource = "live" | "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | "reference" | "unavailable";
+type EmergencyPriceSource =
+  | "saved_market_price"
+  | "latest_trade_fallback"
+  | "team_average_buy_fallback"
+  | "admin_manual_override";
+type PriceSource =
+  | "live"
+  | "cache"
+  | "marketdata_app"
+  | "alpha_vantage"
+  | "yahoo_finance"
+  | EmergencyPriceSource
+  | "reference"
+  | "unavailable";
 type PriceFailureCode = "rate_limit" | "symbol_not_found" | "price_unavailable" | "stale_price" | "temporary_unavailable";
 type MarketPriceResult =
   | {
@@ -344,13 +386,15 @@ type MarketPriceResult =
       isProviderStale?: boolean;
       staleReason?: string | null;
       canTrade?: boolean;
+      httpStatus?: number | null;
+      providerError?: string | null;
     };
 
 export type LatestClosePriceResult = {
   symbol: string;
   price: number | null;
   tradingDay: string | null;
-  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
+  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | EmergencyPriceSource | null;
   cached: boolean;
   error: string | null;
   fetchedAt?: string | null;
@@ -389,7 +433,12 @@ export type InvestmentPriceDebugResult = {
   parsedPrice?: number | null;
   finalPrice: number | null;
   tradingDay: string | null;
-  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | null;
+  source: "cache" | "marketdata_app" | "alpha_vantage" | "yahoo_finance" | EmergencyPriceSource | null;
+  marketDataStatus?: number | string | null;
+  providerError?: string | null;
+  fallbackPrice?: number | null;
+  fallbackSource?: EmergencyPriceSource | null;
+  warning?: string | null;
   responseTextPreview?: string | null;
   errorName?: string | null;
   errorMessage?: string | null;
@@ -398,6 +447,21 @@ export type InvestmentPriceDebugResult = {
   bearerAttempt?: MarketDataAttemptDiagnostics;
   queryTokenAttempt?: MarketDataAttemptDiagnostics;
   error: string | null;
+};
+
+export type BestAvailableInvestmentPrice = {
+  ok: boolean;
+  symbol: string;
+  price: number | null;
+  source: EmergencyPriceSource | "marketdata_app" | "unavailable";
+  warning: string | null;
+  canTrade: boolean;
+  tradingDay: string | null;
+  fetchedAt: string | null;
+  marketDataStatus: number | string | null;
+  providerError: string | null;
+  calledMarketDataApp: boolean;
+  httpStatus: number | null;
 };
 
 export type MarketDataAttemptDiagnostics = {
@@ -928,28 +992,40 @@ export async function getMarketDataStockPrice(symbol: string): Promise<MarketPri
 
   const result = await fetchMarketDataApp(`${MARKETDATA_STOCK_PRICE_ENDPOINT}/${encodeURIComponent(normalized)}/`);
   if (!result.data) {
-    return marketDataFailure(
-      normalized,
-      result.errorMessage ?? "MarketData.app returned a non-JSON response.",
-      "temporary_unavailable",
-      {
-        bearerAttempt: result.bearerAttempt,
-        queryTokenAttempt: result.queryTokenAttempt,
-        errorName: result.errorName,
-        errorCause: result.errorCause
-      },
-      result.responseTextPreview
-    );
+    return {
+      ...marketDataFailure(
+        normalized,
+        result.errorMessage ?? "MarketData.app returned a non-JSON response.",
+        "temporary_unavailable",
+        {
+          bearerAttempt: result.bearerAttempt,
+          queryTokenAttempt: result.queryTokenAttempt,
+          errorName: result.errorName,
+          errorCause: result.errorCause
+        },
+        result.responseTextPreview
+      ),
+      httpStatus: result.httpStatus,
+      providerError: result.errorMessage ?? result.errorCause ?? "MarketData.app request failed."
+    };
   }
   if (!result.responseOk) {
     const status = result.httpStatus ?? 0;
-    return marketDataFailure(
-      normalized,
-      status === 404 ? "Symbol not found." : status === 402 || status === 429 ? "API credit limit reached. Using saved prices when available." : "Market data temporarily unavailable.",
-      status === 404 ? "symbol_not_found" : status === 402 || status === 429 ? "rate_limit" : "temporary_unavailable",
-      result.data,
-      result.responseTextPreview
-    );
+    return {
+      ...marketDataFailure(
+        normalized,
+        status === 404
+          ? "Symbol not found."
+          : status === 402 || status === 429
+            ? "API credit limit reached. Using saved prices when available."
+            : `MarketData.app returned status ${status || "unknown"}.`,
+        status === 404 ? "symbol_not_found" : status === 402 || status === 429 ? "rate_limit" : "temporary_unavailable",
+        result.data,
+        result.responseTextPreview
+      ),
+      httpStatus: result.httpStatus,
+      providerError: `MarketData.app returned status ${status || "unknown"}.`
+    };
   }
   return parseMarketDataStockPricePayload(result.data, normalized, 0, result.responseTextPreview);
 }
@@ -1555,7 +1631,7 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
   return [];
 }
 
-export async function getAssetQuote(symbol: string) {
+export async function getAssetQuote(symbol: string, teamId?: string) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) {
     return { ok: false as const, reason: "Invalid ticker format." };
@@ -1565,7 +1641,10 @@ export async function getAssetQuote(symbol: string) {
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? getInvestmentAsset(normalized) ?? null;
   await recordInvestmentAssetEvent(normalized, "select");
-  const latest = await getLatestCloseQuote(normalized, candidate ?? undefined, { allowReferenceFallback: Boolean(candidate?.referencePrice) });
+  const latest = await getLatestCloseQuote(normalized, candidate ?? undefined, {
+    allowReferenceFallback: Boolean(candidate?.referencePrice),
+    teamId
+  });
 
   if (!candidate && !latest.priceAvailable) {
     return { ok: false as const, reason: latest.priceMessage ?? "Symbol not found." };
@@ -1592,7 +1671,7 @@ export async function getAssetQuote(symbol: string) {
   return { ok: true as const, asset, price: latest };
 }
 
-export async function validateAsset(symbol: string) {
+export async function validateAsset(symbol: string, teamId?: string) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) {
     return { ok: false as const, reason: "Invalid ticker format." };
@@ -1602,14 +1681,14 @@ export async function validateAsset(symbol: string) {
   const searchMatch = existing ? null : (await searchAssets(normalized)).find((asset) => asset.symbol === normalized) ?? null;
   const candidate = existing ?? searchMatch ?? undefined;
   await recordInvestmentAssetEvent(normalized, "trade");
-  const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false });
+  const latest = await getLatestCloseQuote(normalized, candidate, { allowReferenceFallback: false, teamId });
   if (!latest.priceAvailable) {
     return {
       ok: false as const,
       reason:
         latest.isStale || /fresh price/i.test(latest.priceMessage ?? "")
           ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
-          : "Price is not available for this asset right now. Please try again later."
+          : "Price is temporarily unavailable for this asset. Please try again later."
     };
   }
   if (getMarketStatus().isOpen && latest.canTrade === false) {
@@ -1847,10 +1926,152 @@ export async function getDailyMarketPrice(symbol: string) {
   };
 }
 
+type EmergencyFallback = {
+  price: number;
+  source: EmergencyPriceSource;
+  tradingDay: string | null;
+  fetchedAt: string | null;
+};
+
+function isMarketDataOutage(result: Extract<MarketPriceResult, { ok: false }>) {
+  const status = result.httpStatus ?? null;
+  return (
+    status === 522 ||
+    (typeof status === "number" && status >= 500) ||
+    result.code === "rate_limit" ||
+    (result.code === "temporary_unavailable" && status !== 404)
+  );
+}
+
+async function getLatestTradePriceFallback(symbol: string): Promise<EmergencyFallback | null> {
+  if (!supabaseConfigured()) return null;
+  try {
+    const rows = await selectRows("investment_trades", {
+      select: "price,price_timestamp,price_date,created_at,rejected",
+      symbol: `eq.${symbol}`,
+      order: "created_at.desc",
+      limit: "25"
+    });
+    if (!Array.isArray(rows)) return null;
+    const row = rows.find((candidate) => candidate.rejected !== true && rowNumber(candidate, "price") > 0);
+    if (!row) return null;
+    return {
+      price: rowNumber(row, "price"),
+      source: "latest_trade_fallback",
+      tradingDay: rowNullableString(row, "price_date"),
+      fetchedAt: rowNullableString(row, "price_timestamp") ?? rowNullableString(row, "created_at")
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getTeamAverageBuyFallback(symbol: string, teamId?: string): Promise<EmergencyFallback | null> {
+  if (!supabaseConfigured() || !teamId) return null;
+  const queryFor = async (key: "account_id" | "team_id") => {
+    try {
+      const rows = await selectRows("investment_holdings", {
+        select: "average_buy_price,updated_at,quantity",
+        [key]: `eq.${teamId}`,
+        symbol: `eq.${symbol}`,
+        limit: "1"
+      });
+      return Array.isArray(rows) ? rows[0] ?? null : null;
+    } catch {
+      return null;
+    }
+  };
+  const row = (await queryFor("account_id")) ?? (await queryFor("team_id"));
+  if (!row || rowNumber(row, "quantity") <= 0 || rowNumber(row, "average_buy_price") <= 0) return null;
+  return {
+    price: rowNumber(row, "average_buy_price"),
+    source: "team_average_buy_fallback",
+    tradingDay: null,
+    fetchedAt: rowNullableString(row, "updated_at")
+  };
+}
+
+async function getAdminManualOverrideFallback(symbol: string): Promise<EmergencyFallback | null> {
+  if (!supabaseConfigured()) return null;
+  try {
+    const rows = await selectRows("investment_price_overrides", {
+      select: "price,created_at",
+      symbol: `eq.${symbol}`,
+      order: "created_at.desc",
+      limit: "1"
+    });
+    const row = Array.isArray(rows) ? rows[0] ?? null : null;
+    if (!row || rowNumber(row, "price") <= 0) return null;
+    return {
+      price: rowNumber(row, "price"),
+      source: "admin_manual_override",
+      tradingDay: null,
+      fetchedAt: rowNullableString(row, "created_at")
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveInvestmentPriceOverride(input: {
+  symbol: string;
+  price: number;
+  note?: string | null;
+  createdBy: string;
+}) {
+  const symbol = normalizeSymbol(input.symbol);
+  const price = Number(input.price);
+  if (!isSupportedSymbol(symbol)) throw new Error("Invalid ticker format.");
+  if (!Number.isFinite(price) || price <= 0) throw new Error("Override price must be greater than zero.");
+  if (!supabaseConfigured()) throw new Error("Supabase is not configured.");
+  const createdAt = new Date().toISOString();
+  await insertRow("investment_price_overrides", {
+    id: randomUUID(),
+    symbol,
+    price,
+    note: input.note?.trim().slice(0, 500) || null,
+    created_at: createdAt,
+    created_by: input.createdBy.trim().toLowerCase()
+  });
+  return { symbol, price, createdAt };
+}
+
+async function resolveEmergencyPriceFallback(
+  symbol: string,
+  stored: Awaited<ReturnType<typeof getCachedPrice>>,
+  teamId?: string
+): Promise<EmergencyFallback | null> {
+  if (stored && Number.isFinite(stored.latestClose) && stored.latestClose > 0) {
+    return {
+      price: stored.latestClose,
+      source: "saved_market_price",
+      tradingDay: stored.priceDate,
+      fetchedAt: stored.fetchedAt ?? null
+    };
+  }
+  return (
+    (await getLatestTradePriceFallback(symbol)) ??
+    (await getTeamAverageBuyFallback(symbol, teamId)) ??
+    (await getAdminManualOverrideFallback(symbol))
+  );
+}
+
+function emergencyPriceWarning(source: EmergencyPriceSource) {
+  const detail =
+    source === "saved_market_price"
+      ? "saved market price"
+      : source === "latest_trade_fallback"
+        ? "latest trade price"
+        : source === "team_average_buy_fallback"
+          ? "team average buy price"
+          : "admin manual override";
+  return `Market data provider is temporarily unavailable. Using ${detail}.`;
+}
+
 async function resolveLatestClosePrice(
   symbol: string,
   assetInput?: InvestmentAsset,
-  options: { allowReferenceFallback?: boolean; refresh?: boolean } = {}
+  options: { allowReferenceFallback?: boolean; refresh?: boolean; teamId?: string } = {}
 ) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) throw new Error("Unsupported investment asset.");
@@ -1951,6 +2172,67 @@ async function resolveLatestClosePrice(
     };
   }
 
+  if (isMarketDataOutage(marketData)) {
+    const fallback = await resolveEmergencyPriceFallback(normalized, stored, options.teamId);
+    if (fallback) {
+      const warning = emergencyPriceWarning(fallback.source);
+      const quote = {
+        latestClose: fallback.price,
+        priceDate: fallback.tradingDay,
+        provider: fallback.source,
+        priceAvailable: true,
+        priceSource: fallback.source,
+        priceMessage: warning,
+        fetchedAt: fallback.fetchedAt,
+        currency: asset?.currency ?? "USD",
+        cacheStatus: fallback.source === "saved_market_price" ? ("cached" as const) : ("stale" as const),
+        canTrade: marketStatus.isOpen,
+        isStale: false,
+        staleReason: null,
+        providerUpdatedAt: fallback.fetchedAt,
+        providerUpdatedAtEt: null,
+        emergencyFallback: true,
+        warning
+      };
+      return {
+        result: {
+          symbol: normalized,
+          price: fallback.price,
+          tradingDay: fallback.tradingDay,
+          source: fallback.source,
+          cached: fallback.source === "saved_market_price",
+          error: null,
+          fetchedAt: fallback.fetchedAt
+        },
+        quote,
+        debug: {
+          symbol: normalized,
+          provider: preferredMarketDataProvider(),
+          hasMarketDataApiKey: Boolean(getMarketDataApiKey()),
+          cacheFound: Boolean(stored),
+          cachedPrice: stored?.latestClose ?? null,
+          cachedFetchedAt: stored?.fetchedAt ?? null,
+          cacheFresh,
+          calledMarketDataApp,
+          endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
+          httpStatus: marketData.httpStatus ?? null,
+          marketDataAppStatus,
+          marketDataStatus: marketData.httpStatus ?? marketDataAppStatus,
+          providerError: marketData.providerError ?? marketData.message,
+          fallbackPrice: fallback.price,
+          fallbackSource: fallback.source,
+          finalPrice: fallback.price,
+          tradingDay: fallback.tradingDay,
+          source: fallback.source,
+          responseTextPreview: marketData.responseTextPreview ?? null,
+          canTrade: marketStatus.isOpen,
+          warning,
+          error: null
+        } satisfies InvestmentPriceDebugResult
+      };
+    }
+  }
+
   if (stored) {
     const prefix = marketData.ok ? "Using saved price." : marketData.message;
     const quote = {
@@ -1986,6 +2268,9 @@ async function resolveLatestClosePrice(
         calledMarketDataApp,
         endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
         marketDataAppStatus,
+        httpStatus: marketData.httpStatus ?? null,
+        marketDataStatus: marketData.httpStatus ?? marketDataAppStatus,
+        providerError: marketData.providerError ?? marketData.message,
         finalPrice: stored.latestClose,
         tradingDay: stored.priceDate,
         source: "cache" as const,
@@ -2005,7 +2290,7 @@ async function resolveLatestClosePrice(
           ? "Fresh price is not available for this asset right now. Please try again later or choose another ticker."
         : failure.code === "rate_limit"
           ? "API credit limit reached. Using saved prices when available."
-          : "No saved price yet. Select the asset to fetch the latest price.";
+          : "Price is temporarily unavailable for this asset. Please try again later.";
 
   return {
     result: {
@@ -2044,12 +2329,50 @@ async function resolveLatestClosePrice(
       calledMarketDataApp,
       endpointUsed: `/${MARKETDATA_STOCK_PRICE_ENDPOINT}`,
       marketDataAppStatus,
+      httpStatus: failure.httpStatus ?? null,
+      marketDataStatus: failure.httpStatus ?? marketDataAppStatus,
+      providerError: failure.providerError ?? failure.message,
       finalPrice: null,
       tradingDay: null,
       source: null,
       responseTextPreview: failure.responseTextPreview ?? null,
       error
     } satisfies InvestmentPriceDebugResult
+  };
+}
+
+export async function getBestAvailableInvestmentPrice(
+  symbol: string,
+  teamId?: string,
+  options: { refresh?: boolean } = {}
+): Promise<BestAvailableInvestmentPrice> {
+  const resolved = await resolveLatestClosePrice(symbol, undefined, {
+    refresh: options.refresh,
+    allowReferenceFallback: false,
+    teamId
+  });
+  return {
+    ok: Boolean(resolved.result.price && resolved.result.price > 0),
+    symbol: normalizeSymbol(symbol),
+    price: resolved.result.price,
+    source:
+      resolved.result.source === "cache"
+        ? "saved_market_price"
+        : resolved.result.source === "marketdata_app" ||
+            resolved.result.source === "saved_market_price" ||
+            resolved.result.source === "latest_trade_fallback" ||
+            resolved.result.source === "team_average_buy_fallback" ||
+            resolved.result.source === "admin_manual_override"
+          ? resolved.result.source
+          : "unavailable",
+    warning: "warning" in resolved.quote ? resolved.quote.warning ?? null : null,
+    canTrade: resolved.quote.canTrade === true,
+    tradingDay: resolved.result.tradingDay,
+    fetchedAt: resolved.result.fetchedAt ?? null,
+    marketDataStatus: resolved.debug.marketDataStatus ?? resolved.debug.httpStatus ?? resolved.debug.marketDataAppStatus,
+    providerError: resolved.debug.providerError ?? resolved.debug.error,
+    calledMarketDataApp: resolved.debug.calledMarketDataApp,
+    httpStatus: resolved.debug.httpStatus ?? null
   };
 }
 
@@ -2073,7 +2396,7 @@ export async function getLatestStockPrice(
 async function getLatestCloseQuote(
   symbol: string,
   assetInput?: InvestmentAsset,
-  options: { allowReferenceFallback?: boolean; refresh?: boolean } = {}
+  options: { allowReferenceFallback?: boolean; refresh?: boolean; teamId?: string } = {}
 ) {
   const normalized = normalizeSymbol(symbol);
   const allowReferenceFallback = options.allowReferenceFallback ?? true;
@@ -2148,7 +2471,8 @@ async function resolvePortfolioQuotesForSymbols(
   symbols: Iterable<string>,
   baseQuotes: InvestmentAssetQuote[] = [],
   assetsInput: InvestmentAsset[] = [],
-  priceMapInput?: Map<string, number>
+  priceMapInput?: Map<string, number>,
+  teamId?: string
 ) {
   const quotesBySymbol = new Map<string, InvestmentAssetQuote>();
   for (const quote of baseQuotes) {
@@ -2170,6 +2494,7 @@ async function resolvePortfolioQuotesForSymbols(
     if (
       existing &&
       existing.priceAvailable &&
+      (existing.isStale !== true || existing.emergencyFallback === true) &&
       existing.priceSource !== "reference" &&
       Number.isFinite(existing.latestClose) &&
       existing.latestClose > 0
@@ -2202,10 +2527,12 @@ async function resolvePortfolioQuotesForSymbols(
         currency: cached.currency ?? asset?.currency ?? "USD",
         cacheStatus: cached.cacheStatus,
         canTrade: cached.canTrade,
-        isStale: cached.isStale,
+        isStale: false,
         staleReason: cached.staleReason,
         providerUpdatedAt: cached.providerUpdatedAt,
-        providerUpdatedAtEt: cached.providerUpdatedAtEt
+        providerUpdatedAtEt: cached.providerUpdatedAtEt,
+        emergencyFallback: cached.isStale === true,
+        warning: cached.isStale === true ? emergencyPriceWarning("saved_market_price") : null
       });
       continue;
     }
@@ -2237,6 +2564,39 @@ async function resolvePortfolioQuotesForSymbols(
         canTrade: false,
         isStale: getMarketStatus().isOpen,
         staleReason: getMarketStatus().isOpen ? "Fresh price is temporarily unavailable for this asset." : null
+      });
+      continue;
+    }
+
+    const emergency = await resolveEmergencyPriceFallback(symbol, null, teamId);
+    if (emergency) {
+      const asset = assetsBySymbol.get(symbol) ?? (await resolveInvestmentAsset(symbol).catch(() => null)) ?? getInvestmentAsset(symbol) ?? null;
+      quotesBySymbol.set(symbol, {
+        ...(asset ?? {
+          symbol,
+          name: symbol,
+          type: "Stock",
+          theme: "US-listed asset",
+          referencePrice: emergency.price,
+          region: "United States",
+          currency: "USD",
+          exchange: null,
+          featured: false
+        }),
+        latestClose: emergency.price,
+        priceDate: emergency.tradingDay,
+        provider: emergency.source,
+        priceAvailable: true,
+        priceSource: emergency.source,
+        priceMessage: emergencyPriceWarning(emergency.source),
+        fetchedAt: emergency.fetchedAt,
+        currency: asset?.currency ?? "USD",
+        cacheStatus: "stale",
+        canTrade: false,
+        isStale: false,
+        staleReason: null,
+        emergencyFallback: true,
+        warning: emergencyPriceWarning(emergency.source)
       });
       continue;
     }
@@ -3043,13 +3403,18 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
     normalHoldingsValue: 0,
     lockedMargin: 0,
     openExposure: 0,
+    realizedPnl: 0,
     holdingsUnrealizedPnl: 0,
     positionsUnrealizedPnl: 0,
     totalUnrealizedPnl: 0,
     openPositionValue: 0,
     totalPortfolioValue: cash,
     profitLoss: cash - startingCash,
-    returnPercent: totalReturn
+    returnPercent: totalReturn,
+    totalCommissions: 0,
+    ignoredTradesCount: 0,
+    suspiciousTradesCount: 0,
+    liquidatedPositionsCount: 0
   };
   return {
     account: {
@@ -3072,6 +3437,7 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       holdingsValue: 0,
       lockedMargin: 0,
       totalExposure: 0,
+      realizedPnl: 0,
       unrealizedPnl: 0,
       holdingsUnrealizedPnl: 0,
       totalUnrealizedPnl: 0,
@@ -3079,6 +3445,11 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       totalValue: cash,
       dailyChange: 0,
       totalReturn,
+      totalCommissions: 0,
+      ignoredTradesCount: 0,
+      suspiciousTradesCount: 0,
+      liquidatedPositionsCount: 0,
+      warnings: [],
       diversificationScore: 0,
       riskScore: 100,
       formulaBreakdown
@@ -3088,13 +3459,20 @@ function buildTeamSessionAccount(accountRow: Payload, competition: InvestmentCom
       legacyHoldingsCount: 0,
       legacyHoldingsValue: 0,
       openPositionsCount: 0,
+      closedPositionsCount: 0,
       lockedMargin: 0,
       openExposure: 0,
+      realizedPnl: 0,
       holdingsUnrealizedPnl: 0,
       unrealizedPnl: 0,
       totalUnrealizedPnl: 0,
       openPositionValue: 0,
       calculatedPortfolioValue: cash,
+      totalCommissions: 0,
+      ignoredTradesCount: 0,
+      suspiciousTradesCount: 0,
+      liquidatedPositionsCount: 0,
+      warnings: [],
       formulaBreakdown,
       pricesUsed: []
     },
@@ -3284,6 +3662,7 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     legacyHoldingsValue: view.portfolio.holdingsValue,
     lockedMargin: view.portfolio.lockedMargin,
     openExposure: view.portfolio.totalExposure,
+    realizedPnl: view.portfolio.realizedPnl,
     unrealizedPnl: view.portfolio.formulaBreakdown.totalUnrealizedPnl,
     holdingsUnrealizedPnl: view.portfolio.formulaBreakdown.holdingsUnrealizedPnl,
     positionsUnrealizedPnl: view.portfolio.formulaBreakdown.positionsUnrealizedPnl,
@@ -3292,6 +3671,11 @@ export async function calculateTeamPortfolioValue(teamId: string, competitionId?
     portfolioValue: view.portfolio.totalValue,
     profitLoss: view.portfolio.formulaBreakdown.profitLoss,
     returnPercent: view.portfolio.totalReturn,
+    totalCommissions: view.portfolio.totalCommissions,
+    ignoredTradesCount: view.portfolio.ignoredTradesCount,
+    suspiciousTradesCount: view.portfolio.suspiciousTradesCount,
+    liquidatedPositionsCount: view.portfolio.liquidatedPositionsCount,
+    warnings: view.portfolio.warnings,
     holdingsCount: view.holdings.length,
     openPositionsCount: openPositions.length,
     tradesCount: await getTradeCount(teamId),
@@ -3341,7 +3725,7 @@ export async function executeInvestmentTrade(input: {
     return rejectTrade(account, normalizedSymbol, input.side, quantity, status.message);
   }
 
-  const validation = await validateAsset(normalizedSymbol);
+  const validation = await validateAsset(normalizedSymbol, rowString(account, "id"));
   if (!validation.ok) return rejectTrade(account, normalizedSymbol, input.side, quantity, validation.reason);
   const asset = validation.asset;
 
@@ -3419,7 +3803,7 @@ export async function openInvestmentPosition(input: {
   if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false as const, reason: "Quantity must be a positive whole number of shares." };
   if (![1, 2, 3].includes(leverage)) return { ok: false as const, reason: "Max leverage is x3." };
 
-  const validation = await validateAsset(normalizeSymbol(input.symbol));
+  const validation = await validateAsset(normalizeSymbol(input.symbol), rowString(account, "id"));
   if (!validation.ok) return { ok: false as const, reason: validation.reason };
   const asset = validation.asset;
   const latest = validation.price;
@@ -3513,7 +3897,7 @@ export async function closeInvestmentPosition(input: { accountId: string; positi
   if (positionStatus(position) !== "open") return { ok: false as const, reason: "Position is already closed." };
 
   const symbol = normalizeSymbol(rowString(position, "symbol"));
-  const validation = await validateAsset(symbol);
+  const validation = await validateAsset(symbol, rowString(account, "id"));
   if (!validation.ok) return { ok: false as const, reason: validation.reason };
   const price = validation.price.latestClose;
   if (!price || !Number.isFinite(price) || price <= 0) return { ok: false as const, reason: "Price unavailable." };
@@ -3606,7 +3990,7 @@ export async function saveInvestmentThesis(input: {
     "account_id"
   );
   await updateInvestmentLeaderboard();
-  return buildInvestmentAccountView(input.accountId);
+  return calculateInvestmentPortfolio(input.accountId);
 }
 
 export async function createOrUpdateInvestmentCompetition(input: {
@@ -3867,6 +4251,12 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
           portfolioDebug: view.portfolioDebug,
           profitLoss,
           returnPercent: view.portfolio.totalReturn,
+          realizedPnl: formulaBreakdown.realizedPnl,
+          totalCommissions: formulaBreakdown.totalCommissions,
+          ignoredTradesCount: formulaBreakdown.ignoredTradesCount,
+          suspiciousTradesCount: formulaBreakdown.suspiciousTradesCount,
+          liquidatedPositionsCount: formulaBreakdown.liquidatedPositionsCount,
+          warnings: view.portfolio.warnings,
           tradesCount,
           holdingsCount: view.holdings.length,
           openPositionsCount: openPositions.length,
@@ -3902,6 +4292,92 @@ export async function listInvestmentAdminResults(competitionCodeOrSlug = TEENVES
       totalSimulatedPortfolioValue,
       competitionStatus: competition.runtimeStatus
     }
+  };
+}
+
+export async function recalculateOfficialInvestmentTeamPortfolio(teamId: string, competitionCodeOrSlug = TEENVESTOR_CODE) {
+  if (!supabaseConfigured()) {
+    return { ok: false as const, reason: "Supabase is not configured.", team: null };
+  }
+
+  const competition = await resolveInvestmentAdminCompetition(competitionCodeOrSlug);
+  if (!competition) {
+    return { ok: false as const, reason: "Teenvestor.school competition was not found in Supabase.", team: null };
+  }
+
+  const view = await calculateInvestmentPortfolio(teamId, competition.id);
+  if (!view) {
+    return { ok: false as const, reason: "Team was not found for this competition.", team: null };
+  }
+
+  await upsertPortfolioSnapshot(view).catch(() => null);
+  const leaderboard = await updateInvestmentLeaderboard(competition.code);
+  const teamRow = leaderboard.rows.find((row) => row.accountId === teamId || row.teamId === teamId) ?? null;
+
+  return {
+    ok: true as const,
+    competition,
+    team: {
+      teamId,
+      teamName: view.account.teamName,
+      cash: view.portfolio.cash,
+      holdingsValue: view.portfolio.holdingsValue,
+      lockedMargin: view.portfolio.lockedMargin,
+      totalExposure: view.portfolio.totalExposure,
+      realizedPnl: view.portfolio.realizedPnl,
+      totalUnrealizedPnl: view.portfolio.totalUnrealizedPnl,
+      totalPortfolioValue: view.portfolio.totalValue,
+      profitLoss: view.portfolio.formulaBreakdown.profitLoss,
+      returnPercent: view.portfolio.totalReturn,
+      rank: teamRow?.rank ?? null,
+      ignoredTradesCount: view.portfolio.ignoredTradesCount,
+      suspiciousTradesCount: view.portfolio.suspiciousTradesCount,
+      liquidatedPositionsCount: view.portfolio.liquidatedPositionsCount,
+      totalCommissions: view.portfolio.totalCommissions,
+      warnings: view.portfolio.warnings
+    }
+  };
+}
+
+export async function recalculateOfficialInvestmentPortfolios(competitionCodeOrSlug = TEENVESTOR_CODE) {
+  if (!supabaseConfigured()) {
+    return { ok: false as const, reason: "Supabase is not configured.", teamsUpdated: 0, teams: [] };
+  }
+
+  const competition = await resolveInvestmentAdminCompetition(competitionCodeOrSlug);
+  if (!competition) {
+    return { ok: false as const, reason: "Teenvestor.school competition was not found in Supabase.", teamsUpdated: 0, teams: [] };
+  }
+
+  const accounts = await selectRows("investment_accounts", {
+    select: "*",
+    competition_id: `eq.${competition.id}`,
+    order: "created_at.asc",
+    limit: "1000"
+  });
+  const accountRows = Array.isArray(accounts) ? accounts : [];
+  const teams = [];
+
+  for (const account of accountRows) {
+    const teamId = rowString(account, "id");
+    const result = await recalculateOfficialInvestmentTeamPortfolio(teamId, competition.code);
+    if (result.ok && result.team) teams.push(result.team);
+  }
+
+  const leaderboard = await updateInvestmentLeaderboard(competition.code);
+  const warningsCount = teams.reduce((sum, team) => sum + team.warnings.length, 0);
+  const ignoredTradesCount = teams.reduce((sum, team) => sum + team.ignoredTradesCount, 0);
+  const suspiciousTradesCount = teams.reduce((sum, team) => sum + team.suspiciousTradesCount, 0);
+
+  return {
+    ok: true as const,
+    competition,
+    teamsUpdated: teams.length,
+    warningsCount,
+    ignoredTradesCount,
+    suspiciousTradesCount,
+    leaderboardRows: leaderboard.rows.length,
+    teams
   };
 }
 
@@ -4004,16 +4480,21 @@ export async function getInvestmentAdminTeamDetail(
     marketValue: position.status === "open" ? position.marginLocked + position.unrealizedPnl : 0
   } satisfies InvestmentAdminPositionResult));
 
+  const officialTradeById = new Map((accountView?.trades ?? []).map((trade) => [trade.id, trade]));
   const trades = rawTradeRows.map((row) => {
     const mapped = mapTradeRow(row);
+    const officialTrade = officialTradeById.get(mapped.id);
     const positionId = rowNullableString(row, "position_id");
     const metrics = positionId ? closeMetricsByPositionId.get(positionId) : null;
     return {
+      ...officialTrade,
       ...mapped,
       grossValue: metrics?.grossValue ?? mapped.grossValue,
       feeAmount: metrics?.closingCommission ?? mapped.feeAmount,
       netValue: metrics?.cashReturned ?? mapped.netValue,
       realizedPnl: metrics?.correctRealizedPnl ?? mapped.realizedPnl,
+      officialStatus: officialTrade?.officialStatus ?? (mapped.rejected ? "ignored" : "applied"),
+      officialWarning: officialTrade?.officialWarning ?? null,
       teamName: overviewBase?.teamName ?? rowString(account, "team_name")
     };
   });
@@ -4043,6 +4524,12 @@ export async function getInvestmentAdminTeamDetail(
           portfolioDebug: accountView.portfolioDebug,
           profitLoss: accountView.portfolio.formulaBreakdown.profitLoss,
           returnPercent: accountView.portfolio.totalReturn,
+          realizedPnl: accountView.portfolio.formulaBreakdown.realizedPnl,
+          totalCommissions: accountView.portfolio.formulaBreakdown.totalCommissions,
+          ignoredTradesCount: accountView.portfolio.formulaBreakdown.ignoredTradesCount,
+          suspiciousTradesCount: accountView.portfolio.formulaBreakdown.suspiciousTradesCount,
+          liquidatedPositionsCount: accountView.portfolio.formulaBreakdown.liquidatedPositionsCount,
+          warnings: accountView.portfolio.warnings,
           tradesCount,
           holdingsCount: accountView.holdings.length,
           openPositionsCount: openPositions.length,
@@ -4760,10 +5247,12 @@ function calculateCorrectedPositionCloseMetrics(input: {
   closingCommission: number;
 }): CorrectedPositionCloseMetrics {
   const rawPnl = calculatePositionPnl(input.side, input.entryPrice, input.exitPrice, input.quantity);
-  const liquidated = input.action === "liquidated" || rawPnl <= -input.marginLocked;
-  const correctRealizedPnl = liquidated ? -input.marginLocked : Math.max(rawPnl, -input.marginLocked);
-  const closingCommission = liquidated ? 0 : input.closingCommission;
-  const cashReturned = Math.max(0, liquidated ? 0 : input.marginLocked + correctRealizedPnl - closingCommission);
+  const explicitLiquidation = input.action === "liquidated";
+  const closingCommission = explicitLiquidation ? 0 : input.closingCommission;
+  const cashBeforeFloor = input.marginLocked + rawPnl - closingCommission;
+  const liquidated = explicitLiquidation || cashBeforeFloor <= 0;
+  const correctRealizedPnl = rawPnl;
+  const cashReturned = Math.max(0, explicitLiquidation ? 0 : cashBeforeFloor);
 
   return {
     exitPrice: input.exitPrice,
@@ -5079,6 +5568,446 @@ async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
   };
 }
 
+type OfficialHoldingLedger = {
+  symbol: string;
+  assetName: string;
+  quantity: number;
+  totalCost: number;
+  realizedPnl: number;
+};
+
+type OfficialPositionLedger = InvestmentPositionView & {
+  openingCommission: number;
+  closingCommission: number | null;
+  cashReturned: number | null;
+  positionValue: number;
+};
+
+type OfficialTradeDiagnostics = {
+  ignoredTradesCount: number;
+  suspiciousTradesCount: number;
+  warnings: string[];
+};
+
+function tradeSortTime(row: Payload) {
+  const value = rowNullableString(row, "executed_at") ?? rowNullableString(row, "created_at") ?? "";
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function tradeId(row: Payload) {
+  return rowString(row, "id") || `${rowString(row, "symbol")}-${rowNullableString(row, "created_at") ?? Math.random()}`;
+}
+
+function isNaLike(value: unknown) {
+  if (value === null || value === undefined) return false;
+  return /^(n\/a|na|null|undefined|nan|-|)$/i.test(String(value).trim());
+}
+
+function tradeExecutionIssue(row: Payload) {
+  const symbol = normalizeSymbol(rowString(row, "symbol"));
+  const quantity = rowNumber(row, "quantity");
+  const price = rowNumber(row, "price");
+  const gross = rowNumber(row, "gross_value", rowNumber(row, "gross_amount", price * quantity));
+  const fee = rowNumber(row, "fee_amount", gross * rowNumber(row, "fee_rate", INVESTMENT_TRANSACTION_FEE_RATE));
+  const priceSource = rowNullableString(row, "price_source");
+  const priceTimestamp = rowNullableString(row, "price_timestamp") ?? rowNullableString(row, "executed_at") ?? rowNullableString(row, "created_at");
+
+  if (!symbol || !isSupportedSymbol(symbol)) return "Invalid symbol.";
+  if (!Number.isFinite(quantity) || quantity <= 0) return "Invalid or missing quantity.";
+  if (!Number.isFinite(price) || price <= 0 || isNaLike(row.price)) return "Invalid or missing execution price.";
+  if (!Number.isFinite(gross) || gross <= 0 || isNaLike(row.gross_value) || isNaLike(row.gross_amount)) return "Invalid or missing gross value.";
+  if (!Number.isFinite(fee) || fee < 0 || isNaLike(row.fee_amount)) return "Invalid or missing commission.";
+  if (isNaLike(priceSource)) return "Invalid price source.";
+  if (isNaLike(priceTimestamp)) return "Invalid price timestamp.";
+  return null;
+}
+
+function priceDeviationWarning(symbol: string, price: number, anchor: number | undefined) {
+  if (!anchor || !Number.isFinite(anchor) || anchor <= 0 || !Number.isFinite(price) || price <= 0) return null;
+  const deviation = Math.abs(price - anchor) / anchor;
+  return deviation > 0.3
+    ? `${symbol} execution price ${formatTradeUsd(price)} differs by ${(deviation * 100).toFixed(1)}% from the latest trusted price ${formatTradeUsd(anchor)}.`
+    : null;
+}
+
+function officialQuoteForSymbol(
+  symbol: string,
+  quoteMap: Map<string, InvestmentAssetQuote>,
+  priceMap: Map<string, number>,
+  fallbackPrice: number
+) {
+  const quote = quoteMap.get(symbol);
+  const price = priceMap.get(symbol);
+  const currentPrice = price && price > 0 ? price : fallbackPrice;
+  return {
+    quote,
+    currentPrice,
+    priceDate: quote?.priceDate ?? null,
+    priceSource: price && price > 0 ? quote?.priceSource ?? quote?.provider ?? "cache" : "fallback",
+    priceWarning: price && price > 0 ? quote?.priceMessage ?? null : "No valid latest market price; official scoring uses the position/trade fallback price."
+  };
+}
+
+function officialTradeView(row: Payload, status: "applied" | "ignored" | "suspicious", warning: string | null, overrides: Partial<InvestmentTradeView> = {}) {
+  return {
+    ...mapTradeRow(row),
+    ...overrides,
+    officialStatus: status,
+    officialWarning: warning
+  } satisfies InvestmentTradeView;
+}
+
+async function calculateOfficialInvestmentPortfolioSnapshot(input: {
+  account: Payload;
+  competition: InvestmentCompetitionView;
+  rawTrades: Payload[];
+  storedPositions: Payload[];
+  quoteMap: Map<string, InvestmentAssetQuote>;
+  priceMap: Map<string, number>;
+  previousSnapshotValue: number | null;
+}) {
+  const startingCash = rowNumber(input.account, "starting_cash", input.competition.startingCash || INVESTMENT_STARTING_CASH);
+  let officialCash = startingCash;
+  let totalCommissions = 0;
+  let realizedPnl = 0;
+  const diagnostics: OfficialTradeDiagnostics = { ignoredTradesCount: 0, suspiciousTradesCount: 0, warnings: [] };
+  const holdings = new Map<string, OfficialHoldingLedger>();
+  const openPositions = new Map<string, OfficialPositionLedger>();
+  const allPositions = new Map<string, OfficialPositionLedger>();
+  const trustedTradePrice = new Map<string, number>();
+  const officialTrades: InvestmentTradeView[] = [];
+  const storedPositionById = new Map<string, Payload>();
+
+  for (const position of input.storedPositions) {
+    const id = rowString(position, "id");
+    if (id) storedPositionById.set(id, position);
+  }
+
+  const sortedTrades = input.rawTrades.slice().sort((a, b) => tradeSortTime(a) - tradeSortTime(b));
+
+  for (const row of sortedTrades) {
+    const action = rowString(row, "action");
+    const side = rowString(row, "side");
+    const symbol = normalizeSymbol(rowString(row, "symbol"));
+    const quantity = rowNumber(row, "quantity");
+    const price = rowNumber(row, "price");
+    const gross = rowNumber(row, "gross_value", rowNumber(row, "gross_amount", price * quantity));
+    const feeRate = rowNumber(row, "fee_rate", INVESTMENT_TRANSACTION_FEE_RATE);
+    const commission = rowNumber(row, "fee_amount", gross * feeRate);
+    const positionId = rowNullableString(row, "position_id") ?? (isPositionOpenAction(action) ? `legacy-${tradeId(row)}` : null);
+
+    if (Boolean(row.rejected)) {
+      diagnostics.ignoredTradesCount += 1;
+      officialTrades.push(officialTradeView(row, "ignored", rowNullableString(row, "reject_reason") ?? "Rejected trade excluded from official scoring."));
+      continue;
+    }
+
+    const executionIssue = tradeExecutionIssue(row);
+    if (executionIssue) {
+      diagnostics.ignoredTradesCount += 1;
+      diagnostics.warnings.push(`${rowString(row, "symbol") || "Unknown"} trade ignored: ${executionIssue}`);
+      officialTrades.push(officialTradeView(row, "ignored", executionIssue));
+      continue;
+    }
+
+    const anchor = input.priceMap.get(symbol) ?? trustedTradePrice.get(symbol);
+    const suspicious = priceDeviationWarning(symbol, price, anchor);
+    if (suspicious) {
+      diagnostics.suspiciousTradesCount += 1;
+      diagnostics.warnings.push(suspicious);
+      officialTrades.push(officialTradeView(row, "suspicious", suspicious));
+      continue;
+    }
+
+    trustedTradePrice.set(symbol, price);
+
+    if (isPositionOpenAction(action)) {
+      const leverage = Math.max(1, rowNumber(row, "leverage", 1));
+      const exposure = gross || quantity * price;
+      const marginLocked = rowNumber(row, "margin_used", exposure / leverage);
+      const positionSideValue = action === "open_short" || side === "short" ? "short" : "long";
+      const openedAt = rowString(row, "executed_at") || rowString(row, "created_at") || new Date().toISOString();
+      const assetName = rowNullableString(row, "asset_name") ?? input.quoteMap.get(symbol)?.name ?? getInvestmentAsset(symbol)?.name ?? symbol;
+
+      officialCash -= marginLocked + commission;
+      totalCommissions += commission;
+
+      const position: OfficialPositionLedger = {
+        id: positionId ?? `legacy-${tradeId(row)}`,
+        symbol,
+        assetName,
+        side: positionSideValue,
+        quantity,
+        entryPrice: price,
+        currentPrice: price,
+        leverage,
+        marginLocked,
+        exposureValue: exposure,
+        unrealizedPnl: 0,
+        realizedPnl: 0,
+        status: "open",
+        openedAt,
+        closedAt: null,
+        updatedAt: openedAt,
+        priceWarning: null,
+        exitPrice: null,
+        openingCommission: commission,
+        correctRealizedPnl: null,
+        closingCommission: null,
+        cashReturned: null,
+        positionValue: marginLocked
+      };
+      openPositions.set(position.id, position);
+      allPositions.set(position.id, position);
+      officialTrades.push(officialTradeView(row, "applied", null, { grossValue: exposure, feeAmount: commission, netValue: marginLocked + commission }));
+      continue;
+    }
+
+    if (isPositionCloseAction(action)) {
+      const position = positionId ? openPositions.get(positionId) ?? allPositions.get(positionId) : null;
+      const storedPosition = positionId ? storedPositionById.get(positionId) : undefined;
+      const fallbackOpenTrade = position
+        ? {
+            price: position.entryPrice,
+            quantity: position.quantity
+          } satisfies Payload
+        : undefined;
+      const metrics = position
+        ? calculateCorrectedPositionCloseMetrics({
+            action,
+            side: position.side,
+            entryPrice: position.entryPrice,
+            exitPrice: price,
+            quantity: position.quantity || quantity,
+            marginLocked: position.marginLocked,
+            closingCommission: action === "liquidated" ? 0 : commission
+          })
+        : correctedCloseMetricsForTrade(row, storedPosition, fallbackOpenTrade);
+
+      if (!metrics || !position) {
+        diagnostics.ignoredTradesCount += 1;
+        const warning = "Leveraged close ignored because the matching open position was not found.";
+        diagnostics.warnings.push(`${symbol} ${warning}`);
+        officialTrades.push(officialTradeView(row, "ignored", warning));
+        continue;
+      }
+
+      officialCash += metrics.cashReturned;
+      realizedPnl += metrics.correctRealizedPnl;
+      totalCommissions += metrics.closingCommission;
+      position.currentPrice = metrics.exitPrice;
+      position.exposureValue = metrics.grossValue;
+      position.unrealizedPnl = 0;
+      position.realizedPnl = metrics.correctRealizedPnl;
+      position.status = metrics.liquidated ? "liquidated" : "closed";
+      position.closedAt = rowNullableString(row, "executed_at") ?? rowNullableString(row, "created_at") ?? new Date().toISOString();
+      position.updatedAt = position.closedAt;
+      position.exitPrice = metrics.exitPrice;
+      position.correctRealizedPnl = metrics.correctRealizedPnl;
+      position.closingCommission = metrics.closingCommission;
+      position.cashReturned = metrics.cashReturned;
+      position.positionValue = 0;
+      openPositions.delete(position.id);
+      allPositions.set(position.id, position);
+
+      officialTrades.push(
+        officialTradeView(row, "applied", null, {
+          grossValue: metrics.grossValue,
+          feeAmount: metrics.closingCommission,
+          netValue: metrics.cashReturned,
+          realizedPnl: metrics.correctRealizedPnl
+        })
+      );
+      continue;
+    }
+
+    if (side === "buy") {
+      const holding = holdings.get(symbol) ?? {
+        symbol,
+        assetName: rowNullableString(row, "asset_name") ?? input.quoteMap.get(symbol)?.name ?? getInvestmentAsset(symbol)?.name ?? symbol,
+        quantity: 0,
+        totalCost: 0,
+        realizedPnl: 0
+      };
+      const totalCost = gross + commission;
+      officialCash -= totalCost;
+      totalCommissions += commission;
+      holding.quantity += quantity;
+      holding.totalCost += totalCost;
+      holdings.set(symbol, holding);
+      officialTrades.push(officialTradeView(row, "applied", null, { grossValue: gross, feeAmount: commission, netValue: totalCost }));
+      continue;
+    }
+
+    if (side === "sell") {
+      const holding = holdings.get(symbol);
+      if (!holding || holding.quantity + 0.00001 < quantity) {
+        diagnostics.ignoredTradesCount += 1;
+        const warning = "Normal sell ignored because the team does not have enough normal shares.";
+        diagnostics.warnings.push(`${symbol} ${warning}`);
+        officialTrades.push(officialTradeView(row, "ignored", warning));
+        continue;
+      }
+      const averageBuyPrice = holding.quantity > 0 ? holding.totalCost / holding.quantity : 0;
+      const proceeds = gross - commission;
+      const tradeRealizedPnl = (price - averageBuyPrice) * quantity - commission;
+      officialCash += proceeds;
+      totalCommissions += commission;
+      realizedPnl += tradeRealizedPnl;
+      holding.quantity -= quantity;
+      holding.totalCost = Math.max(0, holding.totalCost - averageBuyPrice * quantity);
+      holding.realizedPnl += tradeRealizedPnl;
+      if (holding.quantity <= 0.00001) holdings.delete(symbol);
+      else holdings.set(symbol, holding);
+      officialTrades.push(officialTradeView(row, "applied", null, { grossValue: gross, feeAmount: commission, netValue: proceeds, realizedPnl: tradeRealizedPnl }));
+      continue;
+    }
+
+    diagnostics.ignoredTradesCount += 1;
+    officialTrades.push(officialTradeView(row, "ignored", "Unsupported trade action or side."));
+  }
+
+  const holdingViews: InvestmentHoldingView[] = Array.from(holdings.values())
+    .filter((holding) => holding.quantity > 0.00001)
+    .map((holding) => {
+      const averageBuyPrice = holding.quantity > 0 ? holding.totalCost / holding.quantity : 0;
+      const quote = officialQuoteForSymbol(holding.symbol, input.quoteMap, input.priceMap, averageBuyPrice);
+      const marketValue = holding.quantity * quote.currentPrice;
+      return {
+        symbol: holding.symbol,
+        assetName: holding.assetName,
+        assetType: input.quoteMap.get(holding.symbol)?.type ?? getInvestmentAsset(holding.symbol)?.type ?? "Stock",
+        quantity: holding.quantity,
+        averageBuyPrice,
+        latestClose: quote.currentPrice,
+        priceDate: quote.priceDate,
+        marketValue,
+        unrealizedGainLoss: (quote.currentPrice - averageBuyPrice) * holding.quantity,
+        weight: 0,
+        priceWarning: quote.priceWarning,
+        priceSource: quote.priceSource
+      };
+    });
+
+  const positionViews: InvestmentPositionView[] = Array.from(allPositions.values()).map((position) => {
+    if (position.status !== "open") return position;
+    const quote = officialQuoteForSymbol(position.symbol, input.quoteMap, input.priceMap, position.entryPrice);
+    const rawUnrealized = calculatePositionPnl(position.side, position.entryPrice, quote.currentPrice, position.quantity);
+    const positionValue = Math.max(0, position.marginLocked + rawUnrealized);
+    const status = positionValue <= 0 ? "liquidated" : "open";
+    return {
+      ...position,
+      currentPrice: quote.currentPrice,
+      exposureValue: position.quantity * quote.currentPrice,
+      unrealizedPnl: rawUnrealized,
+      realizedPnl: status === "liquidated" ? rawUnrealized : position.realizedPnl,
+      correctRealizedPnl: status === "liquidated" ? rawUnrealized : position.correctRealizedPnl,
+      cashReturned: status === "liquidated" ? 0 : position.cashReturned,
+      status,
+      priceWarning: status === "liquidated" ? "Position value reached zero under official scoring." : quote.priceWarning,
+      positionValue
+    };
+  });
+
+  const openPositionViews = positionViews.filter((position) => position.status === "open");
+  const lockedMargin = openPositionViews.reduce((sum, position) => sum + position.marginLocked, 0);
+  const totalExposure = openPositionViews.reduce((sum, position) => sum + position.exposureValue, 0);
+  const leveragedOpenUnrealizedPnl = openPositionViews.reduce((sum, position) => sum + position.unrealizedPnl, 0);
+  const normalHoldingsValue = holdingViews.reduce((sum, holding) => sum + holding.marketValue, 0);
+  const normalHoldingsUnrealizedPnl = holdingViews.reduce((sum, holding) => sum + holding.unrealizedGainLoss, 0);
+  const openPositionValue = lockedMargin + leveragedOpenUnrealizedPnl;
+  const totalUnrealizedPnl = normalHoldingsUnrealizedPnl + leveragedOpenUnrealizedPnl;
+  const totalPortfolioValue = officialCash + normalHoldingsValue + openPositionValue;
+  const totalReturn = startingCash > 0 ? ((totalPortfolioValue - startingCash) / startingCash) * 100 : 0;
+  const dailyChange = input.previousSnapshotValue ? ((totalPortfolioValue - input.previousSnapshotValue) / input.previousSnapshotValue) * 100 : 0;
+  const liquidatedPositionsCount = positionViews.filter((position) => position.status === "liquidated").length;
+
+  holdingViews.forEach((holding) => {
+    holding.weight = totalPortfolioValue > 0 ? (holding.marketValue / totalPortfolioValue) * 100 : 0;
+  });
+
+  const formulaBreakdown: InvestmentPortfolioFormulaBreakdown = {
+    cash: officialCash,
+    normalHoldingsValue,
+    lockedMargin,
+    openExposure: totalExposure,
+    realizedPnl,
+    holdingsUnrealizedPnl: normalHoldingsUnrealizedPnl,
+    positionsUnrealizedPnl: leveragedOpenUnrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
+    totalPortfolioValue,
+    profitLoss: totalPortfolioValue - startingCash,
+    returnPercent: totalReturn,
+    totalCommissions,
+    ignoredTradesCount: diagnostics.ignoredTradesCount,
+    suspiciousTradesCount: diagnostics.suspiciousTradesCount,
+    liquidatedPositionsCount
+  };
+
+  const portfolio: InvestmentPortfolioSummary = {
+    startingCash,
+    cash: officialCash,
+    holdingsValue: normalHoldingsValue,
+    lockedMargin,
+    totalExposure,
+    realizedPnl,
+    unrealizedPnl: leveragedOpenUnrealizedPnl,
+    holdingsUnrealizedPnl: normalHoldingsUnrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
+    totalValue: totalPortfolioValue,
+    dailyChange,
+    totalReturn,
+    totalCommissions,
+    ignoredTradesCount: diagnostics.ignoredTradesCount,
+    suspiciousTradesCount: diagnostics.suspiciousTradesCount,
+    liquidatedPositionsCount,
+    warnings: diagnostics.warnings,
+    diversificationScore: calculateDiversificationScore(holdingViews, totalPortfolioValue),
+    riskScore: calculateRiskScore(holdingViews, totalPortfolioValue),
+    formulaBreakdown
+  };
+
+  const portfolioSymbols = new Set<string>([
+    ...holdingViews.map((holding) => holding.symbol),
+    ...positionViews.map((position) => position.symbol)
+  ]);
+
+  const portfolioDebug: InvestmentPortfolioDebug = {
+    cashBalance: officialCash,
+    legacyHoldingsCount: holdingViews.length,
+    legacyHoldingsValue: normalHoldingsValue,
+    openPositionsCount: openPositionViews.length,
+    closedPositionsCount: positionViews.filter((position) => position.status !== "open").length,
+    lockedMargin,
+    openExposure: totalExposure,
+    realizedPnl,
+    holdingsUnrealizedPnl: normalHoldingsUnrealizedPnl,
+    unrealizedPnl: leveragedOpenUnrealizedPnl,
+    totalUnrealizedPnl,
+    openPositionValue,
+    calculatedPortfolioValue: totalPortfolioValue,
+    totalCommissions,
+    ignoredTradesCount: diagnostics.ignoredTradesCount,
+    suspiciousTradesCount: diagnostics.suspiciousTradesCount,
+    liquidatedPositionsCount,
+    warnings: diagnostics.warnings,
+    formulaBreakdown,
+    pricesUsed: portfolioPricesUsed(portfolioSymbols, input.quoteMap)
+  };
+
+  return {
+    officialCash,
+    holdings: holdingViews,
+    positions: positionViews,
+    trades: officialTrades,
+    portfolio,
+    portfolioDebug
+  };
+}
+
 async function updateInvestmentAccountCash(accountId: string, cash: number) {
   const payload = { cash, cash_balance: cash, updated_at: new Date().toISOString() };
   try {
@@ -5091,11 +6020,10 @@ async function updateInvestmentAccountCash(accountId: string, cash: number) {
 }
 
 async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
-  let account = await getAccountRow(accountId);
+  const account = await getAccountRow(accountId);
   if (!account) return null;
-  account = await reconcileInvestmentAccountCashFromTrades(account);
-  const [holdingsRows, positionRows, quotes, thesisRows, previousSnapshotValue, assets, competition] = await Promise.all([
-    selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "symbol.asc" }),
+  const [tradeRows, positionRows, quotes, thesisRows, previousSnapshotValue, assets, competition] = await Promise.all([
+    selectRows("investment_trades", { select: "*", account_id: `eq.${accountId}`, order: "created_at.asc", limit: "5000" }),
     listPositionRowsForAccount(accountId),
     priceMapInput ? Promise.resolve(null) : listInvestmentAssetQuotes(),
     selectRows("investment_theses", { select: "*", account_id: `eq.${accountId}`, limit: "1" }),
@@ -5121,13 +6049,6 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       isTeenvestor: false,
       welcomeMessage: null
     } satisfies InvestmentCompetitionView);
-  const tradesRows = await selectRows("investment_trades", {
-    select: "*",
-    account_id: `eq.${accountId}`,
-    order: "created_at.desc",
-    limit: "20"
-  });
-
   const baseQuoteList = quotes ?? assets.map((asset) => ({
     ...asset,
     latestClose: priceMapInput?.get(asset.symbol) ?? asset.referencePrice,
@@ -5142,11 +6063,18 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
     currency: asset.currency ?? "USD",
     cacheStatus: priceMapInput?.has(asset.symbol) ? ("cached" as const) : ("missing" as const)
   }));
-  const portfolioSymbols = collectPortfolioSymbols(
-    Array.isArray(holdingsRows) ? holdingsRows : [],
-    Array.isArray(positionRows) ? positionRows : []
-  );
-  const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, baseQuoteList, assets, priceMapInput);
+  const portfolioSymbols = new Set<string>();
+  if (Array.isArray(tradeRows)) {
+    for (const trade of tradeRows) {
+      const symbol = normalizeSymbol(rowString(trade, "symbol"));
+      if (symbol) portfolioSymbols.add(symbol);
+    }
+  }
+  for (const position of positionRows) {
+    const symbol = normalizeSymbol(rowString(position, "symbol"));
+    if (symbol) portfolioSymbols.add(symbol);
+  }
+  const quoteList = await resolvePortfolioQuotesForSymbols(portfolioSymbols, baseQuoteList, assets, priceMapInput, accountId);
   const quoteMap = new Map(quoteList.map((quote) => [quote.symbol, quote]));
   const marketStatus = getMarketStatus();
   const priceMap = new Map(
@@ -5154,108 +6082,30 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       .filter(
         (quote) =>
           quote.priceAvailable &&
-          (!marketStatus.isOpen || quote.isStale !== true) &&
+          (!marketStatus.isOpen || quote.isStale !== true || quote.emergencyFallback === true) &&
           Number.isFinite(quote.latestClose) &&
           quote.latestClose > 0
       )
       .map((quote) => [quote.symbol, quote.latestClose])
   );
-  const holdingViews = Array.isArray(holdingsRows)
-    ? holdingsRows
-        .filter((row) => rowNumber(row, "quantity") > 0)
-        .map((row) => {
-          const symbol = normalizeSymbol(rowString(row, "symbol"));
-          const asset = quoteMap.get(symbol) ?? getInvestmentAsset(symbol);
-          const assetName = rowNullableString(row, "asset_name") ?? asset?.name ?? symbol;
-          const rawPrice = priceMap.get(symbol);
-          const quantity = rowNumber(row, "quantity");
-          const averageBuyPrice = rowNumber(row, "average_buy_price");
-          const latestClose = rawPrice !== undefined && rawPrice > 0 ? rawPrice : averageBuyPrice || asset?.referencePrice || 0;
-          const marketValue = quantity * latestClose;
-          return {
-            symbol,
-            assetName,
-            assetType: asset?.type ?? "Stock",
-            quantity,
-            averageBuyPrice,
-            latestClose,
-            priceDate: quoteMap.get(symbol)?.priceDate ?? null,
-            marketValue,
-            unrealizedGainLoss: (latestClose - averageBuyPrice) * quantity,
-            weight: 0,
-            priceWarning:
-              rawPrice === undefined
-                ? "Fresh price unavailable; average buy price is used for portfolio display."
-                : null
-          };
-        })
-    : [];
-
-  const cash = rowNumber(account, "cash", rowNumber(account, "cash_balance", INVESTMENT_STARTING_CASH));
-  const startingCash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
-  const holdingsValue = holdingViews.reduce((sum, holding) => sum + holding.marketValue, 0);
-  const holdingsUnrealizedPnl = holdingViews.reduce((sum, holding) => sum + holding.unrealizedGainLoss, 0);
-  const normalizedPositionRows = await Promise.all(positionRows.map((row) => liquidatePositionIfBreached(account, row, priceMap)));
-  const positionViews = normalizedPositionRows.map((row) => mapPositionRow(row, priceMap));
-  const openPositions = positionViews.filter((position) => position.status === "open");
-  const lockedMargin = openPositions.reduce((sum, position) => sum + position.marginLocked, 0);
-  const totalExposure = openPositions.reduce((sum, position) => sum + position.exposureValue, 0);
-  const unrealizedPnl = openPositions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
-  const openPositionValue = lockedMargin + unrealizedPnl;
-  const totalUnrealizedPnl = holdingsUnrealizedPnl + unrealizedPnl;
-  const totalValue = cash + holdingsValue + openPositionValue;
-  const dailyChange = previousSnapshotValue ? ((totalValue - previousSnapshotValue) / previousSnapshotValue) * 100 : 0;
-  holdingViews.forEach((holding) => {
-    holding.weight = totalValue > 0 ? (holding.marketValue / totalValue) * 100 : 0;
+  const officialSnapshot = await calculateOfficialInvestmentPortfolioSnapshot({
+    account,
+    competition: competitionView,
+    rawTrades: Array.isArray(tradeRows) ? tradeRows : [],
+    storedPositions: Array.isArray(positionRows) ? positionRows : [],
+    quoteMap,
+    priceMap,
+    previousSnapshotValue
   });
 
+  const startingCash = officialSnapshot.portfolio.startingCash;
+  const cash = officialSnapshot.portfolio.cash;
+  const storedCash = rowNumber(account, "cash", rowNumber(account, "cash_balance", cash));
+  if (Math.abs(storedCash - cash) > 0.005) {
+    await updateInvestmentAccountCash(accountId, cash).catch(() => null);
+  }
+
   const thesisRow = Array.isArray(thesisRows) && thesisRows[0] ? thesisRows[0] : null;
-  const totalReturn = startingCash > 0 ? ((totalValue - startingCash) / startingCash) * 100 : 0;
-  const formulaBreakdown: InvestmentPortfolioFormulaBreakdown = {
-    cash,
-    normalHoldingsValue: holdingsValue,
-    lockedMargin,
-    openExposure: totalExposure,
-    holdingsUnrealizedPnl,
-    positionsUnrealizedPnl: unrealizedPnl,
-    totalUnrealizedPnl,
-    openPositionValue,
-    totalPortfolioValue: totalValue,
-    profitLoss: totalValue - startingCash,
-    returnPercent: totalReturn
-  };
-  const portfolio = {
-    startingCash,
-    cash,
-    holdingsValue,
-    lockedMargin,
-    totalExposure,
-    unrealizedPnl,
-    holdingsUnrealizedPnl,
-    totalUnrealizedPnl,
-    openPositionValue,
-    totalValue,
-    dailyChange,
-    totalReturn,
-    diversificationScore: calculateDiversificationScore(holdingViews, totalValue),
-    riskScore: calculateRiskScore(holdingViews, totalValue),
-    formulaBreakdown
-  };
-  const portfolioDebug = {
-    cashBalance: cash,
-    legacyHoldingsCount: holdingViews.length,
-    legacyHoldingsValue: holdingsValue,
-    openPositionsCount: openPositions.length,
-    lockedMargin,
-    openExposure: totalExposure,
-    holdingsUnrealizedPnl,
-    unrealizedPnl,
-    totalUnrealizedPnl,
-    openPositionValue,
-    calculatedPortfolioValue: totalValue,
-    formulaBreakdown,
-    pricesUsed: portfolioPricesUsed(portfolioSymbols, quoteMap)
-  };
   const currentRank = await getLeaderboardRowForAccount(accountId, competitionView);
   return {
     account: {
@@ -5267,9 +6117,13 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
       cash
     },
     competition: competitionView,
-    holdings: holdingViews,
-    positions: positionViews,
-    trades: Array.isArray(tradesRows) ? tradesRows.map(mapTradeRow) : [],
+    holdings: officialSnapshot.holdings,
+    positions: officialSnapshot.positions,
+    trades: officialSnapshot.trades.slice().sort((a, b) => {
+      const aTime = Date.parse(a.executedAt ?? a.createdAt ?? "");
+      const bTime = Date.parse(b.executedAt ?? b.createdAt ?? "");
+      return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+    }).slice(0, 3000),
     thesis: thesisRow
       ? {
           thesis: rowString(thesisRow, "thesis"),
@@ -5280,8 +6134,8 @@ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map
         }
       : null,
     quotes: quoteList,
-    portfolio,
-    portfolioDebug,
+    portfolio: officialSnapshot.portfolio,
+    portfolioDebug: officialSnapshot.portfolioDebug,
     marketStatus,
     currentRank
   };
