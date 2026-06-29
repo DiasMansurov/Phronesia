@@ -101,12 +101,8 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
         <Metric label="Return" value={formatPercent(overview.returnPercent)} tone={overview.returnPercent >= 0 ? "positive" : "negative"} />
         <Metric label="Locked margin" value={formatUsd(overview.lockedMargin)} />
         <Metric label="Open exposure" value={formatUsd(overview.totalExposure)} />
-        <Metric label="Realized P/L" value={formatUsd(overview.realizedPnl)} tone={overview.realizedPnl >= 0 ? "positive" : "negative"} />
-        <Metric label="Commissions" value={formatUsd(overview.totalCommissions)} />
         <Metric label="Unrealized P/L" value={formatUsd(overview.totalUnrealizedPnl)} tone={overview.totalUnrealizedPnl >= 0 ? "positive" : "negative"} />
         <Metric label="Open positions" value={overview.openPositionsCount.toString()} />
-        <Metric label="Ignored trades" value={overview.ignoredTradesCount.toString()} />
-        <Metric label="Suspicious trades" value={overview.suspiciousTradesCount.toString()} />
       </section>
 
       <section className="grid two investment-admin-detail-grid">
@@ -144,7 +140,6 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <span>Trades: <strong>{overview.tradesCount}</strong></span>
             <span>Holdings: <strong>{overview.holdingsCount}</strong></span>
             <span>Open positions: <strong>{overview.openPositionsCount}</strong></span>
-            <span>Liquidated: <strong>{overview.liquidatedPositionsCount}</strong></span>
             <span>Competition: <strong>{detail.competition?.runtimeStatus ?? "n/a"}</strong></span>
           </div>
         </article>
@@ -165,15 +160,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           <div><dt>Normal holdings value</dt><dd>{formatUsd(overview.formulaBreakdown.normalHoldingsValue)}</dd></div>
           <div><dt>Locked margin</dt><dd>{formatUsd(overview.formulaBreakdown.lockedMargin)}</dd></div>
           <div><dt>Open exposure</dt><dd>{formatUsd(overview.formulaBreakdown.openExposure)}</dd></div>
-          <div><dt>Realized P/L</dt><dd className={overview.formulaBreakdown.realizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.realizedPnl)}</dd></div>
-          <div><dt>Total commissions</dt><dd>{formatUsd(overview.formulaBreakdown.totalCommissions)}</dd></div>
           <div><dt>Positions unrealized P/L</dt><dd className={overview.formulaBreakdown.positionsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.positionsUnrealizedPnl)}</dd></div>
           <div><dt>Total portfolio value</dt><dd>{formatUsd(overview.formulaBreakdown.totalPortfolioValue)}</dd></div>
           <div><dt>Holdings unrealized P/L</dt><dd className={overview.formulaBreakdown.holdingsUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.holdingsUnrealizedPnl)}</dd></div>
           <div><dt>Total unrealized P/L</dt><dd className={overview.formulaBreakdown.totalUnrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(overview.formulaBreakdown.totalUnrealizedPnl)}</dd></div>
-          <div><dt>Ignored trades</dt><dd>{overview.formulaBreakdown.ignoredTradesCount}</dd></div>
-          <div><dt>Suspicious trades</dt><dd>{overview.formulaBreakdown.suspiciousTradesCount}</dd></div>
-          <div><dt>Liquidated positions</dt><dd>{overview.formulaBreakdown.liquidatedPositionsCount}</dd></div>
         </dl>
         <p className="muted small">
           Total portfolio value = cash + normal holdings value + locked margin + positions unrealized P/L =
@@ -182,17 +172,6 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
           {" "}
           = {formatUsd(overview.formulaBreakdown.totalPortfolioValue)}.
         </p>
-        {overview.warnings.length ? (
-          <div className="investment-empty-state">
-            <strong>Official scoring warnings</strong>
-            <ul className="stack-xs">
-              {overview.warnings.slice(0, 12).map((warning, index) => (
-                <li key={`${warning}-${index}`} className="muted small">{warning}</li>
-              ))}
-            </ul>
-            {overview.warnings.length > 12 ? <p className="muted small">+{overview.warnings.length - 12} more warnings.</p> : null}
-          </div>
-        ) : null}
       </section>
 
       <section className="panel stack-md investment-admin-results-panel">
@@ -336,7 +315,6 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                 <th>Price source</th>
                 <th>Price timestamp</th>
                 <th>Status</th>
-                <th>Official scoring</th>
               </tr>
             </thead>
             <tbody>
@@ -358,10 +336,6 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
                   <td>{trade.priceSource ?? "n/a"}</td>
                   <td>{formatDateTime(trade.priceTimestamp)}</td>
                   <td>{trade.rejected ? trade.rejectReason ?? "Rejected" : "Executed"}</td>
-                  <td>
-                    <div>{trade.officialStatus ?? (trade.rejected ? "ignored" : "applied")}</div>
-                    {trade.officialWarning ? <small className="muted">{trade.officialWarning}</small> : null}
-                  </td>
                 </tr>
               ))}
             </tbody>
