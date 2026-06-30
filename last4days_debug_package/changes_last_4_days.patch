@@ -1,0 +1,547 @@
+# Full committed diff from base 870b947ff1bcd67d8a3b73b435177214bca51cdd to HEAD
+# Generated at: 2026-06-30T10:55:32Z
+
+diff --git a/app/investment-challenge/admin/results/[teamId]/page.tsx b/app/investment-challenge/admin/results/[teamId]/page.tsx
+index f697a8bb5470bd1c37948dc36ea261997ff50138..5295d764d17604c404e121800e20c4ece4cf106e 100644
+--- a/app/investment-challenge/admin/results/[teamId]/page.tsx
++++ b/app/investment-challenge/admin/results/[teamId]/page.tsx
+@@ -195,6 +195,10 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
+                 <th>Margin locked</th>
+                 <th>Exposure</th>
+                 <th>Unrealized P/L</th>
++                <th>Exit price</th>
++                <th>Correct realized P/L</th>
++                <th>Closing commission</th>
++                <th>Cash returned</th>
+                 <th>Status</th>
+               </tr>
+             </thead>
+@@ -214,6 +218,12 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
+                   <td>{formatUsd(position.marginLocked)}</td>
+                   <td>{formatUsd(position.exposureValue)}</td>
+                   <td className={position.unrealizedPnl >= 0 ? "positive-text" : "negative-text"}>{formatUsd(position.unrealizedPnl)}</td>
++                  <td>{position.exitPrice ? formatUsd(position.exitPrice) : "n/a"}</td>
++                  <td className={(position.correctRealizedPnl ?? 0) >= 0 ? "positive-text" : "negative-text"}>
++                    {position.correctRealizedPnl === null || position.correctRealizedPnl === undefined ? "n/a" : formatUsd(position.correctRealizedPnl)}
++                  </td>
++                  <td>{position.closingCommission === null || position.closingCommission === undefined ? "n/a" : formatUsd(position.closingCommission)}</td>
++                  <td>{position.cashReturned === null || position.cashReturned === undefined ? "n/a" : formatUsd(position.cashReturned)}</td>
+                   <td>{position.status}</td>
+                 </tr>
+               ))}
+diff --git a/lib/server-investments.ts b/lib/server-investments.ts
+index 24b81a58eed17625c00e9693e131377acbfd5d1e..1a6998cd5cc0374e64a0908c958f52446ac00567 100644
+--- a/lib/server-investments.ts
++++ b/lib/server-investments.ts
+@@ -142,6 +142,10 @@ export type InvestmentPositionView = {
+   closedAt: string | null;
+   updatedAt: string;
+   priceWarning?: string | null;
++  exitPrice?: number | null;
++  correctRealizedPnl?: number | null;
++  closingCommission?: number | null;
++  cashReturned?: number | null;
+ };
+ 
+ export type InvestmentThesisView = {
+@@ -3519,11 +3523,18 @@ export async function closeInvestmentPosition(input: { accountId: string; positi
+   const leverage = Math.max(1, rowNumber(position, "leverage", 1));
+   const margin = rowNumber(position, "margin_locked");
+   const exposure = quantity * price;
+-  const rawPnl = calculatePositionPnl(side, rowNumber(position, "entry_price"), price, quantity, leverage);
+-  const liquidated = rawPnl <= -margin;
+-  const realizedPnl = liquidated ? -margin : Math.max(rawPnl, -margin);
+-  const fee = liquidated ? 0 : exposure * INVESTMENT_TRANSACTION_FEE_RATE;
+-  const cashReturned = Math.max(0, liquidated ? 0 : margin + realizedPnl - fee);
++  const closeMetrics = calculateCorrectedPositionCloseMetrics({
++    side,
++    entryPrice: rowNumber(position, "entry_price"),
++    exitPrice: price,
++    quantity,
++    marginLocked: margin,
++    closingCommission: exposure * INVESTMENT_TRANSACTION_FEE_RATE
++  });
++  const liquidated = closeMetrics.liquidated;
++  const realizedPnl = closeMetrics.correctRealizedPnl;
++  const fee = closeMetrics.closingCommission;
++  const cashReturned = closeMetrics.cashReturned;
+   const now = new Date().toISOString();
+ 
+   await updateRows(
+@@ -3968,15 +3979,44 @@ export async function getInvestmentAdminTeamDetail(
+     priceWarning: holding.priceWarning ?? null
+   } satisfies InvestmentAdminHoldingResult));
+ 
++  const rawTradeRows = Array.isArray(tradeRows) ? tradeRows : [];
++  const positionById = new Map((accountView?.positions ?? []).map((position) => [position.id, position]));
++  const openTradeByPositionId = new Map<string, Payload>();
++  for (const row of rawTradeRows) {
++    const action = rowString(row, "action");
++    const positionId = rowNullableString(row, "position_id");
++    if (positionId && isPositionOpenAction(action)) openTradeByPositionId.set(positionId, row);
++  }
++  const closeMetricsByPositionId = new Map<string, CorrectedPositionCloseMetrics>();
++  for (const row of rawTradeRows) {
++    const positionId = rowNullableString(row, "position_id");
++    if (!positionId) continue;
++    const metrics = correctedCloseMetricsForTradeView(row, positionById.get(positionId), openTradeByPositionId.get(positionId));
++    if (metrics) closeMetricsByPositionId.set(positionId, metrics);
++  }
++
+   const positions = (accountView?.positions ?? []).map((position) => ({
+     ...position,
++    exitPrice: closeMetricsByPositionId.get(position.id)?.exitPrice ?? position.exitPrice ?? null,
++    correctRealizedPnl: closeMetricsByPositionId.get(position.id)?.correctRealizedPnl ?? position.correctRealizedPnl ?? null,
++    closingCommission: closeMetricsByPositionId.get(position.id)?.closingCommission ?? position.closingCommission ?? null,
++    cashReturned: closeMetricsByPositionId.get(position.id)?.cashReturned ?? position.cashReturned ?? null,
+     marketValue: position.status === "open" ? position.marginLocked + position.unrealizedPnl : 0
+   } satisfies InvestmentAdminPositionResult));
+ 
+-  const trades = (Array.isArray(tradeRows) ? tradeRows : []).map((row) => ({
+-    ...mapTradeRow(row),
+-    teamName: overviewBase?.teamName ?? rowString(account, "team_name")
+-  }));
++  const trades = rawTradeRows.map((row) => {
++    const mapped = mapTradeRow(row);
++    const positionId = rowNullableString(row, "position_id");
++    const metrics = positionId ? closeMetricsByPositionId.get(positionId) : null;
++    return {
++      ...mapped,
++      grossValue: metrics?.grossValue ?? mapped.grossValue,
++      feeAmount: metrics?.closingCommission ?? mapped.feeAmount,
++      netValue: metrics?.cashReturned ?? mapped.netValue,
++      realizedPnl: metrics?.correctRealizedPnl ?? mapped.realizedPnl,
++      teamName: overviewBase?.teamName ?? rowString(account, "team_name")
++    };
++  });
+ 
+   return {
+     persisted: true,
+@@ -4695,10 +4735,44 @@ function positionStatus(row: Payload): "open" | "closed" | "liquidated" {
+   return "open";
+ }
+ 
+-function calculatePositionPnl(side: "long" | "short", entryPrice: number, currentPrice: number, quantity: number, leverage: number) {
++function calculatePositionPnl(side: "long" | "short", entryPrice: number, currentPrice: number, quantity: number) {
+   return side === "short"
+-    ? (entryPrice - currentPrice) * quantity * leverage
+-    : (currentPrice - entryPrice) * quantity * leverage;
++    ? (entryPrice - currentPrice) * quantity
++    : (currentPrice - entryPrice) * quantity;
++}
++
++type CorrectedPositionCloseMetrics = {
++  exitPrice: number;
++  grossValue: number;
++  correctRealizedPnl: number;
++  closingCommission: number;
++  cashReturned: number;
++  liquidated: boolean;
++};
++
++function calculateCorrectedPositionCloseMetrics(input: {
++  action?: string | null;
++  side: "long" | "short";
++  entryPrice: number;
++  exitPrice: number;
++  quantity: number;
++  marginLocked: number;
++  closingCommission: number;
++}): CorrectedPositionCloseMetrics {
++  const rawPnl = calculatePositionPnl(input.side, input.entryPrice, input.exitPrice, input.quantity);
++  const liquidated = input.action === "liquidated" || rawPnl <= -input.marginLocked;
++  const correctRealizedPnl = liquidated ? -input.marginLocked : Math.max(rawPnl, -input.marginLocked);
++  const closingCommission = liquidated ? 0 : input.closingCommission;
++  const cashReturned = Math.max(0, liquidated ? 0 : input.marginLocked + correctRealizedPnl - closingCommission);
++
++  return {
++    exitPrice: input.exitPrice,
++    grossValue: input.quantity * input.exitPrice,
++    correctRealizedPnl,
++    closingCommission,
++    cashReturned,
++    liquidated
++  };
+ }
+ 
+ function mapPositionRow(row: Payload, priceMap: Map<string, number>): InvestmentPositionView {
+@@ -4712,8 +4786,9 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
+   const hasValidatedPrice = priceMap.has(symbol);
+   const currentPrice = status === "open" ? priceMap.get(symbol) ?? entryPrice : rowNumber(row, "current_price", entryPrice);
+   const exposureValue = status === "open" ? quantity * currentPrice : rowNumber(row, "exposure_value", quantity * currentPrice);
+-  const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity, leverage) : 0;
++  const rawUnrealized = status === "open" ? calculatePositionPnl(side, entryPrice, currentPrice, quantity) : 0;
+   const unrealizedPnl = status === "open" ? Math.max(rawUnrealized, -marginLocked) : 0;
++  const realizedPnl = rowNumber(row, "realized_pnl");
+ 
+   return {
+     id: rowString(row, "id"),
+@@ -4727,12 +4802,16 @@ function mapPositionRow(row: Payload, priceMap: Map<string, number>): Investment
+     marginLocked,
+     exposureValue,
+     unrealizedPnl,
+-    realizedPnl: rowNumber(row, "realized_pnl"),
++    realizedPnl,
+     status,
+     openedAt: rowString(row, "opened_at") || rowString(row, "created_at"),
+     closedAt: rowNullableString(row, "closed_at"),
+     updatedAt: rowString(row, "updated_at") || rowString(row, "opened_at"),
+-    priceWarning: status === "open" && !hasValidatedPrice ? "Fresh price unavailable; entry price is used for display." : null
++    priceWarning: status === "open" && !hasValidatedPrice ? "Fresh price unavailable; entry price is used for display." : null,
++    exitPrice: status === "open" ? null : currentPrice,
++    correctRealizedPnl: status === "open" ? null : realizedPnl,
++    closingCommission: null,
++    cashReturned: null
+   };
+ }
+ 
+@@ -4746,7 +4825,7 @@ async function liquidatePositionIfBreached(account: Payload, row: Payload, price
+   if (!symbol || !entryPrice || !quantity || !margin) return row;
+ 
+   const currentPrice = priceMap.get(symbol) ?? entryPrice;
+-  const rawPnl = calculatePositionPnl(positionSide(row), entryPrice, currentPrice, quantity, leverage);
++  const rawPnl = calculatePositionPnl(positionSide(row), entryPrice, currentPrice, quantity);
+   if (rawPnl > -margin) return row;
+ 
+   const now = new Date().toISOString();
+@@ -4801,6 +4880,170 @@ async function liquidatePositionIfBreached(account: Payload, row: Payload, price
+   }
+ }
+ 
++function isPositionOpenAction(action: string) {
++  return action === "open_long" || action === "open_short";
++}
++
++function isPositionCloseAction(action: string) {
++  return action === "close_long" || action === "close_short" || action === "liquidated";
++}
++
++function correctedCloseMetricsForTrade(
++  trade: Payload,
++  position: Payload | undefined,
++  openTrade: Payload | undefined
++): CorrectedPositionCloseMetrics | null {
++  const action = rowString(trade, "action");
++  if (!isPositionCloseAction(action)) return null;
++
++  const side = position
++    ? positionSide(position)
++    : rowString(trade, "side") === "short" || action === "close_short"
++      ? "short"
++      : "long";
++  const entryPrice = rowNumber(position ?? {}, "entry_price", rowNumber(openTrade ?? {}, "price"));
++  const exitPrice = rowNumber(trade, "price", rowNumber(position ?? {}, "current_price"));
++  const quantity = rowNumber(trade, "quantity", rowNumber(position ?? {}, "quantity", rowNumber(openTrade ?? {}, "quantity")));
++  const marginLocked = rowNumber(trade, "margin_used", rowNumber(position ?? {}, "margin_locked"));
++  const closingCommission = rowNumber(trade, "fee_amount");
++
++  if (!entryPrice || !exitPrice || !quantity || !marginLocked) return null;
++  return calculateCorrectedPositionCloseMetrics({
++    action,
++    side,
++    entryPrice,
++    exitPrice,
++    quantity,
++    marginLocked,
++    closingCommission
++  });
++}
++
++function correctedCloseMetricsForTradeView(
++  trade: Payload,
++  position: InvestmentPositionView | undefined,
++  openTrade: Payload | undefined
++): CorrectedPositionCloseMetrics | null {
++  const action = rowString(trade, "action");
++  if (!isPositionCloseAction(action)) return null;
++
++  const side = position?.side ?? (rowString(trade, "side") === "short" || action === "close_short" ? "short" : "long");
++  const entryPrice = position?.entryPrice ?? rowNumber(openTrade ?? {}, "price");
++  const exitPrice = rowNumber(trade, "price", position?.currentPrice ?? 0);
++  const quantity = rowNumber(trade, "quantity", position?.quantity ?? rowNumber(openTrade ?? {}, "quantity"));
++  const marginLocked = rowNumber(trade, "margin_used", position?.marginLocked ?? 0);
++  const closingCommission = rowNumber(trade, "fee_amount");
++
++  if (!entryPrice || !exitPrice || !quantity || !marginLocked) return null;
++  return calculateCorrectedPositionCloseMetrics({
++    action,
++    side,
++    entryPrice,
++    exitPrice,
++    quantity,
++    marginLocked,
++    closingCommission
++  });
++}
++
++async function reconcileInvestmentAccountCashFromTrades(account: Payload) {
++  if (!supabaseConfigured()) return account;
++  const accountId = rowString(account, "id");
++  if (!accountId) return account;
++
++  const [tradeRows, positionRows] = await Promise.all([
++    selectRows("investment_trades", { select: "*", account_id: `eq.${accountId}`, order: "created_at.asc", limit: "5000" }),
++    listPositionRowsForAccount(accountId)
++  ]);
++
++  if (!Array.isArray(tradeRows)) return account;
++
++  const positionById = new Map<string, Payload>();
++  for (const position of positionRows) {
++    const positionId = rowString(position, "id");
++    if (positionId) positionById.set(positionId, position);
++  }
++
++  const openTradeByPositionId = new Map<string, Payload>();
++  for (const trade of tradeRows) {
++    const action = rowString(trade, "action");
++    const positionId = rowNullableString(trade, "position_id");
++    if (positionId && isPositionOpenAction(action)) openTradeByPositionId.set(positionId, trade);
++  }
++
++  let cash = rowNumber(account, "starting_cash", INVESTMENT_STARTING_CASH);
++  const positionUpdates: Promise<unknown>[] = [];
++
++  for (const trade of tradeRows) {
++    if (Boolean(trade.rejected)) continue;
++    const action = rowString(trade, "action");
++    const side = rowString(trade, "side");
++    const gross = rowNumber(trade, "gross_value", rowNumber(trade, "gross_amount", rowNumber(trade, "price") * rowNumber(trade, "quantity")));
++    const fee = rowNumber(trade, "fee_amount");
++    const net = rowNumber(trade, "net_value", rowNumber(trade, "net_amount"));
++
++    if (isPositionOpenAction(action)) {
++      const margin = rowNumber(trade, "margin_used", Math.max(0, net - fee));
++      cash -= margin + fee;
++      continue;
++    }
++
++    if (isPositionCloseAction(action)) {
++      const positionId = rowNullableString(trade, "position_id");
++      const position = positionId ? positionById.get(positionId) : undefined;
++      const metrics = correctedCloseMetricsForTrade(trade, position, positionId ? openTradeByPositionId.get(positionId) : undefined);
++      if (metrics) {
++        cash += metrics.cashReturned;
++
++        if (positionId && position) {
++          const expectedStatus = metrics.liquidated ? "liquidated" : "closed";
++          const needsPositionUpdate =
++            Math.abs(rowNumber(position, "realized_pnl") - metrics.correctRealizedPnl) > 0.005 ||
++            Math.abs(rowNumber(position, "current_price") - metrics.exitPrice) > 0.005 ||
++            Math.abs(rowNumber(position, "exposure_value") - metrics.grossValue) > 0.005 ||
++            positionStatus(position) !== expectedStatus;
++          if (needsPositionUpdate) {
++            positionUpdates.push(
++              updateRows(
++                "investment_positions",
++                { id: `eq.${positionId}` },
++                {
++                  current_price: metrics.exitPrice,
++                  exposure_value: metrics.grossValue,
++                  unrealized_pnl: 0,
++                  realized_pnl: metrics.correctRealizedPnl,
++                  status: expectedStatus,
++                  updated_at: new Date().toISOString()
++                }
++              ).catch(() => null)
++            );
++          }
++        }
++      }
++      continue;
++    }
++
++    if (side === "buy") {
++      cash -= net || gross + fee;
++    } else if (side === "sell") {
++      cash += net || Math.max(0, gross - fee);
++    }
++  }
++
++  if (positionUpdates.length) await Promise.all(positionUpdates);
++
++  const currentCash = rowNumber(account, "cash", rowNumber(account, "cash_balance", cash));
++  if (Math.abs(currentCash - cash) <= 0.005) return account;
++
++  await updateInvestmentAccountCash(accountId, cash);
++  return {
++    ...account,
++    cash,
++    cash_balance: cash,
++    updated_at: new Date().toISOString()
++  };
++}
++
+ async function updateInvestmentAccountCash(accountId: string, cash: number) {
+   const payload = { cash, cash_balance: cash, updated_at: new Date().toISOString() };
+   try {
+@@ -4813,8 +5056,9 @@ async function updateInvestmentAccountCash(accountId: string, cash: number) {
+ }
+ 
+ async function buildInvestmentAccountView(accountId: string, priceMapInput?: Map<string, number>): Promise<InvestmentAccountView | null> {
+-  const account = await getAccountRow(accountId);
++  let account = await getAccountRow(accountId);
+   if (!account) return null;
++  account = await reconcileInvestmentAccountCashFromTrades(account);
+   const [holdingsRows, positionRows, quotes, thesisRows, previousSnapshotValue, assets, competition] = await Promise.all([
+     selectRows("investment_holdings", { select: "*", account_id: `eq.${accountId}`, order: "symbol.asc" }),
+     listPositionRowsForAccount(accountId),
+
+# Uncommitted working tree diff at generation time
+# This section is included for debugging current local changes; it is not limited by commit date.
+diff --git a/app/api/investment/assets/quote/route.ts b/app/api/investment/assets/quote/route.ts
+index 4037216b6911160ed256c08c58a8dc54c1ce68c5..b3f4f4b390b2c10e4e640564ca0f5e3be19c86bb 100644
+--- a/app/api/investment/assets/quote/route.ts
++++ b/app/api/investment/assets/quote/route.ts
+@@ -17,7 +17,7 @@ export async function GET(request: Request) {
+     return NextResponse.json({ error: "symbol is required." }, { status: 400 });
+   }
+ 
+-  const validation = await getAssetQuote(symbol);
++  const validation = await getAssetQuote(symbol, access.access.accountId);
+   if (!validation.ok) {
+     return NextResponse.json({ ok: false, reason: validation.reason }, { status: 404 });
+   }
+@@ -39,7 +39,9 @@ export async function GET(request: Request) {
+       isStale: validation.price.isStale,
+       staleReason: validation.price.staleReason,
+       providerUpdatedAt: validation.price.providerUpdatedAt ?? null,
+-      providerUpdatedAtEt: validation.price.providerUpdatedAtEt ?? null
++      providerUpdatedAtEt: validation.price.providerUpdatedAtEt ?? null,
++      emergencyFallback: "emergencyFallback" in validation.price ? validation.price.emergencyFallback ?? false : false,
++      warning: "warning" in validation.price ? validation.price.warning ?? null : null
+     }
+   });
+ }
+diff --git a/app/api/investment/debug-price/route.ts b/app/api/investment/debug-price/route.ts
+index 30a88c1f866553ac3d70046a251b9ed0c2ea8aa5..34e9d559f99953a5765124bc62b17d7c800e9b2a 100644
+--- a/app/api/investment/debug-price/route.ts
++++ b/app/api/investment/debug-price/route.ts
+@@ -1,7 +1,7 @@
+ import { NextResponse } from "next/server";
+ 
+ import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
+-import { debugMarketDataAppPrice } from "@/lib/server-investments";
++import { getBestAvailableInvestmentPrice } from "@/lib/server-investments";
+ 
+ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+@@ -22,5 +22,27 @@ export async function GET(request: Request) {
+     );
+   }
+ 
+-  return NextResponse.json(await debugMarketDataAppPrice(symbol));
++  const result = await getBestAvailableInvestmentPrice(symbol, undefined, { refresh: true });
++  const fallbackSource =
++    result.source === "saved_market_price" ||
++    result.source === "latest_trade_fallback" ||
++    result.source === "team_average_buy_fallback" ||
++    result.source === "admin_manual_override"
++      ? result.source
++      : null;
++  return NextResponse.json({
++    symbol: result.symbol,
++    provider: "marketdata_app",
++    marketDataStatus: result.marketDataStatus,
++    providerError: result.providerError,
++    calledMarketDataApp: result.calledMarketDataApp,
++    httpStatus: result.httpStatus,
++    fallbackPrice: fallbackSource ? result.price : null,
++    fallbackSource,
++    finalPrice: result.price,
++    source: result.source,
++    canTrade: result.canTrade,
++    warning: result.warning,
++    error: result.ok ? null : result.providerError ?? "Price is temporarily unavailable for this asset. Please try again later."
++  });
+ }
+diff --git a/app/investment-challenge/admin/results/page.tsx b/app/investment-challenge/admin/results/page.tsx
+index 191821f4d25a5877f6422f9a8de302172dc0a81f..843c57416d0135efebc94493cb9fa349ba1d8445 100644
+--- a/app/investment-challenge/admin/results/page.tsx
++++ b/app/investment-challenge/admin/results/page.tsx
+@@ -3,6 +3,7 @@ import Link from "next/link";
+ import { redirect } from "next/navigation";
+ 
+ import { AdminResultsRefreshButton } from "@/components/investment/admin-results-refresh-button";
++import { AdminPriceOverrideForm } from "@/components/investment/admin-price-override-form";
+ import { formatPercent, formatUsd } from "@/lib/investment-challenge";
+ import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
+ import { listInvestmentAdminResults, type InvestmentAdminResultsBundle, type InvestmentAdminTeamResult } from "@/lib/server-investments";
+@@ -106,6 +107,8 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
+         <Metric label="Competition status" value={bundle.stats.competitionStatus} />
+       </section>
+ 
++      <AdminPriceOverrideForm />
++
+       <section className="panel stack-md investment-admin-results-panel">
+         <div className="section-header">
+           <div>
+diff --git a/components/investment/investment-challenge-dashboard.tsx b/components/investment/investment-challenge-dashboard.tsx
+index d453639c8432b45aed44ee0683503c84f8c8d241..6f48c06802573d26b20e564d661fb3081b231edc 100644
+--- a/components/investment/investment-challenge-dashboard.tsx
++++ b/components/investment/investment-challenge-dashboard.tsx
+@@ -194,6 +194,9 @@ export function InvestmentChallengeDashboard({
+   const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
+   const currentPortfolioValue = portfolio?.totalValue ?? INVESTMENT_STARTING_CASH;
+   const currentExposure = portfolio?.totalExposure ?? 0;
++  const emergencyPriceWarning = selectedQuote.emergencyFallback
++    ? selectedQuote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price."
++    : "";
+   const clientTradeWarning =
+     !hasSelectedAsset
+       ? ""
+@@ -350,7 +353,9 @@ export function InvestmentChallengeDashboard({
+         setSelectedQuote(data.quote);
+         setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
+         setAssetSearchStatus(
+-          data.quote.isStale || (data.quote.canTrade === false && marketStatus.isOpen)
++          data.quote.emergencyFallback
++            ? data.quote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price."
++            : data.quote.isStale || (data.quote.canTrade === false && marketStatus.isOpen)
+             ? data.quote.staleReason ?? "Price is temporarily not updating from the provider. Trading will be available once a fresh price is received."
+             : ""
+         );
+@@ -401,7 +406,11 @@ export function InvestmentChallengeDashboard({
+ 
+       if (response.ok && data.ok && data.quote) {
+         applySelectedQuote(data.quote);
+-        if (data.quote.canTrade === false && marketStatus.isOpen) {
++        if (data.quote.emergencyFallback) {
++          const warning = data.quote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price.";
++          showToast(warning, "info");
++          setAssetSearchStatus(warning);
++        } else if (data.quote.canTrade === false && marketStatus.isOpen) {
+           const warning = data.quote.staleReason ?? "Fresh price is temporarily unavailable for this asset.";
+           showToast(warning, "error");
+           setAssetSearchStatus(warning);
+@@ -790,14 +799,15 @@ export function InvestmentChallengeDashboard({
+                     <div className="t-asset-meta">{selectedQuote.name} · {selectedQuote.type} · {selectedQuote.region ?? "US"}</div>
+                     <div className="t-asset-ticker">{selectedQuote.symbol}</div>
+                     <div className="t-asset-price">{selectedPriceText}</div>
+-                    <div className="t-asset-source">
++                  <div className="t-asset-source">
+                       {priceLoading ? "Checking price..." : selectedQuote.isStale
+                         ? selectedQuote.staleReason ?? "Fresh price is temporarily unavailable for this asset."
+                         : selectedQuote.priceAvailable
+                         ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
+                         : selectedQuote.priceMessage ?? "No saved price"}
+-                    </div>
+                   </div>
++                  {emergencyPriceWarning ? <div className="t-trade-warning">{emergencyPriceWarning}</div> : null}
++                </div>
+ 
+                   <div className="t-side-toggle">
+                     <button
+@@ -999,6 +1009,10 @@ export function InvestmentChallengeDashboard({
+ function sourceLabel(quote: InvestmentAssetQuote) {
+   if (quote.priceSource === "cache") return "Saved cache";
+   if (quote.priceSource === "marketdata_app") return "MarketData.app";
++  if (quote.priceSource === "saved_market_price") return "Fallback: saved market price";
++  if (quote.priceSource === "latest_trade_fallback") return "Fallback: latest trade price";
++  if (quote.priceSource === "team_average_buy_fallback") return "Fallback: team average buy price";
++  if (quote.priceSource === "admin_manual_override") return "Fallback: admin override";
+   if (quote.provider === "marketdata_app") return "MarketData.app";
+   if (quote.priceSource === "reference") return "Educational reference";
+   return quote.provider || "Market data";
+
+# Uncommitted staged diff at generation time

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AdminResultsRefreshButton } from "@/components/investment/admin-results-refresh-button";
+import { AdminPriceOverrideForm } from "@/components/investment/admin-price-override-form";
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { listInvestmentAdminResults, type InvestmentAdminResultsBundle, type InvestmentAdminTeamResult } from "@/lib/server-investments";
@@ -105,6 +106,8 @@ export default async function InvestmentAdminResultsPage({ searchParams }: Resul
         <Metric label="Total simulated value" value={formatUsd(bundle.stats.totalSimulatedPortfolioValue)} />
         <Metric label="Competition status" value={bundle.stats.competitionStatus} />
       </section>
+
+      <AdminPriceOverrideForm />
 
       <section className="panel stack-md investment-admin-results-panel">
         <div className="section-header">

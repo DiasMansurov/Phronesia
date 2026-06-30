@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "symbol is required." }, { status: 400 });
   }
 
-  const validation = await getAssetQuote(symbol);
+  const validation = await getAssetQuote(symbol, access.access.accountId);
   if (!validation.ok) {
     return NextResponse.json({ ok: false, reason: validation.reason }, { status: 404 });
   }
@@ -39,7 +39,9 @@ export async function GET(request: Request) {
       isStale: validation.price.isStale,
       staleReason: validation.price.staleReason,
       providerUpdatedAt: validation.price.providerUpdatedAt ?? null,
-      providerUpdatedAtEt: validation.price.providerUpdatedAtEt ?? null
+      providerUpdatedAtEt: validation.price.providerUpdatedAtEt ?? null,
+      emergencyFallback: "emergencyFallback" in validation.price ? validation.price.emergencyFallback ?? false : false,
+      warning: "warning" in validation.price ? validation.price.warning ?? null : null
     }
   });
 }

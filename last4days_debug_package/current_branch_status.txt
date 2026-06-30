@@ -1,0 +1,33 @@
+Repository: /Users/diasmansurov/Documents/New project/policyking-app
+Generated at: 2026-06-30T10:55:32Z
+
+Current branch:
+main
+
+HEAD:
+93cece972aaf100ecc3a9c170cd3f64e8aeb1c86
+
+Status short:
+ M app/api/investment/assets/quote/route.ts
+ M app/api/investment/debug-price/route.ts
+ M app/investment-challenge/admin/results/page.tsx
+ M components/investment/investment-challenge-dashboard.tsx
+?? app/api/investment/admin/price-override/
+?? components/investment/admin-price-override-form.tsx
+?? last4days_debug_package/
+?? supabase/migrations/20260624120000_investment_price_overrides.sql
+
+Status branch:
+## main...origin/main
+ M app/api/investment/assets/quote/route.ts
+ M app/api/investment/debug-price/route.ts
+ M app/investment-challenge/admin/results/page.tsx
+ M components/investment/investment-challenge-dashboard.tsx
+?? app/api/investment/admin/price-override/
+?? components/investment/admin-price-override-form.tsx
+?? last4days_debug_package/
+?? supabase/migrations/20260624120000_investment_price_overrides.sql
+
+Remotes:
+origin	https://github.com/DiasMansurov/Phronesia.git (fetch)
+origin	https://github.com/DiasMansurov/Phronesia.git (push)

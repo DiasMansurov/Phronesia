@@ -1,0 +1,95 @@
+Repository: /Users/diasmansurov/Documents/New project/policyking-app
+Generated at: 2026-06-30T10:55:32Z
+Window: git --since='4 days ago'
+Base commit before window: 870b947ff1bcd67d8a3b73b435177214bca51cdd
+
+commit 93cece972aaf100ecc3a9c170cd3f64e8aeb1c86 (HEAD -> main, origin/main)
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date:   2026-06-29 12:06:41 +0500
+
+    Rollback broken accounting snapshot/results changes
+
+ .../admin/recalculate-all-portfolios/route.ts      |   29 -
+ .../admin/recalculate-team-portfolio/route.ts      |   29 -
+ app/api/investment/admin/recalculate-team/route.ts |   26 -
+ app/api/investment/admin/results/route.ts          |   12 -
+ .../admin/results/[teamId]/page.tsx                |   26 -
+ lib/investment-challenge.ts                        |   12 +-
+ lib/server-investments.ts                          | 1504 +++-----------------
+ 7 files changed, 191 insertions(+), 1447 deletions(-)
+ delete mode 100644 app/api/investment/admin/recalculate-all-portfolios/route.ts
+ delete mode 100644 app/api/investment/admin/recalculate-team-portfolio/route.ts
+ delete mode 100644 app/api/investment/admin/recalculate-team/route.ts
+
+commit 15a4510d2f7e52e11397ee62c73d9ef65f7ab7b8
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date:   2026-06-28 16:36:03 +0500
+
+    Fix legacy trade classification and stop corrupted portfolio recalculation
+
+ .../admin/recalculate-all-portfolios/route.ts      |  27 +-
+ .../admin/recalculate-team-portfolio/route.ts      |  31 +-
+ app/api/investment/admin/recalculate-team/route.ts | 334 +--------------------
+ app/api/investment/admin/results/route.ts          |   6 +
+ lib/server-investments.ts                          | 317 ++++++++++++++++---
+ 5 files changed, 312 insertions(+), 403 deletions(-)
+
+commit 35e7e235b457dc4c82d3cd082545fe4e6791079d
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date:   2026-06-28 12:24:44 +0500
+
+    Fix official portfolio accounting for all teams
+
+ .../admin/recalculate-all-portfolios/route.ts      |   38 +
+ .../admin/recalculate-team-portfolio/route.ts      |   42 +
+ app/api/investment/admin/results/route.ts          |    6 +
+ .../admin/results/[teamId]/page.tsx                |   26 +
+ lib/investment-challenge.ts                        |   12 +-
+ lib/server-investments.ts                          | 1168 +++++++++++++++++---
+ 6 files changed, 1134 insertions(+), 158 deletions(-)
+ create mode 100644 app/api/investment/admin/recalculate-all-portfolios/route.ts
+ create mode 100644 app/api/investment/admin/recalculate-team-portfolio/route.ts
+
+commit 394c82af8549648ed1e8c2a7f72bd869a9521989
+Author: ivanrudikpvl <ivanrudik368@gmail.com>
+Date:   2026-06-28 00:21:40 +0400
+
+    add: admin per-team portfolio recalculation endpoint
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ app/api/investment/admin/recalculate-team/route.ts | 336 +++++++++++++++++++++
+ 1 file changed, 336 insertions(+)
+ create mode 100644 app/api/investment/admin/recalculate-team/route.ts
+
+commit 5ee0026674afce9230f326a9866bb52dbef40422
+Author: ivanrudikpvl <ivanrudik368@gmail.com>
+Date:   2026-06-28 00:11:27 +0400
+
+    fix: SHORT cash, leverage P/L, holdings, portfolio formula
+    
+    - BUG 1: Add handledPositionIds tracking so legacy position trades
+      stored without the action column (open_short as side="sell",
+      close_short as side="buy") are handled with correct cash direction
+      instead of falling through to the buy/sell block
+    - BUG 2: leverage multiplier already removed from calculatePositionPnl
+      in prior commit (5632981)
+    - BUG 3: holdingsValue already derives only from investment_holdings
+      table, never from investment_positions
+    - BUG 4: totalValue = cash + holdingsValue + lockedMargin + unrealizedPnl
+      formula already correct
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ lib/server-investments.ts | 37 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 36 insertions(+), 1 deletion(-)
+
+commit 563298144c25dc8af7994d8993663e1b7635fb32
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date:   2026-06-27 22:26:39 +0500
+
+    Fix leveraged realized PnL double counting
+
+ .../admin/results/[teamId]/page.tsx                |  10 +
+ lib/server-investments.ts                          | 278 +++++++++++++++++++--
+ 2 files changed, 271 insertions(+), 17 deletions(-)

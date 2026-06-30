@@ -194,6 +194,9 @@ export function InvestmentChallengeDashboard({
   const cashBalance = portfolio?.cash ?? INVESTMENT_STARTING_CASH;
   const currentPortfolioValue = portfolio?.totalValue ?? INVESTMENT_STARTING_CASH;
   const currentExposure = portfolio?.totalExposure ?? 0;
+  const emergencyPriceWarning = selectedQuote.emergencyFallback
+    ? selectedQuote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price."
+    : "";
   const clientTradeWarning =
     !hasSelectedAsset
       ? ""
@@ -350,7 +353,9 @@ export function InvestmentChallengeDashboard({
         setSelectedQuote(data.quote);
         setMarket((current) => ({ ...current, quotes: mergeQuote(current.quotes, data.quote as InvestmentAssetQuote) }));
         setAssetSearchStatus(
-          data.quote.isStale || (data.quote.canTrade === false && marketStatus.isOpen)
+          data.quote.emergencyFallback
+            ? data.quote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price."
+            : data.quote.isStale || (data.quote.canTrade === false && marketStatus.isOpen)
             ? data.quote.staleReason ?? "Price is temporarily not updating from the provider. Trading will be available once a fresh price is received."
             : ""
         );
@@ -401,7 +406,11 @@ export function InvestmentChallengeDashboard({
 
       if (response.ok && data.ok && data.quote) {
         applySelectedQuote(data.quote);
-        if (data.quote.canTrade === false && marketStatus.isOpen) {
+        if (data.quote.emergencyFallback) {
+          const warning = data.quote.warning ?? "Market data provider is temporarily unavailable. Using latest available platform price.";
+          showToast(warning, "info");
+          setAssetSearchStatus(warning);
+        } else if (data.quote.canTrade === false && marketStatus.isOpen) {
           const warning = data.quote.staleReason ?? "Fresh price is temporarily unavailable for this asset.";
           showToast(warning, "error");
           setAssetSearchStatus(warning);
@@ -790,14 +799,15 @@ export function InvestmentChallengeDashboard({
                     <div className="t-asset-meta">{selectedQuote.name} · {selectedQuote.type} · {selectedQuote.region ?? "US"}</div>
                     <div className="t-asset-ticker">{selectedQuote.symbol}</div>
                     <div className="t-asset-price">{selectedPriceText}</div>
-                    <div className="t-asset-source">
+                  <div className="t-asset-source">
                       {priceLoading ? "Checking price..." : selectedQuote.isStale
                         ? selectedQuote.staleReason ?? "Fresh price is temporarily unavailable for this asset."
                         : selectedQuote.priceAvailable
                         ? `${sourceLabel(selectedQuote)}${selectedQuote.priceDate ? ` · ${selectedQuote.priceDate}` : ""}`
                         : selectedQuote.priceMessage ?? "No saved price"}
-                    </div>
                   </div>
+                  {emergencyPriceWarning ? <div className="t-trade-warning">{emergencyPriceWarning}</div> : null}
+                </div>
 
                   <div className="t-side-toggle">
                     <button
@@ -999,6 +1009,10 @@ export function InvestmentChallengeDashboard({
 function sourceLabel(quote: InvestmentAssetQuote) {
   if (quote.priceSource === "cache") return "Saved cache";
   if (quote.priceSource === "marketdata_app") return "MarketData.app";
+  if (quote.priceSource === "saved_market_price") return "Fallback: saved market price";
+  if (quote.priceSource === "latest_trade_fallback") return "Fallback: latest trade price";
+  if (quote.priceSource === "team_average_buy_fallback") return "Fallback: team average buy price";
+  if (quote.priceSource === "admin_manual_override") return "Fallback: admin override";
   if (quote.provider === "marketdata_app") return "MarketData.app";
   if (quote.priceSource === "reference") return "Educational reference";
   return quote.provider || "Market data";

@@ -1,0 +1,65 @@
+Repository: /Users/diasmansurov/Documents/New project/policyking-app
+Generated at: 2026-06-30T10:55:32Z
+Changed files from commits since base 870b947ff1bcd67d8a3b73b435177214bca51cdd to HEAD:
+
+M	app/investment-challenge/admin/results/[teamId]/page.tsx
+M	lib/server-investments.ts
+
+Files changed in commits with author/commit context:
+
+commit 93cece972aaf100ecc3a9c170cd3f64e8aeb1c86
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date: 2026-06-29 12:06:41 +0500
+Subject: Rollback broken accounting snapshot/results changes
+D	app/api/investment/admin/recalculate-all-portfolios/route.ts
+D	app/api/investment/admin/recalculate-team-portfolio/route.ts
+D	app/api/investment/admin/recalculate-team/route.ts
+M	app/api/investment/admin/results/route.ts
+M	app/investment-challenge/admin/results/[teamId]/page.tsx
+M	lib/investment-challenge.ts
+M	lib/server-investments.ts
+
+
+commit 15a4510d2f7e52e11397ee62c73d9ef65f7ab7b8
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date: 2026-06-28 16:36:03 +0500
+Subject: Fix legacy trade classification and stop corrupted portfolio recalculation
+M	app/api/investment/admin/recalculate-all-portfolios/route.ts
+M	app/api/investment/admin/recalculate-team-portfolio/route.ts
+M	app/api/investment/admin/recalculate-team/route.ts
+M	app/api/investment/admin/results/route.ts
+M	lib/server-investments.ts
+
+
+commit 35e7e235b457dc4c82d3cd082545fe4e6791079d
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date: 2026-06-28 12:24:44 +0500
+Subject: Fix official portfolio accounting for all teams
+A	app/api/investment/admin/recalculate-all-portfolios/route.ts
+A	app/api/investment/admin/recalculate-team-portfolio/route.ts
+M	app/api/investment/admin/results/route.ts
+M	app/investment-challenge/admin/results/[teamId]/page.tsx
+M	lib/investment-challenge.ts
+M	lib/server-investments.ts
+
+
+commit 394c82af8549648ed1e8c2a7f72bd869a9521989
+Author: ivanrudikpvl <ivanrudik368@gmail.com>
+Date: 2026-06-28 00:21:40 +0400
+Subject: add: admin per-team portfolio recalculation endpoint
+A	app/api/investment/admin/recalculate-team/route.ts
+
+
+commit 5ee0026674afce9230f326a9866bb52dbef40422
+Author: ivanrudikpvl <ivanrudik368@gmail.com>
+Date: 2026-06-28 00:11:27 +0400
+Subject: fix: SHORT cash, leverage P/L, holdings, portfolio formula
+M	lib/server-investments.ts
+
+
+commit 563298144c25dc8af7994d8993663e1b7635fb32
+Author: DiasMansurov <DiasMansurov@users.noreply.github.com>
+Date: 2026-06-27 22:26:39 +0500
+Subject: Fix leveraged realized PnL double counting
+M	app/investment-challenge/admin/results/[teamId]/page.tsx
+M	lib/server-investments.ts
