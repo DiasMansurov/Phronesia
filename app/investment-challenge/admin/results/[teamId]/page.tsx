@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AdminTeamPasswordResetForm } from "@/components/investment/admin-team-password-reset-form";
 import { formatPercent, formatUsd } from "@/lib/investment-challenge";
 import { requireInvestmentAdmin } from "@/lib/server-investment-admin-auth";
 import { getInvestmentAdminTeamDetail } from "@/lib/server-investments";
@@ -143,6 +144,8 @@ export default async function InvestmentAdminTeamDetailPage({ params }: TeamDeta
             <span>Competition: <strong>{detail.competition?.runtimeStatus ?? "n/a"}</strong></span>
           </div>
         </article>
+
+        <AdminTeamPasswordResetForm teamId={teamId} teamName={overview.teamName} />
       </section>
 
       <section className="panel stack-md investment-admin-results-panel">

@@ -1555,7 +1555,7 @@ export async function searchAssets(query: string): Promise<InvestmentAssetSearch
   return [];
 }
 
-export async function getAssetQuote(symbol: string) {
+export async function getAssetQuote(symbol: string, _accountId?: string) {
   const normalized = normalizeSymbol(symbol);
   if (!isSupportedSymbol(normalized)) {
     return { ok: false as const, reason: "Invalid ticker format." };
@@ -2068,6 +2068,178 @@ export async function getLatestStockPrice(
   options: { refresh?: boolean } = {}
 ): Promise<LatestClosePriceResult> {
   return getLatestClosePrice(symbol, assetInput, options);
+}
+
+export type BestAvailableInvestmentPriceSource =
+  | "saved_market_price"
+  | "marketdata_app"
+  | "latest_trade_fallback"
+  | "team_average_buy_fallback"
+  | "admin_manual_override"
+  | "unavailable";
+
+export async function getBestAvailableInvestmentPrice(
+  symbol: string,
+  teamId?: string,
+  options: { refresh?: boolean } = {}
+) {
+  const normalized = normalizeSymbol(symbol);
+  let calledMarketDataApp = false;
+  let httpStatus: number | null = null;
+  let marketDataStatus: number | string | null = null;
+  let providerError: string | null = null;
+
+  try {
+    const latest = await getLatestClosePrice(normalized, undefined, options);
+    calledMarketDataApp = Boolean(options.refresh) && !latest.cached;
+    if (latest.price && latest.price > 0) {
+      return {
+        ok: true as const,
+        symbol: normalized,
+        price: latest.price,
+        source: latest.source === "cache" ? "saved_market_price" as const : "marketdata_app" as const,
+        warning: latest.cached ? "Using latest saved market price." : null,
+        canTrade: true,
+        marketDataStatus: latest.source === "marketdata_app" ? "ok" : "cache",
+        providerError: latest.error,
+        calledMarketDataApp,
+        httpStatus
+      };
+    }
+    providerError = latest.error;
+    marketDataStatus = latest.error ?? "unavailable";
+  } catch (error) {
+    providerError = errorMessage(error);
+    marketDataStatus = providerError;
+  }
+
+  const latestTradeFallback = await getLatestTradePriceFallback(normalized, teamId);
+  if (latestTradeFallback) {
+    return {
+      ok: true as const,
+      symbol: normalized,
+      price: latestTradeFallback.price,
+      source: "latest_trade_fallback" as const,
+      warning: "Market data provider is temporarily unavailable. Using latest available platform price.",
+      canTrade: true,
+      marketDataStatus,
+      providerError,
+      calledMarketDataApp,
+      httpStatus
+    };
+  }
+
+  const teamAverageFallback = teamId ? await getTeamAverageBuyPriceFallback(normalized, teamId) : null;
+  if (teamAverageFallback) {
+    return {
+      ok: true as const,
+      symbol: normalized,
+      price: teamAverageFallback.price,
+      source: "team_average_buy_fallback" as const,
+      warning: "Market data provider is temporarily unavailable. Using this team's average buy price.",
+      canTrade: true,
+      marketDataStatus,
+      providerError,
+      calledMarketDataApp,
+      httpStatus
+    };
+  }
+
+  const overrideFallback = await getLatestInvestmentPriceOverride(normalized);
+  if (overrideFallback) {
+    return {
+      ok: true as const,
+      symbol: normalized,
+      price: overrideFallback.price,
+      source: "admin_manual_override" as const,
+      warning: "Market data provider is temporarily unavailable. Using admin manual override price.",
+      canTrade: true,
+      marketDataStatus,
+      providerError,
+      calledMarketDataApp,
+      httpStatus
+    };
+  }
+
+  return {
+    ok: false as const,
+    symbol: normalized,
+    price: null,
+    source: "unavailable" as const,
+    warning: null,
+    canTrade: false,
+    marketDataStatus,
+    providerError: providerError ?? "Price is temporarily unavailable for this asset. Please try again later.",
+    calledMarketDataApp,
+    httpStatus
+  };
+}
+
+export async function saveInvestmentPriceOverride(input: {
+  symbol: string;
+  price: number;
+  note?: string | null;
+  createdBy: string;
+}) {
+  const symbol = normalizeSymbol(input.symbol);
+  const price = Number(input.price);
+  if (!isSupportedSymbol(symbol)) throw new Error("Invalid ticker format.");
+  if (!Number.isFinite(price) || price <= 0) throw new Error("Override price must be greater than zero.");
+  if (!supabaseConfigured()) throw new Error("Supabase is not configured.");
+
+  const row = await insertRow("investment_price_overrides", {
+    id: randomUUID(),
+    symbol,
+    price,
+    note: input.note?.trim() || null,
+    created_by: input.createdBy || "investment-admin",
+    created_at: new Date().toISOString()
+  });
+
+  return {
+    symbol,
+    price,
+    note: rowNullableString(row, "note"),
+    createdAt: rowString(row, "created_at")
+  };
+}
+
+async function getLatestTradePriceFallback(symbol: string, teamId?: string) {
+  if (!supabaseConfigured()) return null;
+  const query: Record<string, string> = {
+    select: "price,created_at",
+    symbol: `eq.${symbol}`,
+    order: "created_at.desc",
+    limit: "1"
+  };
+  if (teamId) query.team_id = `eq.${teamId}`;
+  const rows = await selectRows("investment_trades", query).catch(() => null);
+  const price = Array.isArray(rows) && rows[0] ? rowNumber(rows[0], "price") : 0;
+  return price > 0 ? { price } : null;
+}
+
+async function getTeamAverageBuyPriceFallback(symbol: string, teamId: string) {
+  if (!supabaseConfigured()) return null;
+  const rows = await selectRows("investment_holdings", {
+    select: "average_buy_price",
+    team_id: `eq.${teamId}`,
+    symbol: `eq.${symbol}`,
+    limit: "1"
+  }).catch(() => null);
+  const price = Array.isArray(rows) && rows[0] ? rowNumber(rows[0], "average_buy_price") : 0;
+  return price > 0 ? { price } : null;
+}
+
+async function getLatestInvestmentPriceOverride(symbol: string) {
+  if (!supabaseConfigured()) return null;
+  const rows = await selectRows("investment_price_overrides", {
+    select: "price,created_at,note",
+    symbol: `eq.${symbol}`,
+    order: "created_at.desc",
+    limit: "1"
+  }).catch(() => null);
+  const price = Array.isArray(rows) && rows[0] ? rowNumber(rows[0], "price") : 0;
+  return price > 0 ? { price } : null;
 }
 
 async function getLatestCloseQuote(
@@ -3255,6 +3427,84 @@ export async function createOrEnterInvestmentTeam(input: {
       message
     }
   };
+}
+
+export async function resetInvestmentTeamPassword(input: {
+  teamId: string;
+  newPassword: string;
+  adminEmail?: string | null;
+}): Promise<
+  | { ok: true; teamId: string; teamName: string; invalidatedSessions: number }
+  | { ok: false; status: number; reason: string }
+> {
+  if (!supabaseConfigured()) {
+    return { ok: false, status: 503, reason: "Supabase is not configured for investment teams." };
+  }
+
+  const teamId = input.teamId.trim();
+  const newPassword = input.newPassword;
+
+  if (!teamId) return { ok: false, status: 400, reason: "teamId is required." };
+  if (!newPassword || newPassword.length < 6) {
+    return { ok: false, status: 400, reason: "New password must be at least 6 characters." };
+  }
+
+  const account = await getAccountRow(teamId);
+  if (!account) return { ok: false, status: 404, reason: "Investment team was not found." };
+
+  const passwordHash = await hashTeamPassword(newPassword);
+  await updateRows(
+    "investment_accounts",
+    { id: `eq.${teamId}` },
+    {
+      password_hash: passwordHash,
+      updated_at: new Date().toISOString()
+    }
+  );
+
+  const invalidatedSessions = await invalidateInvestmentTeamSessions(teamId);
+  console.info(
+    "INVESTMENT_ADMIN_RESET_TEAM_PASSWORD",
+    JSON.stringify({
+      teamId,
+      teamName: rowString(account, "team_name"),
+      adminEmail: input.adminEmail ?? null,
+      invalidatedSessions,
+      timestamp: new Date().toISOString()
+    })
+  );
+
+  return {
+    ok: true,
+    teamId,
+    teamName: rowString(account, "team_name"),
+    invalidatedSessions
+  };
+}
+
+async function invalidateInvestmentTeamSessions(teamId: string) {
+  let invalidatedSessions = 0;
+  const queries: Array<Record<string, string>> = [
+    { account_id: `eq.${teamId}` },
+    { team_id: `eq.${teamId}` }
+  ];
+
+  for (const query of queries) {
+    try {
+      await deleteRows("investment_team_sessions", query);
+      invalidatedSessions += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      if (!/schema cache|does not exist|not found|404/i.test(message)) {
+        console.warn(
+          "INVESTMENT_TEAM_SESSION_INVALIDATION_FAILED",
+          JSON.stringify({ teamId, query: Object.keys(query)[0], error: message })
+        );
+      }
+    }
+  }
+
+  return invalidatedSessions;
 }
 
 export async function getInvestmentAccountView(accountId: string) {

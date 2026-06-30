@@ -44,7 +44,15 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   priceDate: string | null;
   provider: string;
   priceAvailable: boolean;
-  priceSource?: "cache" | "marketdata_app" | "reference" | "unavailable";
+  priceSource?:
+    | "cache"
+    | "marketdata_app"
+    | "saved_market_price"
+    | "latest_trade_fallback"
+    | "team_average_buy_fallback"
+    | "reference"
+    | "admin_manual_override"
+    | "unavailable";
   priceMessage?: string;
   fetchedAt?: string | null;
   currency?: string;
@@ -54,6 +62,8 @@ export type InvestmentAssetQuote = InvestmentAsset & {
   staleReason?: string | null;
   providerUpdatedAt?: string | null;
   providerUpdatedAtEt?: string | null;
+  emergencyFallback?: boolean;
+  warning?: string | null;
 };
 
 export type InvestmentAssetSearchResult = InvestmentAsset & {
