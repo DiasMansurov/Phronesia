@@ -4976,7 +4976,9 @@ async function listPositionRowsForAccount(accountId: string) {
 }
 
 function positionSide(row: Payload): "long" | "short" {
-  return rowString(row, "side") === "short" ? "short" : "long";
+  const side = rowString(row, "side").toLowerCase();
+  if (side === "short" || side === "sell") return "short";
+  return "long";
 }
 
 function positionStatus(row: Payload): "open" | "closed" | "liquidated" {
